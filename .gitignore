@@ -151,3 +151,4 @@ storage/
 *.bak
 *.backup
 .claude/settings.local.json
+/config-repo/

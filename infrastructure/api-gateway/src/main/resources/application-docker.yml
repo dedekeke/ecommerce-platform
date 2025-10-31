@@ -1,0 +1,53 @@
+spring:
+  # Security Configuration for Docker
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH0_ISSUER_URI}
+
+      client:
+        provider:
+          auth0:
+            issuer-uri: ${AUTH0_ISSUER_URI}
+        registration:
+          auth0:
+            client-id: ${AUTH0_CLIENT_ID}
+            client-secret: ${AUTH0_CLIENT_SECRET}
+
+  # Redis configuration for Docker
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+# Auth0 Configuration
+auth0:
+  audience: ${AUTH0_AUDIENCE}
+
+# Eureka Client Configuration for Docker
+eureka:
+  client:
+    service-url:
+      default-zone: http://eureka-server:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    hostname: api-gateway
+
+# Server Configuration
+server:
+  port: 8080
+
+# Distributed Tracing for Docker
+management:
+  zipkin:
+    tracing:
+      endpoint: http://zipkin:9411/api/v2/spans
+
+# Logging Configuration for Docker
+logging:
+  level:
+    root: INFO
+    com.ecommerce.gateway: INFO
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: INFO
