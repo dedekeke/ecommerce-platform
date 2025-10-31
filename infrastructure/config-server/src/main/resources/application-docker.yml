@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: config-server
+  cloud:
+    config:
+      server:
+        git:
+          # Use embedded Git repository in Docker
+          uri: file:///config-repo
+          clone-on-start: true
+          default-label: main
+          search-paths:
+            - '{application}'
+            - '{application}/{profile}'
+        encrypt:
+          enabled: true
+
+server:
+  port: 8888
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: false
+    hostname: config-server
+
+# Logging configuration for Docker
+logging:
+  level:
+    root: INFO
+    org.springframework.cloud.config: INFO
+    org.springframework.security: WARN
+    com.ecommerce.config: INFO

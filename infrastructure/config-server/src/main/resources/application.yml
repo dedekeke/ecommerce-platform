@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: config-server
+  threads:
+    virtual:
+      enabled: true
+  cloud:
+    config:
+      server:
+        git:
+          # Use local file system Git repository for development
+          uri: file:///${user.home}/ecommerce-config-repo
+          # Clone the repository on startup
+          clone-on-start: true
+          # Default label (branch) to use
+          default-label: main
+          # Search paths for configuration files
+          search-paths:
+            - '{application}'
+            - '{application}/{profile}'
+        # Enable encryption/decryption
+        encrypt:
+          enabled: true
+  security:
+    user:
+      name: configuser
+      password: configpass
+
+server:
+  port: 8888
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: false
+    hostname: localhost
+
+# Encryption key for sensitive properties (use a strong key in production)
+encrypt:
+  key: ecommerce-platform-secret-key-change-in-production
+
+# Management and Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,refresh
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+# Logging configuration
+logging:
+  level:
+    root: INFO
+    org.springframework.cloud.config: DEBUG
+    org.springframework.security: INFO
+    com.ecommerce.config: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
