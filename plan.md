@@ -9,7 +9,7 @@ Based on extensive research of the YAS (Yet Another Shop) reference architecture
 - **Backend**: Java 21 Spring Boot 3.2+ with virtual threads
 - **Authentication**: Auth0 (direct SPA integration, no BFF)
 - **Communication**: gRPC for internal high-frequency calls, REST for public APIs
-- **Infrastructure**: Docker Compose, Eureka, Spring Cloud Gateway, Kafka, PostgreSQL, MongoDB
+- **Infrastructure**: Docker Compose, Eureka, Spring Cloud Gateway, Kafka, PostgreSQL, MySQL, MongoDB
 - **Observability**: Prometheus, Grafana, Zipkin
 
 ---
@@ -20,7 +20,7 @@ Based on extensive research of the YAS (Yet Another Shop) reference architecture
 
 1. **API Gateway** - Spring Cloud Gateway with Auth0 integration
 2. **User Service** - User management, profiles (PostgreSQL + REST)
-3. **Product Service** - Product catalog management (PostgreSQL + REST)
+3. **Product Service** - Product catalog management (MySQL + REST) - *Read-heavy workload*
 4. **Cart Service** - Shopping cart operations (MongoDB + gRPC)
 5. **Order Service** - Order processing (PostgreSQL + gRPC)
 6. **Payment Service** - Payment processing (PostgreSQL + gRPC)
@@ -28,18 +28,36 @@ Based on extensive research of the YAS (Yet Another Shop) reference architecture
 8. **Notification Service** - Email/SMS notifications (MongoDB + Kafka consumer)
 9. **Search Service** - Elasticsearch-based search (Elasticsearch + REST)
 10. **Media Service** - Image/file management (MongoDB + REST)
-11. **Promotion Service** - Discounts and promotions (PostgreSQL + REST)
+11. **Promotion Service** - Discounts and promotions (MySQL + REST) - *Read-heavy workload*
 
 ### Infrastructure Services
 
 - **Eureka Server** - Service discovery
 - **Config Server** - Centralized configuration
 - **Kafka + Zookeeper** - Event streaming
-- **PostgreSQL** - Transactional data
-- **MongoDB** - Document storage
+- **PostgreSQL** - Transactional data (User, Order, Payment, Inventory services)
+- **MySQL** - Catalog data (Product, Promotion services)
+- **MongoDB** - Document storage (Cart, Notification, Media services)
 - **Elasticsearch** - Search engine
 - **Zipkin** - Distributed tracing
 - **Prometheus + Grafana** - Monitoring
+
+### Database Selection Rationale
+
+**PostgreSQL (4 services):**
+- **User Service**: Complex user profiles with relationships, strong ACID for auth data
+- **Order Service**: Financial transactions requiring strong ACID compliance
+- **Payment Service**: Financial data with absolute consistency requirements
+- **Inventory Service**: Advanced locking mechanisms for stock reservations
+
+**MySQL (2 services):**
+- **Product Service**: Read-heavy catalog browsing, simple data model, benefits from fast reads
+- **Promotion Service**: Read-heavy validation queries, simple data model, high cache hit rate
+
+**MongoDB (3 services):**
+- **Cart Service**: Flexible schema, TTL indexes for expiration, fast reads/writes
+- **Notification Service**: Template storage, flexible notification logs
+- **Media Service**: File metadata with flexible attributes
 
 ---
 
@@ -102,16 +120,17 @@ ecommerce-platform/
 ### Day 2: Docker Compose Infrastructure
 
 **Morning (4 hours):**
-- Create comprehensive `docker-compose.yml` with PostgreSQL, MongoDB, Kafka + Zookeeper
-- Write PostgreSQL init script to create all databases (userdb, productdb, orderdb, paymentdb, inventorydb, promotiondb)
+- Create comprehensive `docker-compose.yml` with PostgreSQL, MySQL, MongoDB, Kafka + Zookeeper
+- Write PostgreSQL init script to create databases (userdb, orderdb, paymentdb, inventorydb)
+- Write MySQL init script to create databases (productdb, promotiondb)
 
 **Afternoon (4 hours):**
 - Add monitoring stack to `docker-compose.monitoring.yml` (Prometheus, Grafana, Zipkin)
 - Configure Prometheus scraping, Grafana datasources
 - Add health checks to all services
-- Test full infrastructure startup
+- Test full infrastructure startup with both PostgreSQL and MySQL
 
-**Deliverables:** Complete docker-compose setup, initialization scripts, working infrastructure
+**Deliverables:** Complete docker-compose setup with PostgreSQL + MySQL, initialization scripts, working infrastructure
 
 ---
 
@@ -305,15 +324,15 @@ ecommerce-platform/
 **Morning (4 hours):**
 - Define Product domain model: id, sku, name, description, category, price, currency, images, dimensions, stockQuantity, active
 - Define Category entity with hierarchical structure (parent-child relationship)
-- Set up proper indexes for search optimization
+- Set up MySQL database connection and proper indexes for search optimization
 
 **Afternoon (4 hours):**
 - Implement repository with custom queries: search by name/description, filter by category, filter by price range, pagination support
-- Create service layer with business logic
+- Create service layer with business logic optimized for read-heavy workload
 - Implement category management logic
 - Write unit tests for repository queries
 
-**Deliverables:** Product domain model, repository with search capabilities, service layer
+**Deliverables:** Product domain model with MySQL, repository with search capabilities, service layer
 
 ---
 
@@ -326,12 +345,12 @@ ecommerce-platform/
 
 **Afternoon (4 hours):**
 - Implement product image management (store URLs, integrate with Media Service later)
-- Create integration tests with Testcontainers
+- Create integration tests with Testcontainers (MySQL)
 - Publish ProductCreatedEvent and ProductUpdatedEvent to Kafka
-- Add Redis caching for product details
+- Add Redis caching for product details (perfect for read-heavy catalog)
 - Dockerize and deploy
 
-**Deliverables:** Complete Product Service, event publishing, caching, running in Docker
+**Deliverables:** Complete Product Service with MySQL, event publishing, caching, running in Docker
 
 ---
 
@@ -527,18 +546,18 @@ ecommerce-platform/
 
 **Morning (4 hours):**
 - Define Promotion domain model: id, code, name, description, type (PERCENTAGE, FIXED_AMOUNT, BUY_X_GET_Y), discountValue, minPurchaseAmount, maxUses, currentUses, startDate, endDate, active, applicableCategories
-- Implement repository with unique constraint on code
+- Set up MySQL database connection and implement repository with unique constraint on code
 
 **Afternoon (4 hours):**
 - Implement promotion validation logic (check dates, usage limits, minimum purchase)
 - Implement discount calculation logic for different promotion types
 - Create REST API: GET /promotions (public), GET /promotions/{code}/validate, POST /promotions (admin), PUT /promotions/{id} (admin)
-- Add Redis caching for active promotions
+- Add Redis caching for active promotions (perfect for read-heavy validation queries)
 - Integrate with Order Service (add promotion code field to order)
-- Write tests
+- Write tests with Testcontainers (MySQL)
 - Dockerize and deploy
 
-**Deliverables:** Promotion Service with discount logic, admin API, integration ready
+**Deliverables:** Promotion Service with MySQL, discount logic, admin API, integration ready
 
 ---
 

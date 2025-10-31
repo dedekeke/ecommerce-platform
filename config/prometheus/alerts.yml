@@ -1,0 +1,74 @@
+# Prometheus Alerting Rules for E-Commerce Platform
+
+groups:
+  - name: service_health
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 2 minutes"
+
+      - alert: HighMemoryUsage
+        expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.job }}"
+          description: "{{ $labels.job }} is using more than 90% of heap memory"
+
+      - alert: HighErrorRate
+        expr: rate(http_server_requests_seconds_count{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "{{ $labels.job }} has error rate > 5% for 5 minutes"
+
+  - name: business_metrics
+    interval: 30s
+    rules:
+      - alert: LowOrderCompletionRate
+        expr: rate(orders_completed_total[10m]) < 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low order completion rate"
+          description: "Order completion rate is below 80% for 10 minutes"
+
+      - alert: HighCartAbandonmentRate
+        expr: rate(carts_abandoned_total[10m]) > 0.6
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High cart abandonment rate"
+          description: "Cart abandonment rate is above 60% for 10 minutes"
+
+  - name: database_alerts
+    interval: 30s
+    rules:
+      - alert: DatabaseConnectionPoolExhausted
+        expr: hikaricp_connections_active / hikaricp_connections_max > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool nearly exhausted for {{ $labels.job }}"
+          description: "{{ $labels.job }} is using more than 90% of database connections"
+
+      - alert: SlowDatabaseQueries
+        expr: rate(hikaricp_connections_acquire_seconds_sum[5m]) / rate(hikaricp_connections_acquire_seconds_count[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow database queries on {{ $labels.job }}"
+          description: "Average query time is over 1 second for 5 minutes"

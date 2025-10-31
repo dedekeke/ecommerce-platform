@@ -1,0 +1,167 @@
+# Prometheus Configuration for E-Commerce Platform
+# Scrape configurations for all microservices
+
+global:
+  scrape_interval: 15s # Set the scrape interval to every 15 seconds
+  evaluation_interval: 15s # Evaluate rules every 15 seconds
+  scrape_timeout: 10s
+  external_labels:
+    environment: 'development'
+    platform: 'ecommerce'
+
+# Alertmanager configuration (optional - for future use)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Infrastructure Services
+  - job_name: 'eureka-server'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['eureka-server:8761']
+        labels:
+          service: 'eureka-server'
+          tier: 'infrastructure'
+
+  - job_name: 'config-server'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['config-server:8888']
+        labels:
+          service: 'config-server'
+          tier: 'infrastructure'
+
+  - job_name: 'api-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['api-gateway:8080']
+        labels:
+          service: 'api-gateway'
+          tier: 'infrastructure'
+
+  # Core Business Services
+  - job_name: 'user-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['user-service:8081']
+        labels:
+          service: 'user-service'
+          tier: 'business'
+          database: 'postgresql'
+
+  - job_name: 'product-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['product-service:8082']
+        labels:
+          service: 'product-service'
+          tier: 'business'
+          database: 'mysql'
+
+  - job_name: 'cart-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['cart-service:8083']
+        labels:
+          service: 'cart-service'
+          tier: 'business'
+          database: 'mongodb'
+
+  - job_name: 'order-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['order-service:8084']
+        labels:
+          service: 'order-service'
+          tier: 'business'
+          database: 'postgresql'
+
+  - job_name: 'payment-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['payment-service:8085']
+        labels:
+          service: 'payment-service'
+          tier: 'business'
+          database: 'postgresql'
+
+  - job_name: 'inventory-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['inventory-service:8086']
+        labels:
+          service: 'inventory-service'
+          tier: 'business'
+          database: 'postgresql'
+
+  - job_name: 'notification-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['notification-service:8087']
+        labels:
+          service: 'notification-service'
+          tier: 'supporting'
+          database: 'mongodb'
+
+  - job_name: 'search-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['search-service:8088']
+        labels:
+          service: 'search-service'
+          tier: 'supporting'
+          database: 'elasticsearch'
+
+  - job_name: 'media-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['media-service:8089']
+        labels:
+          service: 'media-service'
+          tier: 'supporting'
+          database: 'mongodb'
+
+  - job_name: 'promotion-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['promotion-service:8090']
+        labels:
+          service: 'promotion-service'
+          tier: 'supporting'
+          database: 'mysql'
+
+  # Database Monitoring
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          database: 'postgresql'
+    # Note: postgres-exporter needs to be added to docker-compose
+
+  - job_name: 'mysql-exporter'
+    static_configs:
+      - targets: ['mysql-exporter:9104']
+        labels:
+          database: 'mysql'
+    # Note: mysql-exporter needs to be added to docker-compose
+
+  # Kafka Monitoring
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka:9093']
+        labels:
+          service: 'kafka'
+          tier: 'infrastructure'
