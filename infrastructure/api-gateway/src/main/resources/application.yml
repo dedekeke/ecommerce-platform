@@ -1,0 +1,117 @@
+spring:
+  application:
+    name: api-gateway
+
+  # Enable virtual threads for reactive Spring Cloud Gateway
+  threads:
+    virtual:
+      enabled: true
+
+  # Security Configuration
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH0_ISSUER_URI:https://your-tenant.auth0.com/}
+
+      client:
+        provider:
+          auth0:
+            issuer-uri: ${AUTH0_ISSUER_URI:https://your-tenant.auth0.com/}
+        registration:
+          auth0:
+            client-id: ${AUTH0_CLIENT_ID:your-client-id}
+            client-secret: ${AUTH0_CLIENT_SECRET:your-client-secret}
+            scope: openid,profile,email
+
+  # Cloud Gateway Configuration
+  cloud:
+    gateway:
+      # Discovery Locator - automatically create routes from Eureka services
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+
+      # Default filters applied to all routes
+      default-filters:
+        - TokenRelay
+        - name: Retry
+          args:
+            retries: 3
+            statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE
+            methods: GET,POST
+            backoff:
+              firstBackoff: 50ms
+              maxBackoff: 500ms
+              factor: 2
+              basedOnPreviousValue: false
+
+  # Redis configuration for rate limiting
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+# Auth0 Configuration
+auth0:
+  audience: ${AUTH0_AUDIENCE:https://api.ecommerce.com}
+
+# Eureka Client Configuration
+eureka:
+  client:
+    service-url:
+      default-zone: ${EUREKA_URI:http://localhost:8761/eureka}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 30
+
+# Server Configuration
+server:
+  port: ${SERVER_PORT:8080}
+  netty:
+    connection-timeout: 30s
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    circuitbreakers:
+      enabled: true
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  observations:
+    key-values:
+      application: ${spring.application.name}
+
+  # Distributed Tracing
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.ecommerce.gateway: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.web.reactive: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

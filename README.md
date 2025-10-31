@@ -375,7 +375,16 @@ See [docs/deployment/production.md](docs/deployment/production.md) for productio
 
 This project is being developed over 10 weeks following a detailed plan. See [plan.md](plan.md) for the complete development schedule.
 
-Current Status: **Week 1, Day 1 - Afternoon**
+Current Status: **Week 1, Day 4 - Complete ✅**
+
+### Recent Completions
+- ✅ Day 4: API Gateway with Auth0 Integration
+  - Spring Cloud Gateway setup with JWT validation
+  - Complete route configuration for all 11 microservices
+  - Token relay implementation
+  - CORS configuration for all micro-frontends
+  - [Day 4 Summary](docs/DAY_4_SUMMARY.md)
+  - [Auth0 Setup Guide](docs/AUTH0_SETUP.md)
 
 ## 📄 License
 
@@ -408,10 +417,14 @@ For issues and questions:
 ## 🔮 Roadmap
 
 ### Week 1-2
-- [x] Infrastructure setup
+- [x] Infrastructure setup (PostgreSQL, MySQL, MongoDB, Redis, Kafka)
 - [x] Common library
-- [ ] Service discovery and API Gateway
-- [ ] Auth0 integration
+- [x] Service discovery (Eureka Server)
+- [x] API Gateway with Spring Cloud Gateway
+- [x] Auth0 integration with JWT validation
+- [ ] Config Server
+- [ ] gRPC setup and proto definitions
+- [ ] Testing infrastructure (Testcontainers, CI/CD)
 
 ### Week 3-5
 - [ ] Core services (User, Product, Cart)
