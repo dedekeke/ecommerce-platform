@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.ecommerce.common.grpc.cart";
+option java_outer_classname = "CartServiceProto";
+
+package cart;
+
+// Cart Service - Shopping cart operations via gRPC
+service CartService {
+  // Add item to cart
+  rpc AddItem(AddItemRequest) returns (CartResponse);
+
+  // Remove item from cart
+  rpc RemoveItem(RemoveItemRequest) returns (CartResponse);
+
+  // Update item quantity
+  rpc UpdateQuantity(UpdateQuantityRequest) returns (CartResponse);
+
+  // Get cart by user ID
+  rpc GetCart(GetCartRequest) returns (CartResponse);
+
+  // Clear cart
+  rpc ClearCart(ClearCartRequest) returns (CartResponse);
+
+  // Merge guest cart with user cart
+  rpc MergeCart(MergeCartRequest) returns (CartResponse);
+}
+
+// Messages
+message AddItemRequest {
+  string user_id = 1;
+  string product_id = 2;
+  string product_name = 3;
+  double price = 4;
+  int32 quantity = 5;
+  string currency = 6;
+  string image_url = 7;
+}
+
+message RemoveItemRequest {
+  string user_id = 1;
+  string product_id = 2;
+}
+
+message UpdateQuantityRequest {
+  string user_id = 1;
+  string product_id = 2;
+  int32 quantity = 3;
+}
+
+message GetCartRequest {
+  string user_id = 1;
+}
+
+message ClearCartRequest {
+  string user_id = 1;
+}
+
+message MergeCartRequest {
+  string guest_cart_id = 1;
+  string user_id = 2;
+}
+
+message CartResponse {
+  string cart_id = 1;
+  string user_id = 2;
+  repeated CartItem items = 3;
+  double subtotal = 4;
+  string currency = 5;
+  int32 total_items = 6;
+  int64 created_at = 7;
+  int64 updated_at = 8;
+  bool success = 9;
+  string message = 10;
+}
+
+message CartItem {
+  string product_id = 1;
+  string product_name = 2;
+  double price = 3;
+  int32 quantity = 4;
+  double total = 5;
+  string image_url = 6;
+  string currency = 7;
+}
