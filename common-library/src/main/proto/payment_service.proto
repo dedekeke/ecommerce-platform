@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.ecommerce.common.grpc.payment";
+option java_outer_classname = "PaymentServiceProto";
+
+package payment;
+
+// Payment Service - Payment processing via gRPC
+service PaymentService {
+  // Create payment intent
+  rpc CreatePaymentIntent(CreatePaymentIntentRequest) returns (PaymentResponse);
+
+  // Confirm payment
+  rpc ConfirmPayment(ConfirmPaymentRequest) returns (PaymentResponse);
+
+  // Get payment status
+  rpc GetPayment(GetPaymentRequest) returns (PaymentResponse);
+
+  // Refund payment
+  rpc RefundPayment(RefundPaymentRequest) returns (PaymentResponse);
+
+  // Cancel payment intent
+  rpc CancelPayment(CancelPaymentRequest) returns (PaymentResponse);
+}
+
+// Messages
+message CreatePaymentIntentRequest {
+  string order_id = 1;
+  string user_id = 2;
+  double amount = 3;
+  string currency = 4;
+  PaymentMethod payment_method = 5;
+  string customer_email = 6;
+  string description = 7;
+  map<string, string> metadata = 8;
+}
+
+message ConfirmPaymentRequest {
+  string payment_intent_id = 1;
+  string payment_method_id = 2;
+  string order_id = 3;
+}
+
+message GetPaymentRequest {
+  string payment_id = 1;
+  string order_id = 2;
+}
+
+message RefundPaymentRequest {
+  string payment_id = 1;
+  string order_id = 2;
+  double amount = 3;
+  string reason = 4;
+}
+
+message CancelPaymentRequest {
+  string payment_intent_id = 1;
+  string order_id = 2;
+  string reason = 3;
+}
+
+message PaymentResponse {
+  string payment_id = 1;
+  string payment_intent_id = 2;
+  string order_id = 3;
+  string user_id = 4;
+  double amount = 5;
+  string currency = 6;
+  PaymentStatus status = 7;
+  PaymentMethod payment_method = 8;
+  string transaction_id = 9;
+  string error_message = 10;
+  int64 created_at = 11;
+  int64 updated_at = 12;
+  bool success = 13;
+  string message = 14;
+}
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  PROCESSING = 2;
+  REQUIRES_ACTION = 3;
+  SUCCEEDED = 4;
+  FAILED = 5;
+  CANCELLED = 6;
+  REFUNDED = 7;
+  PARTIALLY_REFUNDED = 8;
+}
+
+enum PaymentMethod {
+  PAYMENT_METHOD_UNSPECIFIED = 0;
+  CREDIT_CARD = 1;
+  DEBIT_CARD = 2;
+  PAYPAL = 3;
+  BANK_TRANSFER = 4;
+  DIGITAL_WALLET = 5;
+}

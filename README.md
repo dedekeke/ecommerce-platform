@@ -375,9 +375,18 @@ See [docs/deployment/production.md](docs/deployment/production.md) for productio
 
 This project is being developed over 10 weeks following a detailed plan. See [plan.md](plan.md) for the complete development schedule.
 
-Current Status: **Week 1, Day 4 - Complete ✅**
+Current Status: **Week 1, Day 5 - Complete ✅**
 
 ### Recent Completions
+- ✅ Day 5: gRPC Setup and Testing Infrastructure
+  - gRPC proto definitions for Cart, Order, Payment, Inventory services
+  - Generated 92 Java classes from proto files
+  - Testcontainers setup for PostgreSQL, MySQL, MongoDB, Kafka
+  - Base test classes for all database types
+  - GitHub Actions CI/CD pipeline
+  - Infrastructure integration tests
+  - [Day 5 Summary](docs/DAY_5_SUMMARY.md)
+
 - ✅ Day 4: API Gateway with Auth0 Integration
   - Spring Cloud Gateway setup with JWT validation
   - Complete route configuration for all 11 microservices
@@ -422,9 +431,11 @@ For issues and questions:
 - [x] Service discovery (Eureka Server)
 - [x] API Gateway with Spring Cloud Gateway
 - [x] Auth0 integration with JWT validation
+- [x] gRPC setup and proto definitions (Cart, Order, Payment, Inventory)
+- [x] Testing infrastructure (Testcontainers, JaCoCo, GitHub Actions)
 - [ ] Config Server
-- [ ] gRPC setup and proto definitions
-- [ ] Testing infrastructure (Testcontainers, CI/CD)
+- [ ] Common security configuration
+- [ ] Virtual threads configuration
 
 ### Week 3-5
 - [ ] Core services (User, Product, Cart)

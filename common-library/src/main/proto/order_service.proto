@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.ecommerce.common.grpc.order";
+option java_outer_classname = "OrderServiceProto";
+
+package order;
+
+// Order Service - Order processing and management via gRPC
+service OrderService {
+  // Create new order from cart
+  rpc CreateOrder(CreateOrderRequest) returns (OrderResponse);
+
+  // Get order by ID
+  rpc GetOrder(GetOrderRequest) returns (OrderResponse);
+
+  // Update order status
+  rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (OrderResponse);
+
+  // Cancel order
+  rpc CancelOrder(CancelOrderRequest) returns (OrderResponse);
+
+  // Get user orders with pagination
+  rpc GetUserOrders(GetUserOrdersRequest) returns (OrderListResponse);
+}
+
+// Messages
+message CreateOrderRequest {
+  string user_id = 1;
+  string cart_id = 2;
+  ShippingAddress shipping_address = 3;
+  string payment_method = 4;
+  string promotion_code = 5;
+  string currency = 6;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+  string user_id = 2;
+}
+
+message UpdateOrderStatusRequest {
+  string order_id = 1;
+  OrderStatus status = 2;
+  string notes = 3;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+  string user_id = 2;
+  string reason = 3;
+}
+
+message GetUserOrdersRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 size = 3;
+  OrderStatus status = 4;
+}
+
+message OrderResponse {
+  string order_id = 1;
+  string order_number = 2;
+  string user_id = 3;
+  repeated OrderItem items = 4;
+  double subtotal = 5;
+  double tax = 6;
+  double shipping_cost = 7;
+  double discount = 8;
+  double total = 9;
+  string currency = 10;
+  OrderStatus status = 11;
+  ShippingAddress shipping_address = 12;
+  string payment_method = 13;
+  string payment_intent_id = 14;
+  int64 created_at = 15;
+  int64 updated_at = 16;
+  bool success = 17;
+  string message = 18;
+}
+
+message OrderListResponse {
+  repeated OrderResponse orders = 1;
+  int32 total_count = 2;
+  int32 page = 3;
+  int32 size = 4;
+  bool success = 5;
+  string message = 6;
+}
+
+message OrderItem {
+  string product_id = 1;
+  string product_name = 2;
+  string sku = 3;
+  double price = 4;
+  int32 quantity = 5;
+  double total = 6;
+  string image_url = 7;
+}
+
+message ShippingAddress {
+  string full_name = 1;
+  string address_line1 = 2;
+  string address_line2 = 3;
+  string city = 4;
+  string state = 5;
+  string postal_code = 6;
+  string country = 7;
+  string phone = 8;
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  CONFIRMED = 2;
+  PROCESSING = 3;
+  SHIPPED = 4;
+  DELIVERED = 5;
+  CANCELLED = 6;
+  REFUNDED = 7;
+}

@@ -1,0 +1,139 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.ecommerce.common.grpc.inventory";
+option java_outer_classname = "InventoryServiceProto";
+
+package inventory;
+
+// Inventory Service - Stock management and reservations via gRPC
+service InventoryService {
+  // Check product availability
+  rpc CheckAvailability(CheckAvailabilityRequest) returns (AvailabilityResponse);
+
+  // Reserve stock for order
+  rpc ReserveStock(ReserveStockRequest) returns (ReservationResponse);
+
+  // Commit reservation (finalize order)
+  rpc CommitReservation(CommitReservationRequest) returns (ReservationResponse);
+
+  // Release reservation (cancel order)
+  rpc ReleaseReservation(ReleaseReservationRequest) returns (ReservationResponse);
+
+  // Update stock quantity
+  rpc UpdateStock(UpdateStockRequest) returns (InventoryResponse);
+
+  // Get inventory status
+  rpc GetInventory(GetInventoryRequest) returns (InventoryResponse);
+
+  // Bulk check availability
+  rpc BulkCheckAvailability(BulkCheckAvailabilityRequest) returns (BulkAvailabilityResponse);
+}
+
+// Messages
+message CheckAvailabilityRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message ReserveStockRequest {
+  string order_id = 1;
+  repeated StockItem items = 2;
+  int32 expiration_minutes = 3; // How long to hold the reservation
+}
+
+message CommitReservationRequest {
+  string reservation_id = 1;
+  string order_id = 2;
+}
+
+message ReleaseReservationRequest {
+  string reservation_id = 1;
+  string order_id = 2;
+  string reason = 3;
+}
+
+message UpdateStockRequest {
+  string product_id = 1;
+  int32 quantity_change = 2; // Can be positive (restock) or negative (adjustment)
+  StockUpdateType update_type = 3;
+  string notes = 4;
+}
+
+message GetInventoryRequest {
+  string product_id = 1;
+}
+
+message BulkCheckAvailabilityRequest {
+  repeated CheckAvailabilityRequest items = 1;
+}
+
+message AvailabilityResponse {
+  string product_id = 1;
+  bool available = 2;
+  int32 available_quantity = 3;
+  bool success = 4;
+  string message = 5;
+}
+
+message BulkAvailabilityResponse {
+  repeated AvailabilityResponse items = 1;
+  bool all_available = 2;
+  bool success = 3;
+  string message = 4;
+}
+
+message ReservationResponse {
+  string reservation_id = 1;
+  string order_id = 2;
+  ReservationStatus status = 3;
+  repeated StockItem items = 4;
+  int64 expires_at = 5;
+  bool success = 6;
+  string message = 7;
+}
+
+message InventoryResponse {
+  string product_id = 1;
+  string sku = 2;
+  int32 quantity = 3;
+  int32 reserved_quantity = 4;
+  int32 available_quantity = 5;
+  InventoryStatus status = 6;
+  int32 reorder_level = 7;
+  int32 reorder_quantity = 8;
+  int64 last_restocked_at = 9;
+  bool success = 10;
+  string message = 11;
+}
+
+message StockItem {
+  string product_id = 1;
+  string sku = 2;
+  int32 quantity = 3;
+}
+
+enum ReservationStatus {
+  RESERVATION_STATUS_UNSPECIFIED = 0;
+  RESERVED = 1;
+  COMMITTED = 2;
+  RELEASED = 3;
+  EXPIRED = 4;
+}
+
+enum InventoryStatus {
+  INVENTORY_STATUS_UNSPECIFIED = 0;
+  IN_STOCK = 1;
+  LOW_STOCK = 2;
+  OUT_OF_STOCK = 3;
+  DISCONTINUED = 4;
+}
+
+enum StockUpdateType {
+  STOCK_UPDATE_TYPE_UNSPECIFIED = 0;
+  RESTOCK = 1;
+  SALE = 2;
+  RETURN = 3;
+  ADJUSTMENT = 4;
+  DAMAGE = 5;
+}

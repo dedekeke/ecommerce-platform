@@ -1,20 +1,21 @@
 # Multi-stage build for API Gateway
-FROM eclipse-temurin:21-jdk-alpine AS build
+FROM maven:3.9.5-eclipse-temurin-21 AS build
 
-WORKDIR /workspace
+WORKDIR /app
 
-# Copy parent POM and common library
-COPY pom.xml .
-COPY common-library ./common-library
+# Copy parent pom
+COPY pom.xml /app/pom.xml
 
-# Copy API Gateway source
-COPY infrastructure/api-gateway ./infrastructure/api-gateway
+# Copy common library
+COPY common-library /app/common-library
+
+# Copy api-gateway pom and source
+COPY infrastructure/api-gateway/pom.xml /app/infrastructure/api-gateway/
+COPY infrastructure/api-gateway/src /app/infrastructure/api-gateway/src
 
 # Build the application
-RUN apk add --no-cache maven && \
-    mvn clean package -pl infrastructure/api-gateway -am -DskipTests && \
-    mkdir -p target && \
-    cp infrastructure/api-gateway/target/*.jar target/api-gateway.jar
+WORKDIR /app/infrastructure/api-gateway
+RUN mvn clean package -DskipTests -f pom.xml
 
 # Runtime stage
 FROM eclipse-temurin:21-jre-alpine
@@ -26,7 +27,7 @@ RUN addgroup -S spring && adduser -S spring -G spring
 USER spring:spring
 
 # Copy the built JAR
-COPY --from=build /workspace/target/api-gateway.jar app.jar
+COPY --from=build /app/infrastructure/api-gateway/target/*.jar app.jar
 
 # Expose port
 EXPOSE 8080
