@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: eureka-server
+
+server:
+  port: 8761
+
+eureka:
+  instance:
+    hostname: eureka-server
+    prefer-ip-address: false
+  client:
+    # Standalone mode - don't register with itself
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+  server:
+    # Enable self-preservation in docker/production
+    enable-self-preservation: true
+    eviction-interval-timer-in-ms: 30000
+    # Response cache settings
+    response-cache-update-interval-ms: 10000
+    response-cache-auto-expiration-in-seconds: 300
+    # Wait time for initial registry population
+    wait-time-in-ms-when-sync-empty: 5
+
+# Logging configuration for Docker
+logging:
+  level:
+    root: INFO
+    com.netflix.eureka: WARN
+    com.netflix.discovery: WARN
+    com.ecommerce.eureka: INFO

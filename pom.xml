@@ -59,9 +59,8 @@
 
     <modules>
         <module>common-library</module>
-        <!-- Infrastructure modules will be added here -->
-        <!-- <module>infrastructure/eureka-server</module> -->
-        <!-- <module>infrastructure/config-server</module> -->
+        <module>infrastructure/eureka-server</module>
+        <module>infrastructure/config-server</module>
         <module>infrastructure/api-gateway</module>
 
         <!-- Service modules will be added here -->
