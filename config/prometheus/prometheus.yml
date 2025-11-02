@@ -1,24 +1,23 @@
 # Prometheus Configuration for E-Commerce Platform
-# Scrape configurations for all microservices
+# Scrapes metrics from all microservices and infrastructure components
 
 global:
-  scrape_interval: 15s # Set the scrape interval to every 15 seconds
-  evaluation_interval: 15s # Evaluate rules every 15 seconds
-  scrape_timeout: 10s
+  scrape_interval: 15s      # Scrape targets every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
   external_labels:
-    environment: 'development'
-    platform: 'ecommerce'
+    cluster: 'ecommerce-platform'
+    environment: 'dev'
 
-# Alertmanager configuration (optional - for future use)
+# Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: []
-          # - alertmanager:9093
+        - targets:
+            - alertmanager:9093
 
 # Load rules once and periodically evaluate them
 rule_files:
-  - "alerts.yml"
+  - "alerts/*.yml"
 
 # Scrape configurations
 scrape_configs:
@@ -52,7 +51,7 @@ scrape_configs:
           service: 'api-gateway'
           tier: 'infrastructure'
 
-  # Core Business Services
+  # Business Services
   - job_name: 'user-service'
     metrics_path: '/actuator/prometheus'
     static_configs:
@@ -60,7 +59,6 @@ scrape_configs:
         labels:
           service: 'user-service'
           tier: 'business'
-          database: 'postgresql'
 
   - job_name: 'product-service'
     metrics_path: '/actuator/prometheus'
@@ -69,7 +67,6 @@ scrape_configs:
         labels:
           service: 'product-service'
           tier: 'business'
-          database: 'mysql'
 
   - job_name: 'cart-service'
     metrics_path: '/actuator/prometheus'
@@ -78,7 +75,6 @@ scrape_configs:
         labels:
           service: 'cart-service'
           tier: 'business'
-          database: 'mongodb'
 
   - job_name: 'order-service'
     metrics_path: '/actuator/prometheus'
@@ -87,7 +83,6 @@ scrape_configs:
         labels:
           service: 'order-service'
           tier: 'business'
-          database: 'postgresql'
 
   - job_name: 'payment-service'
     metrics_path: '/actuator/prometheus'
@@ -96,7 +91,6 @@ scrape_configs:
         labels:
           service: 'payment-service'
           tier: 'business'
-          database: 'postgresql'
 
   - job_name: 'inventory-service'
     metrics_path: '/actuator/prometheus'
@@ -105,7 +99,6 @@ scrape_configs:
         labels:
           service: 'inventory-service'
           tier: 'business'
-          database: 'postgresql'
 
   - job_name: 'notification-service'
     metrics_path: '/actuator/prometheus'
@@ -113,8 +106,7 @@ scrape_configs:
       - targets: ['notification-service:8087']
         labels:
           service: 'notification-service'
-          tier: 'supporting'
-          database: 'mongodb'
+          tier: 'business'
 
   - job_name: 'search-service'
     metrics_path: '/actuator/prometheus'
@@ -122,8 +114,7 @@ scrape_configs:
       - targets: ['search-service:8088']
         labels:
           service: 'search-service'
-          tier: 'supporting'
-          database: 'elasticsearch'
+          tier: 'business'
 
   - job_name: 'media-service'
     metrics_path: '/actuator/prometheus'
@@ -131,8 +122,7 @@ scrape_configs:
       - targets: ['media-service:8089']
         labels:
           service: 'media-service'
-          tier: 'supporting'
-          database: 'mongodb'
+          tier: 'business'
 
   - job_name: 'promotion-service'
     metrics_path: '/actuator/prometheus'
@@ -140,28 +130,4 @@ scrape_configs:
       - targets: ['promotion-service:8090']
         labels:
           service: 'promotion-service'
-          tier: 'supporting'
-          database: 'mysql'
-
-  # Database Monitoring
-  - job_name: 'postgres-exporter'
-    static_configs:
-      - targets: ['postgres-exporter:9187']
-        labels:
-          database: 'postgresql'
-    # Note: postgres-exporter needs to be added to docker-compose
-
-  - job_name: 'mysql-exporter'
-    static_configs:
-      - targets: ['mysql-exporter:9104']
-        labels:
-          database: 'mysql'
-    # Note: mysql-exporter needs to be added to docker-compose
-
-  # Kafka Monitoring
-  - job_name: 'kafka'
-    static_configs:
-      - targets: ['kafka:9093']
-        labels:
-          service: 'kafka'
-          tier: 'infrastructure'
+          tier: 'business'
