@@ -1,0 +1,51 @@
+groups:
+  - name: kafka_events
+    interval: 30s
+    rules:
+      # High Consumer Lag
+      - alert: HighKafkaConsumerLag
+        expr: kafka_consumer_fetch_manager_records_lag > 1000
+        for: 5m
+        labels:
+          severity: warning
+          category: messaging
+        annotations:
+          summary: "High Kafka consumer lag on {{ $labels.topic }}"
+          description: "Consumer lag is {{ $value }} messages on topic {{ $labels.topic }}"
+          runbook: "https://docs.ecommerce.com/runbooks/kafka-lag"
+
+      # Messages in Dead Letter Queue
+      - alert: MessagesInDeadLetterQueue
+        expr: sum by (topic) (kafka_topic_partitions{topic=~".*-dlq"}) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: messaging
+        annotations:
+          summary: "Messages found in DLQ: {{ $labels.topic }}"
+          description: "DLQ {{ $labels.topic }} has messages that need investigation"
+          runbook: "https://docs.ecommerce.com/runbooks/dlq-messages"
+
+      # High Event Processing Error Rate
+      - alert: HighEventProcessingErrors
+        expr: rate(kafka_consumer_fetch_manager_records_error_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: messaging
+        annotations:
+          summary: "High event processing error rate"
+          description: "Error rate is {{ $value }} errors/sec"
+          runbook: "https://docs.ecommerce.com/runbooks/event-errors"
+
+      # Kafka Producer Errors
+      - alert: HighKafkaProducerErrors
+        expr: rate(kafka_producer_record_error_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          category: messaging
+        annotations:
+          summary: "High Kafka producer error rate"
+          description: "Producer error rate is {{ $value }} errors/sec"
+          runbook: "https://docs.ecommerce.com/runbooks/producer-errors"

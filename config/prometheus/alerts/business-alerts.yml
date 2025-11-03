@@ -1,0 +1,63 @@
+groups:
+  - name: business_metrics
+    interval: 1m
+    rules:
+      # High Payment Failure Rate
+      - alert: HighPaymentFailureRate
+        expr: (rate(business_payments_failed_total[5m]) / (rate(business_payments_successful_total[5m]) + rate(business_payments_failed_total[5m]))) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          category: business
+        annotations:
+          summary: "High payment failure rate"
+          description: "Payment failure rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+          runbook: "https://docs.ecommerce.com/runbooks/payment-failures"
+
+      # High Cart Abandonment Rate
+      - alert: HighCartAbandonmentRate
+        expr: (rate(business_carts_abandoned_total[1h]) / rate(business_carts_created_total[1h])) > 0.7
+        for: 30m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "High cart abandonment rate"
+          description: "Cart abandonment rate is {{ $value | humanizePercentage }} (threshold: 70%)"
+          runbook: "https://docs.ecommerce.com/runbooks/cart-abandonment"
+
+      # Low Order Volume
+      - alert: LowOrderVolume
+        expr: rate(business_orders_created_total[1h]) < 1
+        for: 1h
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "Low order volume"
+          description: "Only {{ $value }} orders/hour in the last hour"
+          runbook: "https://docs.ecommerce.com/runbooks/low-orders"
+
+      # Frequent Stockouts
+      - alert: FrequentStockouts
+        expr: rate(business_inventory_stockouts_total[1h]) > 5
+        for: 30m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "Frequent stockout events"
+          description: "{{ $value }} stockouts/hour detected"
+          runbook: "https://docs.ecommerce.com/runbooks/stockouts"
+
+      # High Order Cancellation Rate
+      - alert: HighOrderCancellationRate
+        expr: (rate(business_orders_cancelled_total[1h]) / rate(business_orders_created_total[1h])) > 0.2
+        for: 30m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "High order cancellation rate"
+          description: "Order cancellation rate is {{ $value | humanizePercentage }} (threshold: 20%)"
+          runbook: "https://docs.ecommerce.com/runbooks/order-cancellations"
