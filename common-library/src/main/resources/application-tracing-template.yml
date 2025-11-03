@@ -1,0 +1,57 @@
+# Template for Distributed Tracing Configuration
+# Copy this content to your service's application.yml
+
+# Management and Observability Configuration
+management:
+  # Actuator Endpoints
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,httptrace
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+
+  # Metrics Configuration
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        http.client.requests: true
+    tags:
+      application: ${spring.application.name}
+    export:
+      prometheus:
+        enabled: true
+
+  # Distributed Tracing Configuration
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0  # Sample 100% in dev, reduce to 0.1 (10%) in production
+
+  # Zipkin Configuration
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
+
+  # Observations (for metrics and tracing)
+  observations:
+    key-values:
+      application: ${spring.application.name}
+      environment: ${spring.profiles.active:default}
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.ecommerce: DEBUG
+    org.springframework.web: DEBUG
+  pattern:
+    # Development pattern with trace IDs
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) %cyan(%logger{36}) - [traceId=%X{traceId:-} spanId=%X{spanId:-} correlationId=%X{correlationId:-}] - %msg%n"
+
+  # For production, use JSON logging via logback-spring.xml
