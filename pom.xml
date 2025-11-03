@@ -63,8 +63,8 @@
         <module>infrastructure/config-server</module>
         <module>infrastructure/api-gateway</module>
 
-        <!-- Service modules will be added here -->
-        <!-- <module>services/user-service</module> -->
+        <!-- Service modules -->
+        <module>services/user-service</module>
         <!-- <module>services/product-service</module> -->
         <!-- <module>services/cart-service</module> -->
         <!-- <module>services/order-service</module> -->
