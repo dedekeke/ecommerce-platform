@@ -2,6 +2,7 @@ package com.ecommerce.common.security.config;
 
 import com.ecommerce.common.security.validator.AudienceValidator;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -21,10 +22,14 @@ import org.springframework.security.web.SecurityFilterChain;
  * Provides common JWT decoder, audience validation, and security settings.
  *
  * Services should extend this configuration and customize as needed.
+ *
+ * This configuration is enabled by default. To disable for local development,
+ * set security.enabled=false in application.yml
  */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true, securedEnabled = true)
+@ConditionalOnProperty(name = "security.enabled", havingValue = "true", matchIfMissing = true)
 public class BaseSecurityConfig {
 
     @Value("${auth0.domain}")

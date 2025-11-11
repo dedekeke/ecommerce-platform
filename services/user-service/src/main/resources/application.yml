@@ -2,10 +2,17 @@ spring:
   application:
     name: user-service
 
+  # Make Config Server optional (we'll enable it later when Config Server is ready)
+  cloud:
+    config:
+      enabled: false
+      import-check:
+        enabled: false
+
   datasource:
-    url: jdbc:postgresql://localhost:5432/userdb
-    username: admin
-    password: admin123
+    url: ${USER_DB_URL:jdbc:postgresql://localhost:5432/userdb}
+    username: ${POSTGRES_USER:admin}
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -45,20 +52,13 @@ spring:
       group-id: ${spring.application.name}
       auto-offset-reset: earliest
 
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: https://${AUTH0_DOMAIN}/
-          audiences: ${AUTH0_AUDIENCE}
-
   threads:
     virtual:
       enabled: true
 
 # Server Configuration
 server:
-  port: 8081
+  port: 8088
 
 # Eureka Client Configuration
 eureka:
@@ -116,6 +116,16 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Security Configuration
+# Set to false to disable Auth0 for local development
+security:
+  enabled: ${SECURITY_ENABLED:false}
+
+# Auth0 Configuration
+auth0:
+  domain: ${AUTH0_DOMAIN}
+  audience: ${AUTH0_AUDIENCE}
 
 # Custom Application Properties
 app:

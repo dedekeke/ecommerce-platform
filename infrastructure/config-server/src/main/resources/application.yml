@@ -23,8 +23,8 @@ spring:
           enabled: true
   security:
     user:
-      name: configuser
-      password: configpass
+      name: ${CONFIG_SERVER_USERNAME:configuser}
+      password: ${CONFIG_SERVER_PASSWORD}
 
 server:
   port: 8888
@@ -41,7 +41,7 @@ eureka:
 
 # Encryption key for sensitive properties (use a strong key in production)
 encrypt:
-  key: ecommerce-platform-secret-key-change-in-production
+  key: ${CONFIG_SERVER_ENCRYPT_KEY}
 
 # Management and Actuator endpoints
 management:

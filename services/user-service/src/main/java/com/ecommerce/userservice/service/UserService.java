@@ -2,6 +2,7 @@ package com.ecommerce.userservice.service;
 
 import com.ecommerce.userservice.domain.User;
 import com.ecommerce.userservice.domain.UserRole;
+import com.ecommerce.userservice.exception.UserNotFoundException;
 import com.ecommerce.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -133,7 +134,7 @@ public class UserService {
     @Transactional
     public User updateProfile(String auth0Id, String firstName, String lastName, String phoneNumber) {
         User user = userRepository.findByAuth0Id(auth0Id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + auth0Id));
+                .orElseThrow(() -> UserNotFoundException.byAuth0Id(auth0Id));
 
         user.setFirstName(firstName);
         user.setLastName(lastName);
@@ -153,7 +154,7 @@ public class UserService {
     @Transactional
     public void deactivateUser(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+                .orElseThrow(() -> UserNotFoundException.byId(userId));
 
         user.setActive(false);
         userRepository.save(user);
@@ -168,7 +169,7 @@ public class UserService {
     @Transactional
     public void reactivateUser(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+                .orElseThrow(() -> UserNotFoundException.byId(userId));
 
         user.setActive(true);
         userRepository.save(user);
@@ -184,7 +185,7 @@ public class UserService {
     @Transactional
     public void changeUserRole(Long userId, UserRole newRole) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+                .orElseThrow(() -> UserNotFoundException.byId(userId));
 
         UserRole oldRole = user.getRole();
         user.setRole(newRole);
