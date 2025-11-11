@@ -50,7 +50,7 @@ public class VirtualThreadMonitoringConfig {
      * Only registers if MeterRegistry is available (i.e., actuator is enabled)
      */
     @Bean
-    public void registerVirtualThreadMetrics(MeterRegistry registry) {
+    public VirtualThreadMonitoringConfig registerVirtualThreadMetrics(MeterRegistry registry) {
         // Total thread count
         Gauge.builder("jvm.threads.total", threadMXBean, ThreadMXBean::getThreadCount)
                 .description("Current number of live threads")
@@ -76,6 +76,8 @@ public class VirtualThreadMonitoringConfig {
                 .register(registry);
 
         logger.info("Virtual thread metrics registered");
+
+        return this;
     }
 
     /**

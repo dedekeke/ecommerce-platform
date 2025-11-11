@@ -2,6 +2,9 @@ package com.ecommerce.userservice.service;
 
 import com.ecommerce.userservice.domain.User;
 import com.ecommerce.userservice.domain.UserAddress;
+import com.ecommerce.userservice.exception.AddressNotFoundException;
+import com.ecommerce.userservice.exception.UserNotFoundException;
+import com.ecommerce.userservice.exception.UnauthorizedAccessException;
 import com.ecommerce.userservice.repository.UserAddressRepository;
 import com.ecommerce.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -46,7 +49,7 @@ public class UserAddressService {
     @Transactional(readOnly = true)
     public Optional<UserAddress> getAddress(Long addressId, String auth0Id) {
         User user = userRepository.findByAuth0Id(auth0Id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + auth0Id));
+                .orElseThrow(() -> UserNotFoundException.byAuth0Id(auth0Id));
 
         return addressRepository.findByIdAndUserId(addressId, user.getId());
     }
@@ -60,7 +63,7 @@ public class UserAddressService {
     @Transactional(readOnly = true)
     public Optional<UserAddress> getDefaultAddress(String auth0Id) {
         User user = userRepository.findByAuth0Id(auth0Id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + auth0Id));
+                .orElseThrow(() -> UserNotFoundException.byAuth0Id(auth0Id));
 
         return addressRepository.findDefaultByUserId(user.getId());
     }
@@ -75,7 +78,7 @@ public class UserAddressService {
     @Transactional
     public UserAddress addAddress(String auth0Id, UserAddress address) {
         User user = userRepository.findByAuth0Id(auth0Id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + auth0Id));
+                .orElseThrow(() -> UserNotFoundException.byAuth0Id(auth0Id));
 
         address.setUser(user);
 
@@ -108,10 +111,10 @@ public class UserAddressService {
     @Transactional
     public UserAddress updateAddress(Long addressId, String auth0Id, UserAddress updatedAddress) {
         User user = userRepository.findByAuth0Id(auth0Id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + auth0Id));
+                .orElseThrow(() -> UserNotFoundException.byAuth0Id(auth0Id));
 
         UserAddress existingAddress = addressRepository.findByIdAndUserId(addressId, user.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Address not found or access denied: " + addressId));
+                .orElseThrow(() -> AddressNotFoundException.byIdAndUser(addressId, auth0Id));
 
         // Update fields
         existingAddress.setLabel(updatedAddress.getLabel());
@@ -141,10 +144,10 @@ public class UserAddressService {
     @Transactional
     public void setDefaultAddress(Long addressId, String auth0Id) {
         User user = userRepository.findByAuth0Id(auth0Id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + auth0Id));
+                .orElseThrow(() -> UserNotFoundException.byAuth0Id(auth0Id));
 
         UserAddress address = addressRepository.findByIdAndUserId(addressId, user.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Address not found or access denied: " + addressId));
+                .orElseThrow(() -> AddressNotFoundException.byIdAndUser(addressId, auth0Id));
 
         // Clear all defaults for this user
         addressRepository.clearDefaultForUser(user.getId());
@@ -165,10 +168,10 @@ public class UserAddressService {
     @Transactional
     public void deleteAddress(Long addressId, String auth0Id) {
         User user = userRepository.findByAuth0Id(auth0Id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + auth0Id));
+                .orElseThrow(() -> UserNotFoundException.byAuth0Id(auth0Id));
 
         UserAddress address = addressRepository.findByIdAndUserId(addressId, user.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Address not found or access denied: " + addressId));
+                .orElseThrow(() -> AddressNotFoundException.byIdAndUser(addressId, auth0Id));
 
         boolean wasDefault = address.getIsDefault();
 

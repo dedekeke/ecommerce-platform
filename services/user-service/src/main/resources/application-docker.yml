@@ -1,0 +1,54 @@
+# Docker Profile Configuration for User Service
+# This profile is activated when running in Docker containers
+
+spring:
+  cloud:
+    config:
+      enabled: false
+      import-check:
+        enabled: false
+
+  datasource:
+    url: jdbc:postgresql://postgres:5432/userdb
+    username: ${POSTGRES_USER:admin}
+    password: ${POSTGRES_PASSWORD}
+
+  kafka:
+    bootstrap-servers: kafka:29092
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH0_ISSUER_URI}
+          audiences: ${AUTH0_AUDIENCE}
+
+# Auth0 Configuration
+auth0:
+  domain: ${AUTH0_DOMAIN}
+  audience: ${AUTH0_AUDIENCE}
+
+# Eureka Configuration for Docker
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://eureka-server:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: false
+    hostname: user-service
+    instance-id: user-service:${spring.application.instance_id:${random.value}}
+
+# Management Endpoints for Docker
+management:
+  zipkin:
+    tracing:
+      endpoint: http://zipkin:9411/api/v2/spans
+
+# Logging Configuration for Docker
+logging:
+  level:
+    root: INFO
+    com.ecommerce.userservice: INFO
+    org.hibernate.SQL: WARN

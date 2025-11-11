@@ -12,20 +12,27 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${AUTH0_ISSUER_URI:https://your-tenant.auth0.com/}
+          issuer-uri: ${AUTH0_ISSUER_URI}
 
       client:
         provider:
           auth0:
-            issuer-uri: ${AUTH0_ISSUER_URI:https://your-tenant.auth0.com/}
+            issuer-uri: ${AUTH0_ISSUER_URI}
         registration:
           auth0:
-            client-id: ${AUTH0_CLIENT_ID:your-client-id}
-            client-secret: ${AUTH0_CLIENT_SECRET:your-client-secret}
+            client-id: ${AUTH0_CLIENT_ID}
+            client-secret: ${AUTH0_CLIENT_SECRET}
             scope: openid,profile,email
 
-  # Cloud Gateway Configuration
+  # Cloud Configuration
   cloud:
+    # Make Config Server optional (we'll enable it later when Config Server is ready)
+    config:
+      enabled: false
+      import-check:
+        enabled: false
+
+    # Gateway Configuration
     gateway:
       # Discovery Locator - automatically create routes from Eureka services
       discovery:
@@ -55,7 +62,7 @@ spring:
 
 # Auth0 Configuration
 auth0:
-  audience: ${AUTH0_AUDIENCE:https://api.ecommerce.com}
+  audience: ${AUTH0_AUDIENCE}
 
 # Eureka Client Configuration
 eureka:

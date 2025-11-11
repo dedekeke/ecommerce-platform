@@ -1,4 +1,11 @@
 spring:
+  # Make Config Server optional
+  cloud:
+    config:
+      enabled: false
+      import-check:
+        enabled: false
+
   # Security Configuration for Docker
   security:
     oauth2:
