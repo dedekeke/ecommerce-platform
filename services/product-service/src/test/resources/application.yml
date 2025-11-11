@@ -1,0 +1,22 @@
+spring:
+  cloud:
+    config:
+      enabled: false
+      import-check:
+        enabled: false
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+
+  flyway:
+    enabled: false
+
+  cache:
+    type: none
+
+logging:
+  level:
+    root: WARN
+    com.ecommerce.productservice: DEBUG
