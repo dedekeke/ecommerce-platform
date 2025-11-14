@@ -257,6 +257,45 @@ services:
     networks:
       - ecommerce-network
 
+  # Product Service - Product catalog and management
+  product-service:
+    build:
+      context: .
+      dockerfile: services/product-service/Dockerfile
+    container_name: ecommerce-product-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      PRODUCT_DB_URL: jdbc:mysql://mysql:3306/productdb
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin123
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - ecommerce-network
+
 # ============================================
 # VOLUMES
 # ============================================
