@@ -27,6 +27,7 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final com.ecommerce.productservice.event.ProductEventPublisher eventPublisher;
 
     /**
      * Get product by ID with caching.
@@ -154,7 +155,12 @@ public class ProductService {
             product.setCategory(category);
         }
 
-        return productRepository.save(product);
+        Product saved = productRepository.save(product);
+
+        // Publish event
+        eventPublisher.publishProductCreated(saved);
+
+        return saved;
     }
 
     /**
@@ -183,7 +189,12 @@ public class ProductService {
             product.setCategory(category);
         }
 
-        return productRepository.save(product);
+        Product updated = productRepository.save(product);
+
+        // Publish event
+        eventPublisher.publishProductUpdated(updated);
+
+        return updated;
     }
 
     /**
