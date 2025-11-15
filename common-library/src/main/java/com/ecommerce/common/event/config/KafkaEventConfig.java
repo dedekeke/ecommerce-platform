@@ -188,7 +188,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_ORDER_EVENTS)
                 .partitions(3)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(7 * 24 * 60 * 60 * 1000))  // 7 days
+                .config("retention.ms", String.valueOf(7L * 24 * 60 * 60 * 1000))  // 7 days
                 .config("compression.type", "snappy")
                 .build();
     }
@@ -198,7 +198,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_DLQ_ORDER)
                 .partitions(1)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(30 * 24 * 60 * 60 * 1000))  // 30 days
+                .config("retention.ms", String.valueOf(30L * 24 * 60 * 60 * 1000))  // 30 days
                 .build();
     }
 
@@ -210,7 +210,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_PAYMENT_EVENTS)
                 .partitions(3)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(7 * 24 * 60 * 60 * 1000))
+                .config("retention.ms", String.valueOf(7L * 24 * 60 * 60 * 1000))
                 .config("compression.type", "snappy")
                 .build();
     }
@@ -220,7 +220,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_DLQ_PAYMENT)
                 .partitions(1)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(30 * 24 * 60 * 60 * 1000))
+                .config("retention.ms", String.valueOf(30L * 24 * 60 * 60 * 1000))
                 .build();
     }
 
@@ -232,7 +232,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_INVENTORY_EVENTS)
                 .partitions(3)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(7 * 24 * 60 * 60 * 1000))
+                .config("retention.ms", String.valueOf(7L * 24 * 60 * 60 * 1000))
                 .config("compression.type", "snappy")
                 .build();
     }
@@ -242,7 +242,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_DLQ_INVENTORY)
                 .partitions(1)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(30 * 24 * 60 * 60 * 1000))
+                .config("retention.ms", String.valueOf(30L * 24 * 60 * 60 * 1000))
                 .build();
     }
 
@@ -254,7 +254,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_PRODUCT_EVENTS)
                 .partitions(3)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(7 * 24 * 60 * 60 * 1000))
+                .config("retention.ms", String.valueOf(7L * 24 * 60 * 60 * 1000))
                 .config("compression.type", "snappy")
                 .build();
     }
@@ -264,7 +264,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_DLQ_PRODUCT)
                 .partitions(1)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(30 * 24 * 60 * 60 * 1000))
+                .config("retention.ms", String.valueOf(30L * 24 * 60 * 60 * 1000))
                 .build();
     }
 
@@ -276,7 +276,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_USER_EVENTS)
                 .partitions(2)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(7 * 24 * 60 * 60 * 1000))
+                .config("retention.ms", String.valueOf(7L * 24 * 60 * 60 * 1000))
                 .config("compression.type", "snappy")
                 .build();
     }
@@ -286,7 +286,7 @@ public class KafkaEventConfig {
         return TopicBuilder.name(TOPIC_DLQ_USER)
                 .partitions(1)
                 .replicas(1)
-                .config("retention.ms", String.valueOf(30 * 24 * 60 * 60 * 1000))
+                .config("retention.ms", String.valueOf(30L * 24 * 60 * 60 * 1000))
                 .build();
     }
 }

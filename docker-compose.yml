@@ -93,6 +93,8 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_AUTOPURGE_PURGEINTERVAL: 24
+      ZOOKEEPER_AUTOPURGE_SNAPRETAINCOUNT: 3
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-logs:/var/lib/zookeeper/log
@@ -125,6 +127,10 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_CLEANUP_POLICY: delete
+      KAFKA_LOG_SEGMENT_DELETE_DELAY_MS: 60000
       KAFKA_JMX_PORT: 9093
       KAFKA_JMX_HOSTNAME: localhost
     volumes:
@@ -135,6 +141,26 @@ services:
       timeout: 10s
       retries: 5
       start_period: 40s
+    networks:
+      - ecommerce-network
+
+  # ============================================
+  # OBSERVABILITY
+  # ============================================
+
+  # Zipkin - Distributed Tracing
+  zipkin:
+    image: openzipkin/zipkin:3
+    container_name: ecommerce-zipkin
+    ports:
+      - "9411:9411"
+    environment:
+      STORAGE_TYPE: mem
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9411/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - ecommerce-network
 
@@ -234,6 +260,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      zipkin:
+        condition: service_healthy
     ports:
       - "8081:8081"
     environment:
@@ -243,6 +271,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: admin123
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
       AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI}
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
@@ -272,6 +301,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      zipkin:
+        condition: service_healthy
     ports:
       - "8082:8082"
     environment:
@@ -283,12 +314,55 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
     env_file:
       - .env
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - ecommerce-network
+
+  # Cart Service - Shopping cart management
+  cart-service:
+    build:
+      context: .
+      dockerfile: services/cart-service/Dockerfile
+    container_name: ecommerce-cart-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cartdb
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8083/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 5

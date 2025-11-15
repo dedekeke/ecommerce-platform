@@ -132,3 +132,8 @@ app:
   auth0:
     domain: ${AUTH0_DOMAIN}
     audience: ${AUTH0_AUDIENCE}
+
+# Disable gRPC (user-service uses REST only)  
+grpc:
+  server:
+    port: -1  # Disable gRPC server

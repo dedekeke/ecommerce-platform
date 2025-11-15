@@ -10,6 +10,10 @@
 CREATE DATABASE userdb;
 COMMENT ON DATABASE userdb IS 'User Service - User management and profiles';
 
+-- Create Cart Service Database
+CREATE DATABASE cartdb;
+COMMENT ON DATABASE cartdb IS 'Cart Service - Shopping cart management';
+
 -- Create Order Service Database
 CREATE DATABASE orderdb;
 COMMENT ON DATABASE orderdb IS 'Order Service - Order processing and management';
@@ -28,6 +32,7 @@ COMMENT ON DATABASE inventorydb IS 'Inventory Service - Stock management and res
 \echo '================================================'
 \echo 'Created databases:'
 \echo '  - userdb (User Service)'
+\echo '  - cartdb (Cart Service)'
 \echo '  - orderdb (Order Service)'
 \echo '  - paymentdb (Payment Service)'
 \echo '  - inventorydb (Inventory Service)'
