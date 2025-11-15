@@ -1,7 +1,8 @@
 spring:
   application:
-    name: product-service
+    name: cart-service
 
+  # Make Config Server optional
   cloud:
     config:
       enabled: false
@@ -9,26 +10,23 @@ spring:
         enabled: false
 
   datasource:
-    url: ${PRODUCT_DB_URL:jdbc:mysql://localhost:3306/productdb}
-    username: ${MYSQL_USER:root}
-#    or admin
-    password: ${MYSQL_PASSWORD}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:postgresql://localhost:5432/cart_db
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 20
+      maximum-pool-size: 10
       minimum-idle: 5
       connection-timeout: 20000
-      idle-timeout: 300000
-      max-lifetime: 600000
 
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: false
+    show-sql: true
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
         use_sql_comments: true
         jdbc:
           batch_size: 20
@@ -37,12 +35,16 @@ spring:
 
   flyway:
     enabled: true
-    baseline-on-migrate: true
     locations: classpath:db/migration
-    schemas: productdb
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: localhost:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -54,28 +56,19 @@ spring:
       group-id: ${spring.application.name}
       auto-offset-reset: earliest
 
-  cache:
-    type: simple
-    cache-names: products, categories
-
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-
   threads:
     virtual:
       enabled: true
 
 # Server Configuration
 server:
-  port: 8082
+  port: 8083
 
 # Eureka Client Configuration
 eureka:
   client:
     serviceUrl:
-      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+      defaultZone: http://localhost:8761/eureka/
     register-with-eureka: true
     fetch-registry: true
   instance:
@@ -106,7 +99,7 @@ management:
       probability: 1.0
   zipkin:
     tracing:
-      endpoint: ${ZIPKIN_BASE_URL:http://localhost:9411}/api/v2/spans
+      endpoint: http://localhost:9411/api/v2/spans
 
 # OpenAPI/Swagger Configuration
 springdoc:
@@ -121,7 +114,7 @@ springdoc:
 logging:
   level:
     root: INFO
-    com.ecommerce.productservice: DEBUG
+    com.ecommerce.cartservice: DEBUG
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
   pattern:
@@ -133,12 +126,18 @@ logging:
 security:
   enabled: ${SECURITY_ENABLED:false}
 
-# Auth0 Configuration
+# Auth0 Configuration (only used when security.enabled=true)
 auth0:
   domain: ${AUTH0_DOMAIN}
   audience: ${AUTH0_AUDIENCE}
 
-# Disable gRPC (product-service uses REST only)
+# Custom Application Properties
+app:
+  auth0:
+    domain: ${AUTH0_DOMAIN}
+    audience: ${AUTH0_AUDIENCE}
+
+# Disable gRPC (cart-service doesn't use gRPC)
 grpc:
   server:
     port: -1  # Disable gRPC server

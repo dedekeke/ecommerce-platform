@@ -9,7 +9,7 @@ spring:
       server:
         git:
           # Use local file system Git repository for development
-          uri: file:///${user.home}/ecommerce-config-repo
+          uri: file:///${user.home}/workspace/personal/projects/ecommerce-platform/config-repo
           # Clone the repository on startup
           clone-on-start: true
           # Default label (branch) to use

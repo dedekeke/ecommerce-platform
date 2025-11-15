@@ -80,10 +80,23 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
-        <!-- Redis for caching -->
+        <!-- Redis for caching - using Jedis (non-reactive) to avoid Lettuce reactor issues -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+            <exclusions>
+                <!-- Exclude Lettuce to avoid reactive dependencies -->
+                <exclusion>
+                    <groupId>io.lettuce</groupId>
+                    <artifactId>lettuce-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- Use Jedis as Redis client (simpler, non-reactive) -->
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
         </dependency>
 
         <!-- Metrics and Tracing -->
