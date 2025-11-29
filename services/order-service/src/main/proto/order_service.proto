@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.ecommerce.orderservice.grpc.proto";
+option java_outer_classname = "OrderServiceProto";
+
+package order;
+
+// Order Service Definition
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (UpdateOrderStatusResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc GetUserOrders(GetUserOrdersRequest) returns (GetUserOrdersResponse);
+}
+
+// Enums
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  CONFIRMED = 2;
+  PROCESSING = 3;
+  SHIPPED = 4;
+  DELIVERED = 5;
+  CANCELLED = 6;
+  REFUNDED = 7;
+}
+
+// Messages
+message OrderItemRequest {
+  string product_id = 1;
+  string product_name = 2;
+  double price = 3;
+  int32 quantity = 4;
+}
+
+message OrderItemResponse {
+  string id = 1;
+  string product_id = 2;
+  string product_name = 3;
+  double price = 4;
+  int32 quantity = 5;
+  double subtotal = 6;
+}
+
+message Address {
+  string street = 1;
+  string city = 2;
+  string state = 3;
+  string postal_code = 4;
+  string country = 5;
+}
+
+message OrderResponse {
+  string id = 1;
+  string order_number = 2;
+  string user_id = 3;
+  repeated OrderItemResponse items = 4;
+  double subtotal = 5;
+  double tax = 6;
+  double shipping_cost = 7;
+  double total = 8;
+  OrderStatus status = 9;
+  Address shipping_address = 10;
+  string payment_intent_id = 11;
+  string created_at = 12;
+  string updated_at = 13;
+}
+
+// Create Order
+message CreateOrderRequest {
+  string user_id = 1;
+  repeated OrderItemRequest items = 2;
+  Address shipping_address = 3;
+  string promotion_code = 4;
+}
+
+message CreateOrderResponse {
+  bool success = 1;
+  string message = 2;
+  OrderResponse order = 3;
+}
+
+// Get Order
+message GetOrderRequest {
+  string order_id = 1;
+  string user_id = 2;
+}
+
+message GetOrderResponse {
+  bool success = 1;
+  string message = 2;
+  OrderResponse order = 3;
+}
+
+// Update Order Status
+message UpdateOrderStatusRequest {
+  string order_id = 1;
+  OrderStatus status = 2;
+}
+
+message UpdateOrderStatusResponse {
+  bool success = 1;
+  string message = 2;
+  OrderResponse order = 3;
+}
+
+// Cancel Order
+message CancelOrderRequest {
+  string order_id = 1;
+  string user_id = 2;
+  string reason = 3;
+}
+
+message CancelOrderResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Get User Orders
+message GetUserOrdersRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 size = 3;
+}
+
+message GetUserOrdersResponse {
+  bool success = 1;
+  string message = 2;
+  repeated OrderResponse orders = 3;
+  int64 total_elements = 4;
+  int32 total_pages = 5;
+}

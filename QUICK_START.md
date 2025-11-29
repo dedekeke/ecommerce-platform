@@ -111,7 +111,6 @@ SECURITY_ENABLED=false
    - Main class: `CartServiceApplication`
    - Active profiles: `local`
    - VM options: `-Xmx512m -Xms256m -DSECURITY_ENABLED=false`
-3. **Run:** Click green play button ▶
 
 Full guide: [IDEA_RUN_CONFIGURATIONS.md](docs/IDEA_RUN_CONFIGURATIONS.md)
 
@@ -167,7 +166,3 @@ open http://localhost:8083/swagger-ui.html
 # Evening: Stop services
 ./scripts/stop-all-services.sh
 ```
-
-## That's It!
-
-You're ready to develop. Happy coding! 🚀

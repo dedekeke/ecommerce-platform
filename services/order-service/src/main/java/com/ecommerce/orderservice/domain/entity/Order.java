@@ -1,0 +1,142 @@
+package com.ecommerce.orderservice.domain.entity;
+
+import com.ecommerce.orderservice.domain.embedded.Address;
+import com.ecommerce.orderservice.domain.enums.OrderStatus;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "orders", indexes = {
+    @Index(name = "idx_order_number", columnList = "orderNumber", unique = true),
+    @Index(name = "idx_user_id", columnList = "userId"),
+    @Index(name = "idx_status", columnList = "status"),
+    @Index(name = "idx_created_at", columnList = "createdAt")
+})
+public class Order {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private String id;
+
+    @NotBlank(message = "Order number is required")
+    @Column(nullable = false, unique = true)
+    private String orderNumber;
+
+    @NotBlank(message = "User ID is required")
+    @Column(nullable = false)
+    private String userId;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Builder.Default
+    private List<OrderItem> items = new ArrayList<>();
+
+    @NotNull(message = "Subtotal is required")
+    @DecimalMin(value = "0.0", message = "Subtotal must be non-negative")
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal subtotal;
+
+    @NotNull(message = "Tax is required")
+    @DecimalMin(value = "0.0", message = "Tax must be non-negative")
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal tax;
+
+    @NotNull(message = "Shipping cost is required")
+    @DecimalMin(value = "0.0", message = "Shipping cost must be non-negative")
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal shippingCost;
+
+    @NotNull(message = "Total is required")
+    @DecimalMin(value = "0.0", inclusive = false, message = "Total must be greater than 0")
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal total;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private OrderStatus status = OrderStatus.PENDING;
+
+    @Embedded
+    @NotNull(message = "Shipping address is required")
+    private Address shippingAddress;
+
+    private String paymentIntentId;
+
+    private String promotionCode;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal discountAmount;
+
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+
+    public void addItem(OrderItem item) {
+        items.add(item);
+        item.setOrder(this);
+    }
+
+    public void removeItem(OrderItem item) {
+        items.remove(item);
+        item.setOrder(null);
+    }
+
+    @PrePersist
+    @PreUpdate
+    public void calculateTotals() {
+        // Calculate subtotal from items
+        this.subtotal = items.stream()
+                .map(OrderItem::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Apply discount if any
+        BigDecimal discountedSubtotal = subtotal;
+        if (discountAmount != null && discountAmount.compareTo(BigDecimal.ZERO) > 0) {
+            discountedSubtotal = subtotal.subtract(discountAmount);
+            if (discountedSubtotal.compareTo(BigDecimal.ZERO) < 0) {
+                discountedSubtotal = BigDecimal.ZERO;
+            }
+        }
+
+        // Calculate total
+        this.total = discountedSubtotal.add(tax).add(shippingCost);
+    }
+
+
+    public void updateStatus(OrderStatus newStatus) {
+        if (!this.status.canTransitionTo(newStatus)) {
+            throw new IllegalStateException(
+                String.format("Cannot transition from %s to %s", this.status, newStatus)
+            );
+        }
+        this.status = newStatus;
+    }
+
+    public boolean canBeCancelled() {
+        return this.status.isCancellable();
+    }
+
+    public boolean canBeRefunded() {
+        return this.status.isRefundable();
+    }
+}

@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.ecommerce.orderservice.grpc.proto.cart";
+option java_outer_classname = "CartServiceProto";
+
+package cart;
+
+// Cart Service Definition (client stub)
+service CartService {
+  rpc GetCart(GetCartRequest) returns (GetCartResponse);
+  rpc ClearCart(ClearCartRequest) returns (ClearCartResponse);
+}
+
+// Messages
+message CartItem {
+  string product_id = 1;
+  string product_name = 2;
+  double price = 3;
+  int32 quantity = 4;
+  double subtotal = 5;
+}
+
+message GetCartRequest {
+  string user_id = 1;
+}
+
+message GetCartResponse {
+  bool success = 1;
+  string message = 2;
+  string cart_id = 3;
+  string user_id = 4;
+  repeated CartItem items = 5;
+  double total = 6;
+}
+
+message ClearCartRequest {
+  string user_id = 1;
+}
+
+message ClearCartResponse {
+  bool success = 1;
+  string message = 2;
+}

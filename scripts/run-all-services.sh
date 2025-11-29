@@ -42,6 +42,7 @@ SERVICES=(
     "user-service:8088"
     "product-service:8082"
     "cart-service:8083"
+    "order-service:8084"
     "api-gateway:8080"
 )
 
@@ -54,7 +55,7 @@ for SERVICE_INFO in "${SERVICES[@]}"; do
 
     # Determine service path
     case "$SERVICE" in
-        user-service|product-service|cart-service)
+        user-service|product-service|cart-service|order-service)
             SERVICE_PATH="services/$SERVICE"
             ;;
         eureka-server|config-server|api-gateway)
@@ -96,5 +97,6 @@ echo "  - Eureka Dashboard:  http://localhost:8761"
 echo "  - User Service:      http://localhost:8088/swagger-ui.html"
 echo "  - Product Service:   http://localhost:8082/swagger-ui.html"
 echo "  - Cart Service:      http://localhost:8083/swagger-ui.html"
+echo "  - Order Service:     http://localhost:8084/swagger-ui.html"
 echo "  - API Gateway:       http://localhost:8080"
 echo ""

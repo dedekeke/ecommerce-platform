@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.ecommerce.orderservice.grpc.proto.inventory";
+option java_outer_classname = "InventoryServiceProto";
+
+package inventory;
+
+// Inventory Service Definition (client stub)
+service InventoryService {
+  rpc ReserveStock(ReserveStockRequest) returns (ReserveStockResponse);
+  rpc CommitReservation(CommitReservationRequest) returns (CommitReservationResponse);
+  rpc ReleaseReservation(ReleaseReservationRequest) returns (ReleaseReservationResponse);
+  rpc CheckAvailability(CheckAvailabilityRequest) returns (CheckAvailabilityResponse);
+}
+
+// Reserve Stock
+message StockItem {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message ReserveStockRequest {
+  string order_id = 1;
+  repeated StockItem items = 2;
+}
+
+message ReserveStockResponse {
+  bool success = 1;
+  string message = 2;
+  string reservation_id = 3;
+  repeated string unavailable_products = 4;
+}
+
+// Commit Reservation
+message CommitReservationRequest {
+  string reservation_id = 1;
+  string order_id = 2;
+}
+
+message CommitReservationResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Release Reservation
+message ReleaseReservationRequest {
+  string reservation_id = 1;
+  string order_id = 2;
+  string reason = 3;
+}
+
+message ReleaseReservationResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Check Availability
+message CheckAvailabilityRequest {
+  repeated StockItem items = 1;
+}
+
+message CheckAvailabilityResponse {
+  bool success = 1;
+  string message = 2;
+  bool all_available = 3;
+  repeated string unavailable_products = 4;
+}
