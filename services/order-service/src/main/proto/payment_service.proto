@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.ecommerce.orderservice.grpc.proto.payment";
+option java_outer_classname = "PaymentServiceProto";
+
+package payment;
+
+// Payment Service Definition (client stub)
+service PaymentService {
+  rpc CreatePaymentIntent(CreatePaymentIntentRequest) returns (CreatePaymentIntentResponse);
+  rpc ConfirmPayment(ConfirmPaymentRequest) returns (ConfirmPaymentResponse);
+  rpc RefundPayment(RefundPaymentRequest) returns (RefundPaymentResponse);
+}
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  PROCESSING = 2;
+  COMPLETED = 3;
+  FAILED = 4;
+  REFUNDED = 5;
+}
+
+// Create Payment Intent
+message CreatePaymentIntentRequest {
+  string order_id = 1;
+  string user_id = 2;
+  double amount = 3;
+  string currency = 4;
+}
+
+message CreatePaymentIntentResponse {
+  bool success = 1;
+  string message = 2;
+  string payment_intent_id = 3;
+  string client_secret = 4;
+  PaymentStatus status = 5;
+}
+
+// Confirm Payment
+message ConfirmPaymentRequest {
+  string payment_intent_id = 1;
+  string payment_method_id = 2;
+}
+
+message ConfirmPaymentResponse {
+  bool success = 1;
+  string message = 2;
+  string transaction_id = 3;
+  PaymentStatus status = 4;
+}
+
+// Refund Payment
+message RefundPaymentRequest {
+  string payment_intent_id = 1;
+  double amount = 2;
+  string reason = 3;
+}
+
+message RefundPaymentResponse {
+  bool success = 1;
+  string message = 2;
+  string refund_id = 3;
+}
