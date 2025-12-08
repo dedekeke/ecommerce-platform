@@ -20,7 +20,7 @@ import java.time.Instant;
 @AllArgsConstructor
 public class UserProfileResponse {
 
-    private Long id;
+    private String id;
     private String email;
     private String firstName;
     private String lastName;
@@ -38,7 +38,7 @@ public class UserProfileResponse {
      */
     public static UserProfileResponse from(User user) {
         return UserProfileResponse.builder()
-                .id(user.getId())
+                .id(user.getId() != null ? user.getId().toString() : null)
                 .email(user.getEmail())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())

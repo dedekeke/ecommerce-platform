@@ -1,27 +1,15 @@
-# Multi-stage build for Payment Service
+# Simple Dockerfile for Payment Service
+# Build the JAR locally first: mvn clean package -DskipTests
 
-# Stage 1: Build
-FROM maven:3.9.5-eclipse-temurin-21 AS build
-WORKDIR /app
-
-# Copy parent POM
-COPY pom.xml .
-
-# Copy Payment Service
-COPY services/payment-service services/payment-service/
-
-# Build the application (skip tests for faster builds)
-RUN mvn clean package -pl services/payment-service -am -DskipTests
-
-# Stage 2: Runtime
 FROM eclipse-temurin:21-jre-jammy
+
 WORKDIR /app
 
 # Create non-root user
 RUN groupadd -r paymentservice && useradd -r -g paymentservice paymentservice
 
-# Copy JAR from build stage
-COPY --from=build /app/services/payment-service/target/*.jar app.jar
+# Copy the pre-built JAR file
+COPY services/payment-service/target/payment-service-*.jar app.jar
 
 # Change ownership
 RUN chown -R paymentservice:paymentservice /app

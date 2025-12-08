@@ -17,8 +17,8 @@ import java.time.Instant;
 @AllArgsConstructor
 public class CartItemResponse {
 
-    private Long id;
-    private Long productId;
+    private String id;
+    private String productId;
     private String productName;
     private String productSku;
     private String productImageUrl;

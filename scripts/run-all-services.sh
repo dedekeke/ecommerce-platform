@@ -39,10 +39,12 @@ mkdir -p logs
 SERVICES=(
     "eureka-server:8761"
     "config-server:8888"
-    "user-service:8088"
+    "user-service:8081"
     "product-service:8082"
     "cart-service:8083"
     "order-service:8084"
+    "payment-service:8085"
+    "inventory-service:8086"
     "api-gateway:8080"
 )
 
@@ -55,7 +57,7 @@ for SERVICE_INFO in "${SERVICES[@]}"; do
 
     # Determine service path
     case "$SERVICE" in
-        user-service|product-service|cart-service|order-service)
+        user-service|product-service|cart-service|order-service|payment-service|inventory-service)
             SERVICE_PATH="services/$SERVICE"
             ;;
         eureka-server|config-server|api-gateway)
@@ -94,9 +96,11 @@ echo ""
 
 echo -e "${BLUE}Service URLs:${NC}"
 echo "  - Eureka Dashboard:  http://localhost:8761"
-echo "  - User Service:      http://localhost:8088/swagger-ui.html"
+echo "  - API Gateway:       http://localhost:8080"
+echo "  - User Service:      http://localhost:8081/swagger-ui.html"
 echo "  - Product Service:   http://localhost:8082/swagger-ui.html"
 echo "  - Cart Service:      http://localhost:8083/swagger-ui.html"
 echo "  - Order Service:     http://localhost:8084/swagger-ui.html"
-echo "  - API Gateway:       http://localhost:8080"
+echo "  - Payment Service:   http://localhost:8085/swagger-ui.html"
+echo "  - Inventory Service: http://localhost:8086/swagger-ui.html"
 echo ""

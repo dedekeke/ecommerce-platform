@@ -1,6 +1,7 @@
 package com.ecommerce.productservice.dto;
 
 import com.ecommerce.productservice.model.Dimensions;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,6 +18,7 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ProductRequest {
 
     @NotBlank(message = "SKU is required")

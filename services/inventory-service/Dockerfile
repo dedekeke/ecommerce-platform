@@ -1,22 +1,31 @@
-FROM eclipse-temurin:21-jdk-alpine AS builder
+# Simple Dockerfile for Inventory Service
+# Build the JAR locally first: mvn clean package -DskipTests
+
+FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 
-COPY pom.xml ./
-COPY src ./src
+# Create non-root user
+RUN groupadd -r inventoryservice && useradd -r -g inventoryservice inventoryservice
 
-RUN apk add --no-cache maven && \
-    mvn clean package -DskipTests && \
-    apk del maven
+# Copy the pre-built JAR file
+COPY services/inventory-service/target/inventory-service-*.jar app.jar
 
-FROM eclipse-temurin:21-jre-alpine
+# Change ownership
+RUN chown -R inventoryservice:inventoryservice /app
 
-WORKDIR /app
+# Switch to non-root user
+USER inventoryservice
 
-COPY --from=builder /app/target/*.jar app.jar
-
+# Expose ports (HTTP: 8086, gRPC: 9093)
 EXPOSE 8086 9093
 
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8086/actuator/health || exit 1
 
+# JVM options for production
+ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+
+# Run the application
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

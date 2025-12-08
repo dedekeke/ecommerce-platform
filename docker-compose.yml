@@ -270,8 +270,13 @@ services:
       SPRING_DATASOURCE_USERNAME: admin
       SPRING_DATASOURCE_PASSWORD: admin123
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI}
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
@@ -353,9 +358,14 @@ services:
       SPRING_DATASOURCE_USERNAME: admin
       SPRING_DATASOURCE_PASSWORD: admin123
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
       AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
@@ -363,6 +373,49 @@ services:
       - .env
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - ecommerce-network
+
+  # Order Service - Order processing and orchestration with gRPC
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order-service/Dockerfile
+    container_name: ecommerce-order-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+    ports:
+      - "8084:8084"  # HTTP port
+      - "9094:9094"  # gRPC port
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderdb
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      GRPC_SERVER_PORT: 9094
+      GRPC_CLIENT_CART_SERVICE: static://cart-service:8083
+      GRPC_CLIENT_PAYMENT_SERVICE: static://payment-service:9090
+      GRPC_CLIENT_INVENTORY_SERVICE: static://inventory-service:9091
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8084/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -387,7 +440,7 @@ services:
         condition: service_healthy
     ports:
       - "8085:8085"  # HTTP port
-      - "9092:9092"  # gRPC port
+      - "9090:9090"  # gRPC port
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paymentdb
@@ -396,7 +449,7 @@ services:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
-      GRPC_SERVER_PORT: 9092
+      GRPC_SERVER_PORT: 9090
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
     env_file:
@@ -427,7 +480,7 @@ services:
         condition: service_healthy
     ports:
       - "8086:8086"  # HTTP port
-      - "9093:9093"  # gRPC port
+      - "9091:9091"  # gRPC port
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/inventorydb
@@ -436,7 +489,7 @@ services:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
-      GRPC_SERVER_PORT: 9093
+      GRPC_SERVER_PORT: 9091
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
     env_file:

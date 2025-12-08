@@ -55,7 +55,7 @@ public class CartItem {
      */
     @Column(name = "product_id", nullable = false)
     @NotNull(message = "Product ID is required")
-    private Long productId;
+    private String productId;
 
     /**
      * Product name (snapshot for display)
