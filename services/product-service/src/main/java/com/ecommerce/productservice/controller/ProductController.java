@@ -25,7 +25,7 @@ import java.math.BigDecimal;
  * REST controller for Product management.
  */
 @RestController
-@RequestMapping("/api/v1/products")
+@RequestMapping("/api/products")
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Products", description = "Product catalog management")

@@ -228,7 +228,7 @@ public class CartService {
         return cartRepository.save(cart);
     }
 
-    private ProductDto getProductOrThrow(Long productId) {
+    private ProductDto getProductOrThrow(String productId) {
         try {
             return productServiceClient.getProductById(productId);
         } catch (Exception e) {
@@ -254,7 +254,7 @@ public class CartService {
                 .collect(Collectors.toList());
 
         return CartResponse.builder()
-                .id(cart.getId())
+                .id(cart.getId() != null ? cart.getId().toString() : null)
                 .userId(cart.getUserId())
                 .items(items)
                 .totalAmount(cart.getTotalAmount())
@@ -268,8 +268,8 @@ public class CartService {
 
     private CartItemResponse toCartItemResponse(CartItem item) {
         return CartItemResponse.builder()
-                .id(item.getId())
-                .productId(item.getProductId())
+                .id(item.getId() != null ? item.getId().toString() : null)
+                .productId(item.getProductId() != null ? item.getProductId().toString() : null)
                 .productName(item.getProductName())
                 .productSku(item.getProductSku())
                 .productImageUrl(item.getProductImageUrl())

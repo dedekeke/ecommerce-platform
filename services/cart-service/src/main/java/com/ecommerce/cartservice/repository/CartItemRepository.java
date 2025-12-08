@@ -25,7 +25,7 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     /**
      * Find a specific item in a cart by product ID
      */
-    Optional<CartItem> findByCartIdAndProductId(Long cartId, Long productId);
+    Optional<CartItem> findByCartIdAndProductId(Long cartId, String productId);
 
     /**
      * Delete all items in a cart
@@ -42,5 +42,5 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
      * (Useful for price updates or product deletion)
      */
     @Query("SELECT ci FROM CartItem ci WHERE ci.productId = :productId")
-    List<CartItem> findByProductId(@Param("productId") Long productId);
+    List<CartItem> findByProductId(@Param("productId") String productId);
 }

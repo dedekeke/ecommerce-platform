@@ -96,4 +96,53 @@ public class CartController {
         cartService.deleteCart(userId);
         return ResponseEntity.noContent().build();
     }
+
+    // Testing endpoints that accept userId as path parameter
+
+    @GetMapping("/{userId}")
+    @Operation(summary = "Get cart by userId", description = "Get or create cart for a specific user (for testing)")
+    public ResponseEntity<CartResponse> getCartByUserId(@PathVariable String userId) {
+        log.debug("GET /api/cart/{} - userId: {}", userId, userId);
+        CartResponse cart = cartService.getOrCreateCart(userId);
+        return ResponseEntity.ok(cart);
+    }
+
+    @PostMapping("/{userId}/items")
+    @Operation(summary = "Add item to cart by userId", description = "Add item to cart for a specific user (for testing)")
+    public ResponseEntity<CartResponse> addItemToCartByUserId(
+            @PathVariable String userId,
+            @Valid @RequestBody AddToCartRequest request) {
+        log.debug("POST /api/cart/{}/items - userId: {}, request: {}", userId, userId, request);
+        CartResponse cart = cartService.addItemToCart(userId, request);
+        return ResponseEntity.ok(cart);
+    }
+
+    @PutMapping("/{userId}/items/{itemId}")
+    @Operation(summary = "Update cart item by userId", description = "Update cart item for a specific user (for testing)")
+    public ResponseEntity<CartResponse> updateCartItemByUserId(
+            @PathVariable String userId,
+            @PathVariable Long itemId,
+            @Valid @RequestBody UpdateCartItemRequest request) {
+        log.debug("PUT /api/cart/{}/items/{} - userId: {}, request: {}", userId, itemId, userId, request);
+        CartResponse cart = cartService.updateCartItem(userId, itemId, request);
+        return ResponseEntity.ok(cart);
+    }
+
+    @DeleteMapping("/{userId}/items/{itemId}")
+    @Operation(summary = "Remove item by userId", description = "Remove item from cart for a specific user (for testing)")
+    public ResponseEntity<CartResponse> removeItemFromCartByUserId(
+            @PathVariable String userId,
+            @PathVariable Long itemId) {
+        log.debug("DELETE /api/cart/{}/items/{} - userId: {}", userId, itemId, userId);
+        CartResponse cart = cartService.removeItemFromCart(userId, itemId);
+        return ResponseEntity.ok(cart);
+    }
+
+    @DeleteMapping("/{userId}/clear")
+    @Operation(summary = "Clear cart by userId", description = "Clear cart for a specific user (for testing)")
+    public ResponseEntity<Void> clearCartByUserId(@PathVariable String userId) {
+        log.debug("DELETE /api/cart/{}/clear - userId: {}", userId, userId);
+        cartService.clearCart(userId);
+        return ResponseEntity.noContent().build();
+    }
 }

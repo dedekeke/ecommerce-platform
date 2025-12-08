@@ -77,6 +77,31 @@ public class UserController {
     }
 
     /**
+     * Create a new user (for testing/admin purposes)
+     *
+     * POST /api/users
+     */
+    @PostMapping
+    @Operation(summary = "Create user", description = "Create a new user (for testing/admin purposes)")
+    public ResponseEntity<UserProfileResponse> createUser(@Valid @RequestBody Map<String, Object> request) {
+        log.debug("Creating user with email: {}", request.get("email"));
+
+        String auth0Id = (String) request.get("auth0Id");
+        String email = (String) request.get("email");
+        String firstName = (String) request.get("firstName");
+        String lastName = (String) request.get("lastName");
+
+        // Create user directly (bypassing Auth0 for testing)
+        User user = userService.getOrCreateFromAuth0(auth0Id, Map.of(
+                "email", email,
+                "given_name", firstName != null ? firstName : "",
+                "family_name", lastName != null ? lastName : ""
+        ));
+
+        return ResponseEntity.status(201).body(UserProfileResponse.from(user));
+    }
+
+    /**
      * Get user profile by ID (admin only - to be secured with @PreAuthorize later)
      *
      * GET /api/users/{id}

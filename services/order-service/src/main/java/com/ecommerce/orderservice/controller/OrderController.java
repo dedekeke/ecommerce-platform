@@ -12,6 +12,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 /**
  * REST API controller for Order operations
  */
@@ -23,6 +25,17 @@ import org.springframework.web.bind.annotation.*;
 public class OrderController {
 
     private final OrderService orderService;
+
+    @PostMapping
+    @Operation(summary = "Create order from cart")
+    public ResponseEntity<Order> createOrder(@RequestBody Map<String, Object> request) {
+        String userId = (String) request.get("userId");
+        log.info("REST: Create order for user {}", userId);
+
+        // For now, create a simple order - full implementation would fetch from cart
+        Order order = orderService.createOrderFromCart(userId, request);
+        return ResponseEntity.status(201).body(order);
+    }
 
     @GetMapping("/{orderId}")
     @Operation(summary = "Get order by ID")

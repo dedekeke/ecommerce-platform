@@ -1,22 +1,31 @@
-# Cart Service Dockerfile
-FROM eclipse-temurin:21-jre-alpine
+# Simple Dockerfile for Cart Service
+# Build the JAR locally first: mvn clean package -DskipTests
 
-# Set working directory
+FROM eclipse-temurin:21-jre-jammy
+
 WORKDIR /app
 
-# Copy the JAR file
+# Create non-root user
+RUN groupadd -r cartservice && useradd -r -g cartservice cartservice
+
+# Copy the pre-built JAR file
 COPY services/cart-service/target/cart-service-*.jar app.jar
 
-# Create a non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
+# Change ownership
+RUN chown -R cartservice:cartservice /app
 
-# Expose port
-EXPOSE 8083
+# Switch to non-root user
+USER cartservice
+
+# Expose ports (HTTP: 8083, gRPC: 9090)
+EXPOSE 8083 9090
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8083/actuator/health || exit 1
+  CMD curl -f http://localhost:8083/actuator/health || exit 1
+
+# JVM options
+ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC"
 
 # Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

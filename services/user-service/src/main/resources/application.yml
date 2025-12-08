@@ -56,9 +56,22 @@ spring:
     virtual:
       enabled: true
 
+  # Redis Configuration (for caching user data)
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:${REDIS_HOST:localhost}}
+      port: ${SPRING_DATA_REDIS_PORT:${REDIS_PORT:6379}}
+      password: ${REDIS_PASSWORD:}
+      jedis:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+      timeout: 3000ms
+
 # Server Configuration
 server:
-  port: 8088
+  port: 8081
 
 # Eureka Client Configuration
 eureka:

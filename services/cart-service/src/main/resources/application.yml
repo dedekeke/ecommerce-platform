@@ -8,6 +8,8 @@ spring:
   cloud:
     config:
       fail-fast: false
+      username: ${CONFIG_SERVER_USERNAME:configuser}
+      password: ${CONFIG_SERVER_PASSWORD:configpass}
       retry:
         max-attempts: 6
         initial-interval: 1000

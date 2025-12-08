@@ -56,7 +56,7 @@ public class ProductMapper {
         }
 
         return ProductResponse.builder()
-            .id(product.getId())
+            .id(product.getId() != null ? product.getId().toString() : null)
             .sku(product.getSku())
             .name(product.getName())
             .description(product.getDescription())

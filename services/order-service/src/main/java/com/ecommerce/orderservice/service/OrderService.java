@@ -18,7 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Service for order management and business logic
@@ -39,6 +41,40 @@ public class OrderService {
 
     @Value("${order.shipping.free-threshold:50.00}")
     private Double freeShippingThreshold;
+
+    /**
+     * Create order from cart (for testing)
+     */
+    @Transactional
+    public Order createOrderFromCart(String userId, Map<String, Object> request) {
+        log.info("Creating order from cart for user: {}", userId);
+
+        // Parse shipping address from request
+        @SuppressWarnings("unchecked")
+        Map<String, Object> addressMap = (Map<String, Object>) request.get("shippingAddress");
+        Address shippingAddress = Address.builder()
+            .street((String) addressMap.get("street"))
+            .city((String) addressMap.get("city"))
+            .state((String) addressMap.get("state"))
+            .postalCode((String) addressMap.get("postalCode"))
+            .country((String) addressMap.get("country"))
+            .build();
+
+        String promotionCode = (String) request.getOrDefault("promotionCode", "");
+
+        // Create dummy order items for testing
+        // In a full implementation, this would fetch items from the cart service
+        List<OrderItem> items = new ArrayList<>();
+        OrderItem item = OrderItem.builder()
+            .productId("1")
+            .productName("Test Product")
+            .price(BigDecimal.valueOf(10.00))
+            .quantity(1)
+            .build();
+        items.add(item);
+
+        return createOrder(userId, items, shippingAddress, promotionCode);
+    }
 
     /**
      * Create a new order
