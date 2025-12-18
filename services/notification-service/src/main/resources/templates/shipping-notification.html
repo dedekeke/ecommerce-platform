@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Shipped</title>
+    <title>Shipping Notification</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -18,48 +18,73 @@
             color: white;
             padding: 20px;
             text-align: center;
+            border-radius: 5px 5px 0 0;
         }
         .content {
-            padding: 20px;
             background-color: #f9f9f9;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 0 0 5px 5px;
         }
         .shipping-details {
             background-color: white;
             padding: 15px;
-            margin: 15px 0;
+            margin: 20px 0;
             border-radius: 5px;
+            border-left: 4px solid #FF9800;
         }
         .footer {
             text-align: center;
-            padding: 20px;
-            color: #666;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #777;
             font-size: 12px;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #FF9800;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Your Order Has Shipped!</h1>
+        <h1>📦 Your Order Has Shipped!</h1>
     </div>
-
     <div class="content">
-        <p>Dear <span th:text="${userName}">Customer</span>,</p>
+        <p>Hi <strong th:text="${userName}">Customer</strong>,</p>
 
         <p>Great news! Your order has been shipped and is on its way to you.</p>
 
         <div class="shipping-details">
             <h3>Shipping Details</h3>
-            <p><strong>Order Number:</strong> <span th:text="${orderNumber}">ORD-123456</span></p>
-            <p><strong>Shipping To:</strong> <span th:text="${shippingAddress}">123 Main St</span></p>
+            <p><strong>Order Number:</strong> <span th:text="${orderNumber}">ORD-12345</span></p>
+            <p th:if="${shippingAddress}">
+                <strong>Shipping To:</strong><br/>
+                <span th:text="${shippingAddress}">Address</span>
+            </p>
+            <p th:if="${trackingNumber}">
+                <strong>Tracking Number:</strong> <span th:text="${trackingNumber}">TRACK123456</span>
+            </p>
+            <p th:if="${estimatedDelivery}">
+                <strong>Estimated Delivery:</strong> <span th:text="${estimatedDelivery}">3-5 business days</span>
+            </p>
         </div>
 
-        <p>Your package should arrive within 3-5 business days. You'll receive another email when it's delivered.</p>
+        <p>You can track your package using the tracking number above. Your order should arrive within the estimated delivery timeframe.</p>
 
-        <p>Thank you for your patience!</p>
+        <a href="#" class="button">Track Your Package</a>
+
+        <p style="margin-top: 20px;">If you have any questions or concerns, please don't hesitate to contact our customer support team.</p>
     </div>
-
     <div class="footer">
-        <p>&copy; 2024 E-Commerce Platform. All rights reserved.</p>
+        <p>&copy; 2025 E-Commerce Platform. All rights reserved.</p>
+        <p>This is an automated message, please do not reply to this email.</p>
     </div>
 </body>
 </html>

@@ -152,3 +152,4 @@ storage/
 *.backup
 .claude/settings.local.json
 /config-repo/
+/CLAUDE.md

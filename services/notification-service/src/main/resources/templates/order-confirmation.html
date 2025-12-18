@@ -18,22 +18,37 @@
             color: white;
             padding: 20px;
             text-align: center;
+            border-radius: 5px 5px 0 0;
         }
         .content {
-            padding: 20px;
             background-color: #f9f9f9;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 0 0 5px 5px;
         }
         .order-details {
             background-color: white;
             padding: 15px;
-            margin: 15px 0;
+            margin: 20px 0;
             border-radius: 5px;
+            border-left: 4px solid #4CAF50;
         }
         .footer {
             text-align: center;
-            padding: 20px;
-            color: #666;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #777;
             font-size: 12px;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
         }
     </style>
 </head>
@@ -41,28 +56,30 @@
     <div class="header">
         <h1>Order Confirmation</h1>
     </div>
-
     <div class="content">
-        <p>Dear <span th:text="${userName}">Customer</span>,</p>
+        <p>Hi <strong th:text="${userName}">Customer</strong>,</p>
 
-        <p>Thank you for your order! We're pleased to confirm that we have received your order.</p>
+        <p>Thank you for your order! We're excited to let you know that we've received your order and it's being processed.</p>
 
         <div class="order-details">
             <h3>Order Details</h3>
-            <p><strong>Order Number:</strong> <span th:text="${orderNumber}">ORD-123456</span></p>
-            <p><strong>Total Amount:</strong> $<span th:text="${totalAmount}">99.99</span></p>
-            <p><strong>Shipping Address:</strong> <span th:text="${shippingAddress}">123 Main St</span></p>
+            <p><strong>Order Number:</strong> <span th:text="${orderNumber}">ORD-12345</span></p>
+            <p><strong>Order Total:</strong> $<span th:text="${totalAmount}">0.00</span></p>
+            <p th:if="${shippingAddress}">
+                <strong>Shipping Address:</strong><br/>
+                <span th:text="${shippingAddress}">Address</span>
+            </p>
         </div>
 
-        <p>We'll send you a confirmation email when your items ship.</p>
+        <p>We'll send you another email once your order ships with tracking information.</p>
 
-        <p>If you have any questions about your order, please don't hesitate to contact our customer service team.</p>
+        <p>If you have any questions about your order, please don't hesitate to contact our customer support team.</p>
 
-        <p>Thank you for shopping with us!</p>
+        <a href="#" class="button">Track Your Order</a>
     </div>
-
     <div class="footer">
-        <p>&copy; 2024 E-Commerce Platform. All rights reserved.</p>
+        <p>&copy; 2025 E-Commerce Platform. All rights reserved.</p>
+        <p>This is an automated message, please do not reply to this email.</p>
     </div>
 </body>
 </html>
