@@ -1,0 +1,91 @@
+server:
+  port: 8087
+
+spring:
+  application:
+    name: notification-service
+
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/notification_db}
+      auto-index-creation: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+        transport:
+          protocol: smtp
+    default-encoding: UTF-8
+
+  thymeleaf:
+    mode: HTML
+    encoding: UTF-8
+    cache: false
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.value}
+
+# Notification Service Configuration
+notification:
+  retry:
+    max-attempts: 3
+    initial-delay-minutes: 1
+  sms:
+    provider: ${SMS_PROVIDER:mock}
+    api-key: ${SMS_API_KEY:}
+    api-secret: ${SMS_API_SECRET:}
+  email:
+    from: ${EMAIL_FROM:noreply@ecommerce-platform.com}
+    from-name: ${EMAIL_FROM_NAME:E-Commerce Platform}
+
+# Async Configuration
+async:
+  core-pool-size: 5
+  max-pool-size: 10
+  queue-capacity: 100
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.ecommerce.notificationservice: DEBUG
+    org.springframework.kafka: INFO
+    org.springframework.mail: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+# Management and Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
