@@ -25,5 +25,10 @@ public interface NotificationLogRepository extends MongoRepository<NotificationL
             Pageable pageable
     );
 
+    List<NotificationLog> findByRelatedEntityIdAndRelatedEntityType(
+            String relatedEntityId,
+            String relatedEntityType
+    );
+
     long countByStatusAndCreatedAtAfter(NotificationStatus status, Instant after);
 }

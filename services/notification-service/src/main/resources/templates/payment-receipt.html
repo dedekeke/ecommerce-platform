@@ -18,16 +18,20 @@
             color: white;
             padding: 20px;
             text-align: center;
+            border-radius: 5px 5px 0 0;
         }
         .content {
-            padding: 20px;
             background-color: #f9f9f9;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 0 0 5px 5px;
         }
         .payment-details {
             background-color: white;
             padding: 15px;
-            margin: 15px 0;
+            margin: 20px 0;
             border-radius: 5px;
+            border-left: 4px solid #2196F3;
         }
         .amount {
             font-size: 24px;
@@ -36,37 +40,37 @@
         }
         .footer {
             text-align: center;
-            padding: 20px;
-            color: #666;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #777;
             font-size: 12px;
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Payment Receipt</h1>
+        <h1>✓ Payment Received</h1>
     </div>
-
     <div class="content">
-        <p>Dear <span th:text="${userName}">Customer</span>,</p>
+        <p>Hi <strong th:text="${userName}">Customer</strong>,</p>
 
-        <p>Your payment has been successfully processed.</p>
+        <p>Thank you for your payment! This email confirms that we've successfully received your payment for order <span th:text="${orderNumber}">ORD-12345</span>.</p>
 
         <div class="payment-details">
             <h3>Payment Details</h3>
-            <p><strong>Order Number:</strong> <span th:text="${orderNumber}">ORD-123456</span></p>
-            <p class="amount">Amount Paid: $<span th:text="${totalAmount}">99.99</span></p>
+            <p><strong>Order Number:</strong> <span th:text="${orderNumber}">ORD-12345</span></p>
+            <p><strong>Amount Paid:</strong> <span class="amount">$<span th:text="${totalAmount}">0.00</span></span></p>
+            <p><strong>Payment Status:</strong> <span style="color: #4CAF50;">Completed</span></p>
         </div>
 
-        <p>This receipt confirms that we have received your payment. Your order is now being processed.</p>
+        <p>Your order is now being prepared for shipment. You'll receive a shipping confirmation email once your order has been dispatched.</p>
 
-        <p>You can view your order status anytime by logging into your account.</p>
-
-        <p>Thank you for your business!</p>
+        <p>Keep this email for your records. If you have any questions about your payment or order, please contact our customer support team.</p>
     </div>
-
     <div class="footer">
-        <p>&copy; 2024 E-Commerce Platform. All rights reserved.</p>
+        <p>&copy; 2025 E-Commerce Platform. All rights reserved.</p>
+        <p>This is an automated message, please do not reply to this email.</p>
     </div>
 </body>
 </html>

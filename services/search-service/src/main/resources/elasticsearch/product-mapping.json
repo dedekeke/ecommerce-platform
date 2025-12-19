@@ -1,0 +1,60 @@
+{
+  "properties": {
+    "id": {
+      "type": "keyword"
+    },
+    "name": {
+      "type": "text",
+      "analyzer": "standard",
+      "fields": {
+        "keyword": {
+          "type": "keyword"
+        }
+      }
+    },
+    "description": {
+      "type": "text",
+      "analyzer": "standard"
+    },
+    "sku": {
+      "type": "keyword"
+    },
+    "category": {
+      "type": "keyword"
+    },
+    "price": {
+      "type": "double"
+    },
+    "currency": {
+      "type": "keyword"
+    },
+    "images": {
+      "type": "keyword"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "stockQuantity": {
+      "type": "integer"
+    },
+    "tags": {
+      "type": "keyword"
+    },
+    "nameAutocomplete": {
+      "type": "text",
+      "analyzer": "autocomplete_analyzer",
+      "search_analyzer": "standard"
+    },
+    "createdAt": {
+      "type": "date",
+      "format": "date_time"
+    },
+    "updatedAt": {
+      "type": "date",
+      "format": "date_time"
+    },
+    "searchScore": {
+      "type": "double"
+    }
+  }
+}
