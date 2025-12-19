@@ -567,6 +567,41 @@ services:
     networks:
       - ecommerce-network
 
+  # Media Service - Image and file management
+  media-service:
+    build:
+      context: .
+      dockerfile: services/media-service/Dockerfile
+    container_name: ecommerce-media-service
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+    ports:
+      - "8089:8089"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATA_MONGODB_URI: mongodb://admin:admin123@mongodb:27017/mediadb?authSource=admin
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+    env_file:
+      - .env
+    volumes:
+      - media-storage:/app/storage
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8089/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - ecommerce-network
+
 # ============================================
 # VOLUMES
 # ============================================
@@ -580,6 +615,8 @@ volumes:
   redis-data:
     driver: local
   elasticsearch-data:
+    driver: local
+  media-storage:
     driver: local
   zookeeper-data:
     driver: local
