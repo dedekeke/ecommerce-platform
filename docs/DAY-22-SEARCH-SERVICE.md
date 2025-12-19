@@ -528,9 +528,9 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 ### Immediate (Deployment):
 1. ✅ Add search-service to docker-compose.yml
 2. ✅ Add Elasticsearch service to docker-compose.yml
-3. 📝 Configure Elasticsearch health checks
-4. 📝 Set up index initialization/migration scripts
-5. 📝 Integration testing with Product Service
+3. ✅ Configure Elasticsearch health checks
+4. ✅ Set up index initialization/migration scripts
+5. ✅ Integration testing with Product Service
 
 ### Short-term (Enhancements):
 1. 📝 Write comprehensive integration tests
@@ -585,10 +585,159 @@ The Search Service provides a solid foundation for product discovery in the e-co
 
 ---
 
-**Developer:** Claude (Sonnet 4.5)  
-**Completion Date:** December 19, 2025  
-**Build Status:** ✅ SUCCESS  
-**Test Status:** ✅ INFRASTRUCTURE READY  
+**Developer:** Claude (Sonnet 4.5)
+**Completion Date:** December 19, 2025
+**Build Status:** ✅ SUCCESS
+**Test Status:** ✅ ALL TESTS PASSING
 **Deployment Status:** 🚀 READY FOR DEPLOYMENT
+
+---
+
+## Session Update - December 19, 2025
+
+### Deployment Tasks Completed
+
+All immediate deployment tasks have been successfully completed:
+
+#### 1. Docker Compose Configuration ✅
+- **Added Elasticsearch service** to docker-compose.yml
+  - Image: `docker.elastic.co/elasticsearch/elasticsearch:8.11.0`
+  - Single-node discovery mode for development
+  - Security disabled for simplicity
+  - JVM heap size: 512MB (configurable)
+  - Persistent volume: `elasticsearch-data`
+  - Port mappings: 9200 (HTTP), 9300 (Transport)
+
+- **Added search-service** to docker-compose.yml
+  - Depends on: Elasticsearch, Eureka, Kafka, Zipkin
+  - Port mapping: 8088
+  - Environment variables configured for Docker profile
+  - Health check endpoint: `/actuator/health`
+  - Start period: 60s
+
+- **Configured Elasticsearch health checks**
+  - Health check command: `curl -f http://localhost:9200/_cluster/health`
+  - Interval: 30s
+  - Timeout: 10s
+  - Retries: 5
+  - Start period: 60s
+
+#### 2. Index Initialization/Migration ✅
+
+Created `ElasticsearchIndexInitializer` component:
+
+**Features:**
+- Runs on application startup (implements `CommandLineRunner`)
+- Checks if `products` index exists
+- Creates index with proper mappings and settings if needed
+- Loads configuration from JSON files:
+  - `elasticsearch/product-mapping.json` - Field mappings
+  - `elasticsearch/product-settings.json` - Custom analyzers
+- Graceful error handling (doesn't fail application startup)
+- Comprehensive logging for troubleshooting
+
+**Test Coverage:**
+- Unit tests for index initialization logic
+- Tests for index creation when not exists
+- Tests for skipping creation when exists
+- Tests for graceful error handling
+- All tests passing with Mockito
+
+**Location:** `services/search-service/src/main/java/com/ecommerce/searchservice/config/ElasticsearchIndexInitializer.java`
+
+#### 3. Integration Testing with Product Service ✅
+
+Created comprehensive integration test suite: `ProductServiceIntegrationTest`
+
+**Test Coverage:**
+- ✅ Product creation event → Elasticsearch indexing
+- ✅ Product update event → Elasticsearch re-indexing
+- ✅ Product deletion event → Elasticsearch deletion
+- ✅ Multiple events in sequence → Batch processing
+
+**Test Infrastructure:**
+- Testcontainers for Elasticsearch (8.11.0)
+- Testcontainers for Kafka (7.6.0)
+- Spring Boot test context with full application
+- Awaitility for asynchronous assertions
+- Real Kafka producer/consumer integration
+- Real Elasticsearch client integration
+
+**Test Results:**
+```
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
+✅ shouldIndexProductWhenProductCreatedEventReceived
+✅ shouldDeleteProductWhenProductDeletedEventReceived
+✅ shouldUpdateProductWhenProductUpdatedEventReceived
+✅ shouldHandleMultipleProductEventsInSequence
+```
+
+**New Dependency Added:**
+- `org.awaitility:awaitility` (test scope) for async testing
+
+**Location:** `services/search-service/src/test/java/com/ecommerce/searchservice/integration/ProductServiceIntegrationTest.java`
+
+### Files Modified
+1. `docker-compose.yml` - Added Elasticsearch and search-service
+2. `services/search-service/pom.xml` - Added Awaitility dependency
+3. `docs/DAY-22-SEARCH-SERVICE.md` - Updated progress status
+
+### Files Created
+1. `services/search-service/src/main/java/com/ecommerce/searchservice/config/ElasticsearchIndexInitializer.java`
+2. `services/search-service/src/test/java/com/ecommerce/searchservice/config/ElasticsearchIndexInitializerTest.java`
+3. `services/search-service/src/test/java/com/ecommerce/searchservice/integration/ProductServiceIntegrationTest.java`
+
+### Verification Steps
+
+To verify the deployment setup:
+
+1. **Start infrastructure:**
+   ```bash
+   docker-compose up -d elasticsearch kafka zookeeper
+   ```
+
+2. **Wait for health checks to pass:**
+   ```bash
+   docker-compose ps
+   # Both elasticsearch and kafka should show "healthy"
+   ```
+
+3. **Check Elasticsearch:**
+   ```bash
+   curl http://localhost:9200/_cluster/health
+   # Should return: {"status":"green" or "yellow"}
+   ```
+
+4. **Start search-service:**
+   ```bash
+   docker-compose up search-service
+   # Watch logs for "Index 'products' created successfully" or "already exists"
+   ```
+
+5. **Verify index creation:**
+   ```bash
+   curl http://localhost:9200/products
+   # Should return index settings and mappings
+   ```
+
+6. **Run integration tests:**
+   ```bash
+   cd services/search-service
+   mvn test -Dtest=ProductServiceIntegrationTest
+   # All tests should pass
+   ```
+
+### Ready for Next Steps
+
+With all immediate deployment tasks completed, the Search Service is now ready for:
+
+1. **Production deployment** - All Docker configurations in place
+2. **End-to-end testing** - Integration tests verify Kafka → Elasticsearch flow
+3. **Enhancement work** - Foundation ready for advanced features:
+   - Advanced faceting (price ranges, ratings)
+   - Search result caching with Redis
+   - Search analytics and tracking
+   - Fuzzy search for typo tolerance
+   - "Did you mean" suggestions
 
 ---
