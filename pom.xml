@@ -73,7 +73,7 @@
         <module>services/notification-service</module>
         <module>services/search-service</module>
         <module>services/media-service</module>
-        <!-- <module>services/promotion-service</module> -->
+        <module>services/promotion-service</module>
 
         <!-- Integration Tests -->
         <module>integration-tests</module>
