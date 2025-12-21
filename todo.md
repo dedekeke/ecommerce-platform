@@ -235,3 +235,10 @@
 - White-label customization
 - Advanced analytics dashboard
 - Bulk operations API
+
+## Next Steps (Future Integration for promotion-service)
+
+- Order Service Integration: Add promotion code field to orders
+- Product Service Integration: Link promotions to product categories
+- Admin Dashboard: Create/manage promotions UI
+- Analytics: Track promotion effectiveness and ROI
