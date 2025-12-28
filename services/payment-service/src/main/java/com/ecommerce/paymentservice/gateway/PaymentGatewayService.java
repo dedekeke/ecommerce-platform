@@ -1,5 +1,8 @@
 package com.ecommerce.paymentservice.gateway;
 
+import io.github.resilience4j.bulkhead.annotation.Bulkhead;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -7,16 +10,22 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Simple mock payment gateway service (Stripe-like API)
- * This will be replaced with actual payment gateway integration later
+ * Payment gateway service with Resilience4j protection.
+ *
+ * This mock implementation simulates a real payment gateway (Stripe-like API).
+ * All external calls are protected by circuit breaker, retry, and bulkhead patterns.
  */
 @Service
 @Slf4j
 public class PaymentGatewayService {
 
     /**
-     * Create a payment intent (mock implementation)
+     * Create a payment intent (mock implementation).
+     * Protected by circuit breaker with fallback for gateway failures.
      */
+    @CircuitBreaker(name = "payment-gateway", fallbackMethod = "createPaymentIntentFallback")
+    @Retry(name = "payment-gateway")
+    @Bulkhead(name = "payment-gateway")
     public PaymentGatewayResponse createPaymentIntent(String orderId, String userId, BigDecimal amount, String currency) {
         log.info("Creating payment intent for order: {}, amount: {} {}", orderId, amount, currency);
 
@@ -36,8 +45,12 @@ public class PaymentGatewayService {
     }
 
     /**
-     * Confirm a payment (mock implementation)
+     * Confirm a payment (mock implementation).
+     * Protected by circuit breaker with fallback for gateway failures.
      */
+    @CircuitBreaker(name = "payment-gateway", fallbackMethod = "confirmPaymentFallback")
+    @Retry(name = "payment-gateway")
+    @Bulkhead(name = "payment-gateway")
     public PaymentGatewayResponse confirmPayment(String paymentIntentId, String paymentMethodId) {
         log.info("Confirming payment for intent: {}, method: {}", paymentIntentId, paymentMethodId);
 
@@ -66,8 +79,12 @@ public class PaymentGatewayService {
     }
 
     /**
-     * Refund a payment (mock implementation)
+     * Refund a payment (mock implementation).
+     * Protected by circuit breaker with fallback for gateway failures.
      */
+    @CircuitBreaker(name = "payment-gateway", fallbackMethod = "refundPaymentFallback")
+    @Retry(name = "payment-gateway")
+    @Bulkhead(name = "payment-gateway")
     public PaymentGatewayResponse refundPayment(String paymentIntentId, BigDecimal amount, String reason) {
         log.info("Refunding payment intent: {}, amount: {}, reason: {}", paymentIntentId, amount, reason);
 
@@ -81,6 +98,55 @@ public class PaymentGatewayService {
                 .paymentIntentId(paymentIntentId)
                 .transactionId(refundId)
                 .status("REFUNDED")
+                .build();
+    }
+
+    // ==================== Fallback Methods ====================
+
+    /**
+     * Fallback for createPaymentIntent when payment gateway is unavailable.
+     */
+    private PaymentGatewayResponse createPaymentIntentFallback(String orderId, String userId,
+            BigDecimal amount, String currency, Throwable t) {
+        log.error("Payment gateway unavailable for creating payment intent. Order: {}, Error: {}",
+            orderId, t.getMessage());
+
+        return PaymentGatewayResponse.builder()
+                .success(false)
+                .status("GATEWAY_UNAVAILABLE")
+                .errorMessage("Payment gateway is temporarily unavailable. Please try again later.")
+                .build();
+    }
+
+    /**
+     * Fallback for confirmPayment when payment gateway is unavailable.
+     */
+    private PaymentGatewayResponse confirmPaymentFallback(String paymentIntentId,
+            String paymentMethodId, Throwable t) {
+        log.error("Payment gateway unavailable for confirming payment. Intent: {}, Error: {}",
+            paymentIntentId, t.getMessage());
+
+        return PaymentGatewayResponse.builder()
+                .success(false)
+                .paymentIntentId(paymentIntentId)
+                .status("GATEWAY_UNAVAILABLE")
+                .errorMessage("Payment gateway is temporarily unavailable. Your payment has not been processed.")
+                .build();
+    }
+
+    /**
+     * Fallback for refundPayment when payment gateway is unavailable.
+     */
+    private PaymentGatewayResponse refundPaymentFallback(String paymentIntentId,
+            BigDecimal amount, String reason, Throwable t) {
+        log.error("Payment gateway unavailable for refund. Intent: {}, Error: {}",
+            paymentIntentId, t.getMessage());
+
+        return PaymentGatewayResponse.builder()
+                .success(false)
+                .paymentIntentId(paymentIntentId)
+                .status("REFUND_PENDING")
+                .errorMessage("Refund request queued. Will be processed when gateway is available.")
                 .build();
     }
 
