@@ -10,8 +10,8 @@ spring:
         enabled: false
 
   datasource:
-    url: ${USER_DB_URL:jdbc:postgresql://localhost:5432/userdb}
-    username: ${POSTGRES_USER:admin}
+    url: ${USER_DB_URL}
+    username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
@@ -59,9 +59,9 @@ spring:
   # Redis Configuration (for caching user data)
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:${REDIS_HOST:localhost}}
-      port: ${SPRING_DATA_REDIS_PORT:${REDIS_PORT:6379}}
-      password: ${REDIS_PASSWORD:}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
       jedis:
         pool:
           max-active: 8
@@ -133,7 +133,7 @@ logging:
 # Security Configuration
 # Set to false to disable Auth0 for local development
 security:
-  enabled: ${SECURITY_ENABLED:false}
+  enabled: ${SECURITY_ENABLED}
 
 # Auth0 Configuration
 auth0:

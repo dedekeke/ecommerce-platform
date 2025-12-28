@@ -23,9 +23,6 @@ management:
         http.client.requests: true
     tags:
       application: ${spring.application.name}
-    export:
-      prometheus:
-        enabled: true
 
   # Distributed Tracing Configuration
   tracing:
@@ -36,13 +33,17 @@ management:
   # Zipkin Configuration
   zipkin:
     tracing:
-      endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
+      endpoint: ${ZIPKIN_URL}
 
   # Observations (for metrics and tracing)
   observations:
     key-values:
       application: ${spring.application.name}
       environment: ${spring.profiles.active:default}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 # Logging Configuration
 logging:

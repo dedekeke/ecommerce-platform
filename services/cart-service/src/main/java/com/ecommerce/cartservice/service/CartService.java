@@ -230,7 +230,14 @@ public class CartService {
 
     private ProductDto getProductOrThrow(String productId) {
         try {
-            return productServiceClient.getProductById(productId);
+            ProductDto product = productServiceClient.getProductById(productId);
+            if (product == null) {
+                log.error("Product not found: {}", productId);
+                throw new ProductNotAvailableException("Product not found: " + productId);
+            }
+            return product;
+        } catch (ProductNotAvailableException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to fetch product: {}", productId, e);
             throw new ProductNotAvailableException("Product not available: " + productId);
@@ -238,7 +245,13 @@ public class CartService {
     }
 
     private void validateProductAvailability(ProductDto product, int requestedQuantity) {
-        if (!"ACTIVE".equals(product.getStatus())) {
+        if (product.getPrice() == null) {
+            throw new ProductNotAvailableException("Price information unavailable for product: " + product.getId());
+        }
+        if (product.getStockQuantity() == null) {
+            throw new ProductNotAvailableException("Stock information unavailable for product: " + product.getId());
+        }
+        if (product.getActive() == null || !product.getActive()) {
             throw new ProductNotAvailableException("Product is not available: " + product.getId());
         }
         if (product.getStockQuantity() < requestedQuantity) {

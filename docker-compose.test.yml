@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  # Use simple Dockerfiles for testing
+  order-service:
+    image: ecommerce-order-service:test
+    build:
+      context: .
+      dockerfile: services/order-service/Dockerfile.simple
+
+  promotion-service:
+    image: ecommerce-promotion-service:test
+    build:
+      context: .
+      dockerfile: services/promotion-service/Dockerfile.simple

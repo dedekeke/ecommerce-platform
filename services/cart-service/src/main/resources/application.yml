@@ -3,13 +3,13 @@ spring:
     name: cart-service
 
   config:
-    import: "optional:configserver:http://config-server:8888"
+    import: "optional:configserver:http://localhost:8888"
 
   cloud:
     config:
       fail-fast: false
-      username: ${CONFIG_SERVER_USERNAME:configuser}
-      password: ${CONFIG_SERVER_PASSWORD:configpass}
+      username: ${CONFIG_SERVER_USERNAME}
+      password: ${CONFIG_SERVER_PASSWORD}
       retry:
         max-attempts: 6
         initial-interval: 1000

@@ -10,7 +10,7 @@ spring:
 
   datasource:
     url: jdbc:postgresql://postgres:5432/userdb
-    username: ${POSTGRES_USER:admin}
+    username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
 
   kafka:

@@ -3,9 +3,9 @@ spring:
     name: promotion-service
 
   datasource:
-    url: ${PROMOTION_DB_URL:jdbc:mysql://localhost:3306/promotiondb}
-    username: ${MYSQL_USER:admin}
-    password: ${MYSQL_PASSWORD:admin123}
+    url: ${PROMOTION_DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 10
@@ -20,7 +20,7 @@ spring:
     show-sql: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
+        dialect: org.hibernate.dialect.MySQL8Dialect
         format_sql: true
         use_sql_comments: true
         jdbc:
@@ -36,8 +36,8 @@ spring:
 
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT}
       timeout: 60000ms
       jedis:
         pool:
@@ -52,12 +52,18 @@ spring:
       time-to-live: 1800000
       cache-null-values: false
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://${AUTH0_DOMAIN}/
+
   cloud:
     config:
       enabled: false
 
 server:
-  port: ${SERVER_PORT:8090}
+  port: ${SERVER_PORT}
   compression:
     enabled: true
   http2:
@@ -66,7 +72,7 @@ server:
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE}
     register-with-eureka: true
     fetch-registry: true
   instance:
@@ -82,16 +88,16 @@ management:
   endpoint:
     health:
       show-details: always
-  metrics:
-    export:
-      prometheus:
-        enabled: true
   tracing:
     sampling:
       probability: 1.0
   zipkin:
     tracing:
-      endpoint: ${MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:http://localhost:9411/api/v2/spans}
+      endpoint: ${MANAGEMENT_ZIPKIN_TRACING_ENDPOINT}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 logging:
   level:
@@ -107,3 +113,11 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     enabled: true
+
+security:
+  enabled: ${SECURITY_ENABLED}
+
+
+auth0:
+  domain: ${AUTH0_DOMAIN}
+  audience: ${AUTH0_AUDIENCE}

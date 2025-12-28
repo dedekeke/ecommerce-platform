@@ -1,5 +1,6 @@
 package com.ecommerce.orderservice.saga;
 
+import com.ecommerce.orderservice.client.PromotionServiceClient;
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
@@ -48,6 +49,9 @@ class OrderCreationSagaTest {
 
     @Mock
     private OrderEventPublisher eventPublisher;
+
+    @Mock
+    private PromotionServiceClient promotionServiceClient;
 
     private OrderCreationSaga saga;
     private ManagedChannel cartChannel;
@@ -108,7 +112,7 @@ class OrderCreationSagaTest {
         );
 
         // Create saga with mocked dependencies
-        saga = new OrderCreationSaga(orderService, eventPublisher);
+        saga = new OrderCreationSaga(orderService, eventPublisher, promotionServiceClient);
 
         // Use reflection to inject gRPC stubs (since @GrpcClient doesn't work in tests)
         injectGrpcStubs();

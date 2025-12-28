@@ -27,7 +27,9 @@ import java.util.List;
     @Index(name = "idx_order_number", columnList = "orderNumber", unique = true),
     @Index(name = "idx_user_id", columnList = "userId"),
     @Index(name = "idx_status", columnList = "status"),
-    @Index(name = "idx_created_at", columnList = "createdAt")
+    @Index(name = "idx_created_at", columnList = "createdAt"),
+    @Index(name = "idx_promotion_code", columnList = "promotionCode"),
+    @Index(name = "idx_user_status_date", columnList = "userId, status, createdAt")
 })
 public class Order {
 
@@ -104,9 +106,16 @@ public class Order {
     @PrePersist
     @PreUpdate
     public void calculateTotals() {
+        // First, ensure all items have their subtotals calculated
+        items.forEach(item -> {
+            if (item.getSubtotal() == null) {
+                item.calculateSubtotal();
+            }
+        });
+
         // Calculate subtotal from items
         this.subtotal = items.stream()
-                .map(OrderItem::getSubtotal)
+                .map(item -> item.getSubtotal() != null ? item.getSubtotal() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Apply discount if any
@@ -118,8 +127,10 @@ public class Order {
             }
         }
 
-        // Calculate total
-        this.total = discountedSubtotal.add(tax).add(shippingCost);
+        // Calculate total (ensure tax and shippingCost are not null)
+        BigDecimal taxValue = tax != null ? tax : BigDecimal.ZERO;
+        BigDecimal shippingValue = shippingCost != null ? shippingCost : BigDecimal.ZERO;
+        this.total = discountedSubtotal.add(taxValue).add(shippingValue);
     }
 
 

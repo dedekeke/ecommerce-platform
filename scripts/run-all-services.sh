@@ -45,6 +45,10 @@ SERVICES=(
     "order-service:8084"
     "payment-service:8085"
     "inventory-service:8086"
+    "notification-service:8087"
+    "search-service:8089"
+    "media-service:8090"
+    "promotion-service:8091"
     "api-gateway:8080"
 )
 
@@ -57,7 +61,7 @@ for SERVICE_INFO in "${SERVICES[@]}"; do
 
     # Determine service path
     case "$SERVICE" in
-        user-service|product-service|cart-service|order-service|payment-service|inventory-service)
+        user-service|product-service|cart-service|order-service|payment-service|inventory-service|notification-service|search-service|media-service|promotion-service)
             SERVICE_PATH="services/$SERVICE"
             ;;
         eureka-server|config-server|api-gateway)
@@ -97,10 +101,17 @@ echo ""
 echo -e "${BLUE}Service URLs:${NC}"
 echo "  - Eureka Dashboard:  http://localhost:8761"
 echo "  - API Gateway:       http://localhost:8080"
+echo "    Swagger UI:        http://localhost:8080/swagger-ui.html"
+echo ""
+echo "Microservices:"
 echo "  - User Service:      http://localhost:8081/swagger-ui.html"
 echo "  - Product Service:   http://localhost:8082/swagger-ui.html"
 echo "  - Cart Service:      http://localhost:8083/swagger-ui.html"
 echo "  - Order Service:     http://localhost:8084/swagger-ui.html"
 echo "  - Payment Service:   http://localhost:8085/swagger-ui.html"
 echo "  - Inventory Service: http://localhost:8086/swagger-ui.html"
+echo "  - Notification:      http://localhost:8087/swagger-ui.html"
+echo "  - Search Service:    http://localhost:8089/swagger-ui.html"
+echo "  - Media Service:     http://localhost:8090/swagger-ui.html"
+echo "  - Promotion Service: http://localhost:8091/swagger-ui.html"
 echo ""

@@ -1,5 +1,8 @@
 package com.ecommerce.orderservice.service;
 
+import com.ecommerce.orderservice.client.PromotionServiceClient;
+import com.ecommerce.orderservice.client.dto.DiscountResult;
+import com.ecommerce.orderservice.client.dto.PromotionValidationRequest;
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
@@ -32,6 +35,7 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final OrderNumberGeneratorService orderNumberGenerator;
+    private final PromotionServiceClient promotionServiceClient;
 
     @Value("${order.tax.rate:0.08}")
     private Double taxRate;
@@ -96,6 +100,30 @@ public class OrderService {
             .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // Validate and apply promotion if provided
+        BigDecimal discountAmount = null;
+        String validPromotionCode = null;
+
+        if (promotionCode != null && !promotionCode.trim().isEmpty()) {
+            log.info("Validating promotion code: {}", promotionCode);
+
+            PromotionValidationRequest promotionRequest = PromotionValidationRequest.builder()
+                .code(promotionCode)
+                .purchaseAmount(subtotal)
+                .build();
+
+            DiscountResult discountResult = promotionServiceClient.validatePromotion(promotionRequest);
+
+            if (discountResult.isValid()) {
+                discountAmount = discountResult.getDiscountAmount();
+                validPromotionCode = promotionCode;
+                log.info("Promotion applied: {} - Discount: {}", promotionCode, discountAmount);
+            } else {
+                log.warn("Promotion validation failed: {} - {}", promotionCode, discountResult.getMessage());
+                // Order will be created without the promotion
+            }
+        }
+
         // Calculate tax
         BigDecimal tax = subtotal.multiply(BigDecimal.valueOf(taxRate))
             .setScale(2, RoundingMode.HALF_UP);
@@ -113,7 +141,8 @@ public class OrderService {
             .total(subtotal.add(tax).add(shippingCost))
             .status(OrderStatus.PENDING)
             .shippingAddress(shippingAddress)
-            .promotionCode(promotionCode)
+            .promotionCode(validPromotionCode)
+            .discountAmount(discountAmount)
             .build();
 
         // Add items to order

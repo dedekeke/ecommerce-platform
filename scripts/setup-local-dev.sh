@@ -1,12 +1,5 @@
 #!/bin/bash
 
-##############################################################################
-# Setup Local Development Environment
-#
-# This script sets up the local development environment for the e-commerce
-# platform by starting all required infrastructure services.
-##############################################################################
-
 set -e
 
 # Colors for output

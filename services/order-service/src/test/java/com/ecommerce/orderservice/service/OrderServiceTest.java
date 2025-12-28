@@ -1,5 +1,8 @@
 package com.ecommerce.orderservice.service;
 
+import com.ecommerce.orderservice.client.PromotionServiceClient;
+import com.ecommerce.orderservice.client.dto.DiscountResult;
+import com.ecommerce.orderservice.client.dto.PromotionValidationRequest;
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
@@ -35,6 +38,9 @@ class OrderServiceTest {
 
     @Mock
     private OrderNumberGeneratorService orderNumberGenerator;
+
+    @Mock
+    private PromotionServiceClient promotionServiceClient;
 
     @InjectMocks
     private OrderService orderService;
@@ -262,6 +268,106 @@ class OrderServiceTest {
 
         // Assert
         assertEquals(0, BigDecimal.valueOf(10.00).compareTo(discountedOrder.getDiscountAmount()));
+        verify(orderRepository, times(1)).save(any(Order.class));
+    }
+
+    @Test
+    void testCreateOrder_WithValidPromotion() {
+        // Arrange
+        String orderNumber = "ORD-2025-00003";
+        String promotionCode = "SAVE20";
+
+        when(orderNumberGenerator.generateOrderNumber()).thenReturn(orderNumber);
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        // Mock promotion validation
+        DiscountResult discountResult = DiscountResult.builder()
+            .valid(true)
+            .message("Promotion applied successfully")
+            .discountAmount(BigDecimal.valueOf(10.00))
+            .finalAmount(BigDecimal.valueOf(40.00))
+            .promotionCode(promotionCode)
+            .promotionName("20% Off")
+            .build();
+
+        when(promotionServiceClient.validatePromotion(any(PromotionValidationRequest.class)))
+            .thenReturn(discountResult);
+
+        // Act
+        Order order = orderService.createOrder(userId, orderItems, shippingAddress, promotionCode);
+
+        // Assert
+        assertNotNull(order);
+        assertEquals(promotionCode, order.getPromotionCode());
+        assertEquals(0, BigDecimal.valueOf(10.00).compareTo(order.getDiscountAmount()));
+
+        // Verify promotion validation was called
+        verify(promotionServiceClient, times(1)).validatePromotion(any(PromotionValidationRequest.class));
+        verify(orderRepository, times(1)).save(any(Order.class));
+    }
+
+    @Test
+    void testCreateOrder_WithInvalidPromotion() {
+        // Arrange
+        String orderNumber = "ORD-2025-00004";
+        String promotionCode = "INVALID";
+
+        when(orderNumberGenerator.generateOrderNumber()).thenReturn(orderNumber);
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        // Mock invalid promotion
+        DiscountResult discountResult = DiscountResult.builder()
+            .valid(false)
+            .message("Promotion code not found")
+            .discountAmount(BigDecimal.ZERO)
+            .finalAmount(BigDecimal.valueOf(50.00))
+            .build();
+
+        when(promotionServiceClient.validatePromotion(any(PromotionValidationRequest.class)))
+            .thenReturn(discountResult);
+
+        // Act
+        Order order = orderService.createOrder(userId, orderItems, shippingAddress, promotionCode);
+
+        // Assert
+        assertNotNull(order);
+        assertNull(order.getPromotionCode()); // Invalid promotion should not be saved
+        assertNull(order.getDiscountAmount()); // No discount applied
+
+        // Verify promotion validation was called
+        verify(promotionServiceClient, times(1)).validatePromotion(any(PromotionValidationRequest.class));
+        verify(orderRepository, times(1)).save(any(Order.class));
+    }
+
+    @Test
+    void testCreateOrder_PromotionServiceUnavailable() {
+        // Arrange
+        String orderNumber = "ORD-2025-00005";
+        String promotionCode = "SAVE20";
+
+        when(orderNumberGenerator.generateOrderNumber()).thenReturn(orderNumber);
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        // Mock promotion service unavailable
+        DiscountResult discountResult = DiscountResult.builder()
+            .valid(false)
+            .message("Promotion service is currently unavailable")
+            .discountAmount(BigDecimal.ZERO)
+            .finalAmount(BigDecimal.valueOf(50.00))
+            .build();
+
+        when(promotionServiceClient.validatePromotion(any(PromotionValidationRequest.class)))
+            .thenReturn(discountResult);
+
+        // Act
+        Order order = orderService.createOrder(userId, orderItems, shippingAddress, promotionCode);
+
+        // Assert - Order should still be created without discount
+        assertNotNull(order);
+        assertNull(order.getPromotionCode());
+        assertNull(order.getDiscountAmount());
+
+        verify(promotionServiceClient, times(1)).validatePromotion(any(PromotionValidationRequest.class));
         verify(orderRepository, times(1)).save(any(Order.class));
     }
 }
