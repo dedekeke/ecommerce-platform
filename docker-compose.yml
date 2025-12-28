@@ -82,6 +82,25 @@ services:
     networks:
       - ecommerce-network
 
+  # Redis Exporter for Prometheus monitoring
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: ecommerce-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9121/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - ecommerce-network
+
   # ============================================
   # MESSAGE QUEUE
   # ============================================

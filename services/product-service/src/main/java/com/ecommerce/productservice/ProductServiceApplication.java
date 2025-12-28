@@ -2,8 +2,8 @@ package com.ecommerce.productservice;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
  * Product Service - Product catalog management service optimized for read-heavy workload.
@@ -21,7 +21,7 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
     "com.ecommerce.common"
 })
 @EnableDiscoveryClient
-@EnableCaching
+@EnableAsync
 public class ProductServiceApplication {
 
     public static void main(String[] args) {

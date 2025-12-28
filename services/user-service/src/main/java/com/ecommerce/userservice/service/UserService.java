@@ -6,6 +6,9 @@ import com.ecommerce.userservice.exception.UserNotFoundException;
 import com.ecommerce.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -84,7 +87,9 @@ public class UserService {
      * @return Optional containing the user if found
      */
     @Transactional(readOnly = true)
+    @Cacheable(value = "users-by-auth0", key = "#auth0Id", unless = "#result == null || !#result.isPresent()")
     public Optional<User> findByAuth0Id(String auth0Id) {
+        log.debug("Cache miss - fetching user from DB for auth0Id: {}", auth0Id);
         return userRepository.findByAuth0Id(auth0Id);
     }
 
@@ -95,7 +100,9 @@ public class UserService {
      * @return Optional containing the user if found
      */
     @Transactional(readOnly = true)
+    @Cacheable(value = "users", key = "#id", unless = "#result == null || !#result.isPresent()")
     public Optional<User> findById(Long id) {
+        log.debug("Cache miss - fetching user from DB for id: {}", id);
         return userRepository.findById(id);
     }
 
@@ -106,7 +113,9 @@ public class UserService {
      * @return Optional containing the user if found
      */
     @Transactional(readOnly = true)
+    @Cacheable(value = "users-by-email", key = "#email", unless = "#result == null || !#result.isPresent()")
     public Optional<User> findByEmail(String email) {
+        log.debug("Cache miss - fetching user from DB for email: {}", email);
         return userRepository.findByEmail(email);
     }
 
@@ -117,6 +126,11 @@ public class UserService {
      * @return The updated user
      */
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#user.id"),
+        @CacheEvict(value = "users-by-auth0", key = "#user.auth0Id"),
+        @CacheEvict(value = "users-by-email", key = "#user.email")
+    })
     public User updateUser(User user) {
         log.debug("Updating user: id={}", user.getId());
         return userRepository.save(user);
@@ -132,6 +146,11 @@ public class UserService {
      * @return The updated user
      */
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "users", allEntries = true),
+        @CacheEvict(value = "users-by-auth0", key = "#auth0Id"),
+        @CacheEvict(value = "users-by-email", allEntries = true)
+    })
     public User updateProfile(String auth0Id, String firstName, String lastName, String phoneNumber) {
         User user = userRepository.findByAuth0Id(auth0Id)
                 .orElseThrow(() -> UserNotFoundException.byAuth0Id(auth0Id));
@@ -152,6 +171,11 @@ public class UserService {
      * @param userId The user ID
      */
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#userId"),
+        @CacheEvict(value = "users-by-auth0", allEntries = true),
+        @CacheEvict(value = "users-by-email", allEntries = true)
+    })
     public void deactivateUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> UserNotFoundException.byId(userId));
@@ -167,6 +191,11 @@ public class UserService {
      * @param userId The user ID
      */
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#userId"),
+        @CacheEvict(value = "users-by-auth0", allEntries = true),
+        @CacheEvict(value = "users-by-email", allEntries = true)
+    })
     public void reactivateUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> UserNotFoundException.byId(userId));
@@ -183,6 +212,11 @@ public class UserService {
      * @param newRole The new role
      */
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#userId"),
+        @CacheEvict(value = "users-by-auth0", allEntries = true),
+        @CacheEvict(value = "users-by-email", allEntries = true)
+    })
     public void changeUserRole(Long userId, UserRole newRole) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> UserNotFoundException.byId(userId));
