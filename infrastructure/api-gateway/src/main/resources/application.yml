@@ -54,21 +54,149 @@ spring:
               factor: 2
               basedOnPreviousValue: false
 
+      # Explicit route configurations for fine-grained control
+      routes:
+        # User Service
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+
+        # Product Service
+        - id: product-service
+          uri: lb://product-service
+          predicates:
+            - Path=/api/products/**,/api/categories/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
+
+        # Cart Service
+        - id: cart-service
+          uri: lb://cart-service
+          predicates:
+            - Path=/api/cart/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+
+        # Order Service
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
+
+        # Payment Service
+        - id: payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/payments/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
+
+        # Inventory Service
+        - id: inventory-service
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/inventory/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+
+        # Notification Service
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
+
+        # Search Service
+        - id: search-service
+          uri: lb://search-service
+          predicates:
+            - Path=/api/search/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
+
+        # Media Service
+        - id: media-service
+          uri: lb://media-service
+          predicates:
+            - Path=/api/media/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
+
+        # Promotion Service
+        - id: promotion-service
+          uri: lb://promotion-service
+          predicates:
+            - Path=/api/promotions/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+
   # Redis configuration for rate limiting
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+
+# Security Configuration
+# Set to false to disable Auth0 for local development
+security:
+  enabled: ${SECURITY_ENABLED}
 
 # Auth0 Configuration
 auth0:
+  domain: ${AUTH0_DOMAIN}
   audience: ${AUTH0_AUDIENCE}
 
 # Eureka Client Configuration
 eureka:
   client:
     service-url:
-      default-zone: ${EUREKA_URI:http://localhost:8761/eureka}
+      default-zone: ${EUREKA_URI}
     register-with-eureka: true
     fetch-registry: true
   instance:
@@ -77,7 +205,7 @@ eureka:
 
 # Server Configuration
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT}
   netty:
     connection-timeout: 30s
 
@@ -109,7 +237,7 @@ management:
       probability: 1.0
   zipkin:
     tracing:
-      endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
+      endpoint: ${ZIPKIN_URL}
 
 # Logging Configuration
 logging:
@@ -122,3 +250,33 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# SpringDoc OpenAPI Configuration
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    urls:
+      - name: user-service
+        url: /api/users/v3/api-docs
+      - name: product-service
+        url: /api/products/v3/api-docs
+      - name: cart-service
+        url: /api/cart/v3/api-docs
+      - name: order-service
+        url: /api/orders/v3/api-docs
+      - name: payment-service
+        url: /api/payments/v3/api-docs
+      - name: inventory-service
+        url: /api/inventory/v3/api-docs
+      - name: notification-service
+        url: /api/notifications/v3/api-docs
+      - name: search-service
+        url: /api/search/v3/api-docs
+      - name: media-service
+        url: /api/media/v3/api-docs
+      - name: promotion-service
+        url: /api/promotions/v3/api-docs

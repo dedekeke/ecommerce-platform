@@ -14,7 +14,7 @@ CREATE TABLE carts (
 CREATE TABLE cart_items (
     id BIGSERIAL PRIMARY KEY,
     cart_id BIGINT NOT NULL,
-    product_id BIGINT NOT NULL,
+    product_id VARCHAR(255) NOT NULL,
     product_name VARCHAR(255) NOT NULL,
     product_sku VARCHAR(100),
     product_image_url VARCHAR(500),

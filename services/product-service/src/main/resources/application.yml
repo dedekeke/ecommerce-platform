@@ -9,9 +9,8 @@ spring:
         enabled: false
 
   datasource:
-    url: ${PRODUCT_DB_URL:jdbc:mysql://localhost:3306/productdb}
-    username: ${MYSQL_USER:root}
-#    or admin
+    url: ${PRODUCT_DB_URL}
+    username: ${MYSQL_USER}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
@@ -42,7 +41,7 @@ spring:
     schemas: productdb
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -60,8 +59,8 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
 
   threads:
     virtual:
@@ -75,7 +74,7 @@ server:
 eureka:
   client:
     serviceUrl:
-      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+      defaultZone: ${EUREKA_SERVER_URL}
     register-with-eureka: true
     fetch-registry: true
   instance:
@@ -106,7 +105,7 @@ management:
       probability: 1.0
   zipkin:
     tracing:
-      endpoint: ${ZIPKIN_BASE_URL:http://localhost:9411}/api/v2/spans
+      endpoint: ${ZIPKIN_BASE_URL}/api/v2/spans
 
 # OpenAPI/Swagger Configuration
 springdoc:
@@ -131,7 +130,7 @@ logging:
 # Security Configuration
 # Set to false to disable Auth0 for local development
 security:
-  enabled: ${SECURITY_ENABLED:false}
+  enabled: ${SECURITY_ENABLED}
 
 # Auth0 Configuration
 auth0:

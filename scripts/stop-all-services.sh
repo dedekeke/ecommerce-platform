@@ -26,14 +26,6 @@ echo -e "${BLUE}Stopping All Services${NC}"
 echo -e "${BLUE}============================================${NC}"
 echo ""
 
-# Check if running in tmux
-SESSION_NAME="ecommerce-services"
-if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    echo -e "${YELLOW}Killing tmux session: $SESSION_NAME${NC}"
-    tmux kill-session -t "$SESSION_NAME"
-    echo -e "${GREEN}✓ Tmux session killed${NC}"
-fi
-
 # Stop background processes
 if [ -d "logs" ]; then
     for pidfile in logs/*.pid; do

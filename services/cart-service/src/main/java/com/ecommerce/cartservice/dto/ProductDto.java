@@ -23,5 +23,5 @@ public class ProductDto {
     private BigDecimal price;
     private Integer stockQuantity;
     private String imageUrl;
-    private String status;
+    private Boolean active;
 }

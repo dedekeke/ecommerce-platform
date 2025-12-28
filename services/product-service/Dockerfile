@@ -1,31 +1,57 @@
-# Simple Dockerfile for Product Service
-# Build the JAR locally first: mvn clean package -DskipTests
+# =============================================================================
+# Optimized Dockerfile for Product Service
+# Following dockerfile-checklist.md best practices
+# =============================================================================
 
-FROM eclipse-temurin:21-jre-jammy
+ARG JAVA_VERSION=21
+ARG ALPINE_VERSION=3.19
+
+# -----------------------------------------------------------------------------
+# Build Stage
+# -----------------------------------------------------------------------------
+FROM maven:3.9-eclipse-temurin-${JAVA_VERSION}-alpine AS builder
+
+WORKDIR /build
+
+COPY pom.xml ./
+COPY common-library/pom.xml ./common-library/
+COPY services/product-service/pom.xml ./services/product-service/
+
+RUN mvn dependency:go-offline -pl services/product-service -am || true
+
+COPY common-library ./common-library
+COPY services/product-service ./services/product-service
+
+RUN mvn clean package -pl services/product-service -am -DskipTests && \
+    mkdir -p /build/output && \
+    cp services/product-service/target/product-service-*.jar /build/output/app.jar
+
+# -----------------------------------------------------------------------------
+# Runtime Stage
+# -----------------------------------------------------------------------------
+FROM eclipse-temurin:${JAVA_VERSION}-jre-alpine
+
+LABEL org.opencontainers.image.title="Product Service" \
+      org.opencontainers.image.description="E-Commerce Product Catalog Service" \
+      org.opencontainers.image.authors="E-Commerce Platform Team" \
+      org.opencontainers.image.source="https://github.com/ecommerce-platform" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.vendor="E-Commerce Platform"
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    mkdir -p /app && chown -R appuser:appgroup /app
 
 WORKDIR /app
 
-# Create non-root user
-RUN groupadd -r productservice && useradd -r -g productservice productservice
+COPY --from=builder --chown=appuser:appgroup /build/output/app.jar ./app.jar
 
-# Copy the pre-built JAR file
-COPY services/product-service/target/product-service-*.jar app.jar
+USER appuser
 
-# Change ownership
-RUN chown -R productservice:productservice /app
-
-# Switch to non-root user
-USER productservice
-
-# Expose port
 EXPOSE 8082
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8082/actuator/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8082/actuator/health || exit 1
 
-# JVM options
-ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC"
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -Djava.security.egd=file:/dev/./urandom"
 
-# Run the application
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

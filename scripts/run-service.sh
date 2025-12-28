@@ -24,12 +24,22 @@ if [ -z "$SERVICE" ]; then
     echo "Usage: $0 <service-name>"
     echo ""
     echo "Available services:"
-    echo "  - user-service"
-    echo "  - product-service"
-    echo "  - cart-service"
-    echo "  - eureka-server"
-    echo "  - config-server"
-    echo "  - api-gateway"
+    echo "  Infrastructure:"
+    echo "    - eureka-server"
+    echo "    - config-server"
+    echo "    - api-gateway"
+    echo ""
+    echo "  Microservices:"
+    echo "    - user-service"
+    echo "    - product-service"
+    echo "    - cart-service"
+    echo "    - order-service"
+    echo "    - payment-service"
+    echo "    - inventory-service"
+    echo "    - notification-service"
+    echo "    - search-service"
+    echo "    - media-service"
+    echo "    - promotion-service"
     exit 1
 fi
 
@@ -46,7 +56,7 @@ fi
 
 # Determine service path and profile
 case "$SERVICE" in
-    user-service|product-service|cart-service)
+    user-service|product-service|cart-service|order-service|payment-service|inventory-service|notification-service|search-service|media-service|promotion-service)
         SERVICE_PATH="services/$SERVICE"
         PROFILE="local"
         ;;

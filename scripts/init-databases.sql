@@ -1,8 +1,9 @@
 -- PostgreSQL Database Initialization Script
 -- Creates all databases required for the e-commerce platform microservices
-
+-- add skip if databases already exist
 -- User Service Database
-CREATE DATABASE userdb;
+CREATE DATABASE userdb IF NOT EXISTS;
+-- skip if all privileges already granted
 GRANT ALL PRIVILEGES ON DATABASE userdb TO admin;
 
 -- Product Service Database

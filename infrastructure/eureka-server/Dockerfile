@@ -1,48 +1,57 @@
-# Multi-stage build for Eureka Server
-FROM maven:3.9.5-eclipse-temurin-21 AS build
+# =============================================================================
+# Optimized Dockerfile for Eureka Server
+# Following dockerfile-checklist.md best practices
+# =============================================================================
+
+ARG JAVA_VERSION=21
+ARG ALPINE_VERSION=3.19
+
+# -----------------------------------------------------------------------------
+# Build Stage
+# -----------------------------------------------------------------------------
+FROM maven:3.9-eclipse-temurin-${JAVA_VERSION}-alpine AS builder
+
+WORKDIR /build
+
+COPY pom.xml ./
+COPY common-library/pom.xml ./common-library/
+COPY infrastructure/eureka-server/pom.xml ./infrastructure/eureka-server/
+
+RUN mvn dependency:go-offline -pl infrastructure/eureka-server -am || true
+
+COPY common-library ./common-library
+COPY infrastructure/eureka-server ./infrastructure/eureka-server
+
+RUN mvn clean package -pl infrastructure/eureka-server -am -DskipTests && \
+    mkdir -p /build/output && \
+    cp infrastructure/eureka-server/target/eureka-server-*.jar /build/output/app.jar
+
+# -----------------------------------------------------------------------------
+# Runtime Stage
+# -----------------------------------------------------------------------------
+FROM eclipse-temurin:${JAVA_VERSION}-jre-alpine
+
+LABEL org.opencontainers.image.title="Eureka Server" \
+      org.opencontainers.image.description="E-Commerce Service Discovery Server" \
+      org.opencontainers.image.authors="E-Commerce Platform Team" \
+      org.opencontainers.image.source="https://github.com/ecommerce-platform" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.vendor="E-Commerce Platform"
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    mkdir -p /app && chown -R appuser:appgroup /app
 
 WORKDIR /app
 
-# Copy parent pom
-COPY pom.xml /app/pom.xml
+COPY --from=builder --chown=appuser:appgroup /build/output/app.jar ./app.jar
 
-# Copy common library
-COPY common-library /app/common-library
+USER appuser
 
-# Copy eureka-server pom and source
-COPY infrastructure/eureka-server/pom.xml /app/infrastructure/eureka-server/
-COPY infrastructure/eureka-server/src /app/infrastructure/eureka-server/src
-
-# Build the application
-WORKDIR /app/infrastructure/eureka-server
-RUN mvn clean package -DskipTests -f pom.xml
-
-# Runtime stage
-FROM eclipse-temurin:21-jre-alpine
-
-WORKDIR /app
-
-# Create non-root user for security
-RUN addgroup -S spring && adduser -S spring -G spring
-
-# Copy the built jar
-COPY --from=build /app/infrastructure/eureka-server/target/*.jar app.jar
-
-# Change ownership
-RUN chown spring:spring app.jar
-
-# Switch to non-root user
-USER spring:spring
-
-# Expose Eureka Server port
 EXPOSE 8761
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:8761/actuator/health || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8761/actuator/health || exit 1
 
-# JVM options for optimal performance with virtual threads
-ENV JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -XX:+UseStringDeduplication"
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -Djava.security.egd=file:/dev/./urandom"
 
-# Run the application
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

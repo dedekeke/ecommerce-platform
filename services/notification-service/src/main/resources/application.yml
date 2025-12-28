@@ -7,11 +7,11 @@ spring:
 
   data:
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/notification_db}
+      uri: ${MONGODB_URI}
       auto-index-creation: true
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
     consumer:
       group-id: notification-service
       auto-offset-reset: earliest
@@ -21,10 +21,10 @@ spring:
         spring.json.trusted.packages: "*"
 
   mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
     properties:
       mail:
         smtp:
@@ -44,7 +44,7 @@ spring:
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+      defaultZone: ${EUREKA_SERVER_URL}
     register-with-eureka: true
     fetch-registry: true
   instance:
@@ -57,12 +57,12 @@ notification:
     max-attempts: 3
     initial-delay-minutes: 1
   sms:
-    provider: ${SMS_PROVIDER:mock}
-    api-key: ${SMS_API_KEY:}
-    api-secret: ${SMS_API_SECRET:}
+    provider: ${SMS_PROVIDER}
+    api-key: ${SMS_API_KEY}
+    api-secret: ${SMS_API_SECRET}
   email:
-    from: ${EMAIL_FROM:noreply@ecommerce-platform.com}
-    from-name: ${EMAIL_FROM_NAME:E-Commerce Platform}
+    from: ${EMAIL_FROM}
+    from-name: ${EMAIL_FROM_NAME}
 
 # Async Configuration
 async:
@@ -89,3 +89,13 @@ management:
   endpoint:
     health:
       show-details: always
+
+# Security Configuration
+# Set to false to disable Auth0 for local development
+security:
+  enabled: ${SECURITY_ENABLED}
+
+# OAuth2 Resource Server
+auth0:
+  domain: ${AUTH0_DOMAIN}
+  audience: ${AUTH0_AUDIENCE}

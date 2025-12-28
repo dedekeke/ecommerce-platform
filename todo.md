@@ -1,82 +1,123 @@
-# TODO - Future Enhancements
+# E-Commerce Platform - TODO & Progress Tracker
 
-## Build & Docker
+> Last updated: 2025-12-22
+
+---
+
+## Completed Tasks
+- [x] Verify Zipkin accessibility (http://localhost:9411) TOP PRIORITY
+- [x] Start Redis container for caching
+- [x] Start all services for testing all the flows
+- [x] Start Kafka container for event messaging
+- [x] Create local profile for all services to bypass Auth0 during development
+---
+
+## In Progress / High Priority
+### Infrastructure - Local Development
+- [ ] Test API Gateway Auth0 integration with real tenant
+
+---
+
+## Pending Tasks (By Priority)
+
+### Priority 1: Testing & Quality
+- [ ] Increase unit test coverage to 80%+
+- [ ] Add contract tests between services
+- [ ] Add E2E tests with Playwright/Cypress
+- [ ] Add performance/load testing suite
+
+### Priority 2: Build & Deployment
 - [ ] Implement multi-stage Docker builds (build JARs inside Docker)
-- [ ] Add .dockerignore files for each service
 - [ ] Optimize Docker layer caching
 - [ ] Create production-ready docker-compose.prod.yml
 - [ ] Add Docker healthcheck for all infrastructure services
+- [ ] Create Kubernetes deployment manifests
+- [ ] Create Helm charts
+- [ ] Implement blue-green deployment strategy
 
-## Services - Missing Implementation
-- [ ] Notification Service (email/SMS)
-- [ ] Search Service (Elasticsearch)
-- [ ] Media Service (image upload/storage)
-- [ ] Promotion Service (discounts/coupons)
-
-## Infrastructure Services - Verify & Test
-- [ ] Test Eureka Server registration
-- [ ] Test Config Server configuration
-- [ ] Test API Gateway routing and Auth0 integration
-- [ ] Verify service discovery works end-to-end
-
-## Integration Tests
-- [x] Fix basic integration tests (30/37 passing - 81% success rate)
-- [x] Fix user creation endpoint and ID type issues
-- [x] Fix product service endpoint mapping and ID types
-- [x] Fix cart service endpoints and ID type consistency
-- [x] Fix order service REST endpoints
-- [ ] **Fix Cart Service Validation Issues** (3 failing tests)
-  - [ ] Fix cart add item 400 errors - missing product details validation
-  - [ ] Implement proper product availability checking when adding to cart
-  - [ ] Fix cart item update validation
-- [ ] **Fix Order Creation Authentication** (2 failing tests)
-  - [ ] Resolve 401 unauthorized errors in order creation flow
-  - [ ] Implement proper authentication token handling for test scenarios
-  - [ ] Add test-friendly authentication bypass for integration tests
-- [ ] **Fix Saga Compensation Tests** (2 failing tests)
-  - [ ] Fix insufficient stock order creation test
-  - [ ] Fix payment failure inventory release compensation
-  - [ ] Fix order cancellation compensation flow
-  - [ ] Verify distributed transaction rollback mechanisms
-- [ ] Fix JMeter API compatibility issues
-- [ ] Add contract tests between services
-- [ ] Add chaos engineering tests
-- [ ] Implement full load testing suite
-- [ ] Add security penetration tests
-
-## Backend Enhancements
-- [ ] Implement Redis caching layer (Day 26)
-- [ ] Add rate limiting in API Gateway (Day 27)
-- [ ] Configure circuit breakers with Resilience4j (Day 28)
-- [ ] Implement batch processing and scheduled jobs (Day 29)
-- [ ] Add distributed caching
-- [ ] Implement API versioning
-- [ ] Add GraphQL API layer
-
-## Observability
+### Priority 3: Observability
 - [ ] Set up Prometheus metrics collection
 - [ ] Create Grafana dashboards
 - [ ] Configure alerting rules
 - [ ] Add custom business metrics
 - [ ] Implement log aggregation (ELK stack)
+- [ ] Complete distributed tracing with Zipkin
 
-## Security
+### Priority 4: Security
 - [ ] Complete Auth0 integration end-to-end
-- [ ] Implement M2M authentication
+- [ ] Implement M2M (machine-to-machine) authentication
 - [ ] Add API key management
 - [ ] Implement RBAC (Role-Based Access Control)
 - [ ] Security audit with OWASP ZAP
 - [ ] Secrets management (Vault/AWS Secrets Manager)
-- [ ] Enable HTTPS/TLS
+- [ ] Enable HTTPS/TLS for all services
 
-## Database
-- [ ] Create database migration scripts (Flyway/Liquibase)
+### Priority 5: Backend Enhancements
+- [ ] Implement Redis caching layer
+- [ ] Add rate limiting in API Gateway
+- [ ] Configure circuit breakers with Resilience4j
+- [ ] Implement batch processing and scheduled jobs
+- [ ] Add API versioning
+- [ ] Add GraphQL API layer (optional)
+
+### Priority 6: Database Optimizations
 - [ ] Add database indexes optimization
-- [ ] Implement connection pooling configuration
+- [ ] Implement connection pooling configuration tuning
 - [ ] Set up database backups
 - [ ] Add read replicas for scalability
+- [ ] Fix N+1 query issues
 
-## Frontend (Week 7-9)
+### Priority 7: Documentation
+- [ ] API documentation with Swagger/OpenAPI (partially done)
+- [ ] Architecture diagrams (C4 model)
+- [ ] Deployment guide
+- [ ] Developer onboarding guide
+- [ ] Operations runbook
+- [ ] Troubleshooting guide
+
+---
+
+## Future Enhancements (Nice to Have)
+
+### Cart Service Enhancements
+- [ ] Anonymous cart support & merge on login
+- [ ] Cart expiration & cleanup scheduled job
+- [ ] Price validation on checkout
+- [ ] Coupon/Promotion integration
+- [ ] Saved for later feature
+- [ ] Cart sharing via link
+- [ ] Multi-currency support
+
+### Search Service Enhancements
+- [ ] Advanced faceting (price ranges, ratings)
+- [ ] Search result caching with Redis
+- [ ] Search analytics and tracking
+- [ ] "Did you mean" suggestions
+- [ ] Fuzzy search for typo tolerance
+- [ ] Multi-language support
+
+### Media Service Enhancements
+- [ ] S3/MinIO integration for production
+- [ ] CDN integration (CloudFront/Cloudflare)
+- [ ] Video file support with transcoding
+- [ ] Batch upload support
+- [ ] Image cropping and editing API
+
+### Promotion Service Enhancements
+- [ ] Order Service integration - add promotion code to orders
+- [ ] Product Service integration - link promotions to categories
+- [ ] Admin dashboard for promotion management
+- [ ] Analytics - track promotion effectiveness
+
+### Advanced Features
+- [ ] Event sourcing for Order Service
+- [ ] CQRS pattern for read-heavy services
+- [ ] Feature flags system
+- [ ] A/B testing framework
+- [ ] Real-time notifications (WebSockets)
+- [ ] Service mesh (Istio/Linkerd)
+
+### Frontend (Future Phase)
 - [ ] Shell app with Module Federation
 - [ ] Auth0 frontend integration
 - [ ] Product Catalog MFE (React)
@@ -85,160 +126,56 @@
 - [ ] User Dashboard MFE (Angular)
 - [ ] Admin Dashboard MFE (Angular)
 
-## Testing
-- [ ] Increase unit test coverage to 80%+
-- [ ] Add mutation testing
-- [ ] E2E tests with Playwright/Cypress
-- [ ] Accessibility testing (WCAG AA)
-- [ ] Browser compatibility testing
+---
 
-## Documentation
-- [ ] API documentation with Swagger/OpenAPI
-- [ ] Architecture diagrams (C4 model)
-- [ ] Deployment guide
-- [ ] Developer onboarding guide
-- [ ] Operations runbook
-- [ ] Troubleshooting guide
+## Quick Reference - Running Services
 
-## CI/CD
-- [ ] GitHub Actions workflow
-- [ ] Automated testing pipeline
-- [ ] Docker image scanning
-- [ ] Automated deployment
-- [ ] Rollback strategy
+### Start All Services Locally
+```bash
+# 1. Start infrastructure (Docker)
+docker-compose up -d
 
-## Performance
-- [ ] Database query optimization
-- [ ] N+1 query elimination
-- [ ] Implement pagination everywhere
-- [ ] Add response caching
-- [ ] CDN integration for static assets
+# 2. Start services (in order)
+java -jar infrastructure/eureka-server/target/*.jar &
+java -jar infrastructure/config-server/target/*.jar &
+java -jar infrastructure/api-gateway/target/*.jar &
 
-## Deployment (Week 10)
-- [ ] Kubernetes deployment manifests
-- [ ] Helm charts
-- [ ] Production environment setup
-- [ ] Staging environment setup
-- [ ] Blue-green deployment
-- [ ] Monitoring and alerting setup
+# 3. Start business services (with local profile for cart)
+java -jar -Dspring.profiles.active=local services/cart-service/target/*.jar &
+java -jar services/user-service/target/*.jar &
+java -jar services/product-service/target/*.jar &
+java -jar services/order-service/target/*.jar &
+java -jar services/inventory-service/target/*.jar &
+java -jar services/notification-service/target/*.jar &
+java -jar services/promotion-service/target/*.jar &
+```
 
-## Known Issues
-- [x] Integration-tests module: JMeter API compatibility fixed, needs verification
-- [x] Order service was missing from docker-compose.yml - FIXED
-- [x] User/Product/Cart services had ID type mismatches (Long vs String) - FIXED
-- [x] Missing REST endpoints for testing (users, orders, cart) - FIXED
-- [ ] **Integration Tests: 7 out of 37 tests still failing (see Integration Tests section for details)**
-  - Cart service validation issues (3 tests)
-  - Order authentication flow (2 tests)
-  - Saga compensation scenarios (2 tests)
-- [ ] Docker build context: Currently requires pre-built JARs
-- [ ] Missing infrastructure service tests
-- [ ] Auth0 configuration needs actual tenant setup
-- [ ] Kafka topics need proper partitioning configuration
+### Service Ports
+| Service | HTTP Port | gRPC Port |
+|---------|-----------|-----------|
+| Eureka Server | 8761 | - |
+| Config Server | 8888 | - |
+| API Gateway | 8080 | - |
+| User Service | 8081 | - |
+| Product Service | 8082 | 9091 |
+| Cart Service | 8083 | - |
+| Order Service | 8084 | - |
+| Inventory Service | 8086 | 9092 |
+| Notification Service | 8087 | - |
+| Promotion Service | 8090 | 9090 |
+| Search Service | 8089 | - |
+| Media Service | 8095 | - |
 
-## Nice to Have
-- [ ] Implement event sourcing for Order Service
-- [ ] Add CQRS pattern for read-heavy services
-- [ ] Implement distributed tracing correlation
-- [ ] Add feature flags
-- [ ] Implement A/B testing framework
-- [ ] Add real-time notifications (WebSockets)
-- [ ] Implement GraphQL subscriptions
-- [ ] Add service mesh (Istio/Linkerd)
+### Health Check URLs
+- Eureka Dashboard: http://localhost:8761
+- Config Server: http://localhost:8888/actuator/health
+- Promotion Service: http://localhost:8090/actuator/health
+- Cart Service: http://localhost:8083/actuator/health
 
-## Search Service Future Enhancements
-### Short-term (Enhancements):
-1. 📝 Write comprehensive integration tests
-2. 📝 Implement advanced faceting (price ranges, ratings)
-3. 📝 Add search result caching with Redis
-4. 📝 Implement search analytics and tracking
-5. 📝 Add "did you mean" suggestions
-6. 📝 Implement fuzzy search for typo tolerance
+---
 
-### Long-term (Optimization):
-1. 📝 Implement search result personalization
-2. 📝 Add machine learning for ranking
-3. 📝 Implement synonym support
-4. 📝 Add multi-language support
-5. 📝 Implement A/B testing for search relevance
-6. 📝 Performance benchmarking and optimization
-
-
-## Media Service Future Enhancements
-
-### Short-term (Next Sprint)
-
-#### Media Service Improvements
-1. **Advanced Image Processing**
-    - Multiple thumbnail sizes (sm: 100px, md: 200px, lg: 400px)
-    - WebP format conversion for better compression
-    - Automatic image optimization
-    - EXIF data extraction and auto-rotation
-    - Watermarking support
-
-2. **Storage Enhancements**
-    - S3/MinIO integration for production
-    - CDN integration (CloudFront/Cloudflare)
-    - Image caching strategy
-    - Lazy loading support
-    - Signed URLs for temporary access
-
-3. **Advanced Features**
-    - Batch upload support
-    - Upload progress tracking
-    - Image cropping and editing API
-    - Video file support with transcoding
-    - PDF preview generation
-    - Duplicate image detection
-
-4. **Performance Optimization**
-    - Async processing with Kafka
-    - Background job queue for heavy operations
-    - Thumbnail generation optimization
-    - Streaming uploads for large files
-
-### Medium-term (Next Quarter)
-
-#### Analytics & Monitoring
-- Track upload/download statistics
-- Popular media analytics
-- Storage usage monitoring
-- Performance metrics
-- Error tracking and alerting
-
-#### Security Enhancements
-- Malware scanning integration
-- Content moderation API
-- Digital signatures for authenticity
-- Advanced access control (time-limited, IP-based)
-- Audit logs for all operations
-
-#### Integration Features
-- Direct integration with Product Service
-- User profile picture management
-- Order invoice/receipt storage
-- Review image attachments
-- Chat attachments
-
-### Long-term (6-12 Months)
-
-#### AI/ML Features
-- Automatic image tagging
-- Object detection in images
-- Adult content filtering
-- Image similarity search
-- Smart cropping based on content
-
-#### Enterprise Features
-- Multi-tenant support
-- Per-tenant storage quotas
-- White-label customization
-- Advanced analytics dashboard
-- Bulk operations API
-
-## Next Steps (Future Integration for promotion-service)
-
-- Order Service Integration: Add promotion code field to orders
-- Product Service Integration: Link promotions to product categories
-- Admin Dashboard: Create/manage promotions UI
-- Analytics: Track promotion effectiveness and ROI
+## Notes
+- All services use Spring Boot 3.2.0 with Java 21
+- Services use virtual threads for improved concurrency
+- Integration tests require all infrastructure containers running
+- Cart service requires `local` profile for Auth0-less development

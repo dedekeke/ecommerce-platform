@@ -1,38 +1,59 @@
-# Stage 1: Build
-FROM maven:3.9-eclipse-temurin-21-alpine AS build
-WORKDIR /app
+# =============================================================================
+# Optimized Dockerfile for Media Service
+# Following dockerfile-checklist.md best practices
+# =============================================================================
 
-# Copy parent pom first for better caching
+ARG JAVA_VERSION=21
+ARG ALPINE_VERSION=3.19
+
+# -----------------------------------------------------------------------------
+# Build Stage
+# -----------------------------------------------------------------------------
+FROM maven:3.9-eclipse-temurin-${JAVA_VERSION}-alpine AS builder
+
+WORKDIR /build
+
 COPY pom.xml ./
+COPY common-library/pom.xml ./common-library/
 COPY services/media-service/pom.xml ./services/media-service/
 
-# Download dependencies
-RUN mvn dependency:go-offline -pl services/media-service
+RUN mvn dependency:go-offline -pl services/media-service -am || true
 
-# Copy source code
-COPY services/media-service/src ./services/media-service/src
+COPY common-library ./common-library
+COPY services/media-service ./services/media-service
 
-# Build the application
-RUN mvn clean package -pl services/media-service -DskipTests
+RUN mvn clean package -pl services/media-service -am -DskipTests && \
+    mkdir -p /build/output && \
+    cp services/media-service/target/media-service-*.jar /build/output/app.jar
 
-# Stage 2: Runtime
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
+# -----------------------------------------------------------------------------
+# Runtime Stage
+# -----------------------------------------------------------------------------
+FROM eclipse-temurin:${JAVA_VERSION}-jre-alpine
 
-# Create storage directory
-RUN mkdir -p /app/storage/thumbnails && \
+LABEL org.opencontainers.image.title="Media Service" \
+      org.opencontainers.image.description="E-Commerce Media Management Service" \
+      org.opencontainers.image.authors="E-Commerce Platform Team" \
+      org.opencontainers.image.source="https://github.com/ecommerce-platform" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.vendor="E-Commerce Platform"
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    mkdir -p /app/storage/thumbnails && \
+    chown -R appuser:appgroup /app && \
     chmod -R 755 /app/storage
 
-# Copy JAR from build stage
-COPY --from=build /app/services/media-service/target/*.jar app.jar
+WORKDIR /app
 
-# Expose port
+COPY --from=builder --chown=appuser:appgroup /build/output/app.jar ./app.jar
+
+USER appuser
+
 EXPOSE 8089
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
-  CMD wget --spider --quiet http://localhost:8089/actuator/health || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8089/actuator/health || exit 1
 
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
-CMD ["--spring.profiles.active=docker"]
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -Djava.security.egd=file:/dev/./urandom"
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

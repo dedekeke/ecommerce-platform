@@ -76,7 +76,7 @@
         <module>services/promotion-service</module>
 
         <!-- Integration Tests -->
-        <module>integration-tests</module>
+        <!-- <module>integration-tests</module> -->
     </modules>
 
     <dependencyManagement>

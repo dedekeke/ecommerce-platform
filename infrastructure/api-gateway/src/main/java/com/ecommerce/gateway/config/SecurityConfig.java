@@ -2,6 +2,7 @@ package com.ecommerce.gateway.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -28,51 +29,71 @@ import java.util.List;
  * - CORS configuration for SPA frontends
  * - Public endpoints for health checks and product browsing
  * - Protected endpoints requiring authentication
+ * - Toggle security with security.enabled property for local development
  */
 @Slf4j
 @Configuration
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
-    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
+    @Value("${security.enabled:true}")
+    private boolean securityEnabled;
+
+    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}")
     private String issuer;
 
-    @Value("${auth0.audience}")
+    @Value("${auth0.audience:}")
     private String audience;
 
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
-        http
-            .authorizeExchange(exchanges -> exchanges
-                // Public endpoints
-                .pathMatchers("/actuator/**").permitAll()
-                .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-                .pathMatchers(HttpMethod.GET, "/api/search/**").permitAll()
-                .pathMatchers(HttpMethod.GET, "/api/promotions/public/**").permitAll()
+        if (!securityEnabled) {
+            log.info("Security is DISABLED - all endpoints are public");
+            http
+                .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(ServerHttpSecurity.CsrfSpec::disable);
+        } else {
+            log.info("Security is ENABLED - JWT authentication required");
+            http
+                .authorizeExchange(exchanges -> exchanges
+                    // Public endpoints
+                    .pathMatchers("/actuator/**").permitAll()
+                    .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/webjars/**").permitAll()
+                    .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                    .pathMatchers(HttpMethod.GET, "/api/search/**").permitAll()
+                    .pathMatchers(HttpMethod.GET, "/api/promotions/public/**").permitAll()
 
-                // Admin endpoints require admin role
-                .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
-                .pathMatchers(HttpMethod.POST, "/api/products/**").hasAuthority("SCOPE_admin")
-                .pathMatchers(HttpMethod.PUT, "/api/products/**").hasAuthority("SCOPE_admin")
-                .pathMatchers(HttpMethod.DELETE, "/api/products/**").hasAuthority("SCOPE_admin")
+                    // Admin endpoints require admin role
+                    .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.POST, "/api/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.PUT, "/api/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.DELETE, "/api/products/**").hasAuthority("SCOPE_admin")
 
-                // All other endpoints require authentication
-                .anyExchange().authenticated()
-            )
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(ServerHttpSecurity.CsrfSpec::disable)
-            .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(jwt -> jwt.jwtDecoder(jwtDecoder()))
-            );
+                    // All other endpoints require authentication
+                    .anyExchange().authenticated()
+                )
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .oauth2ResourceServer(oauth2 -> oauth2
+                    .jwt(jwt -> jwt.jwtDecoder(jwtDecoder()))
+                );
+        }
 
         return http.build();
     }
 
     /**
      * JWT Decoder with custom validators for Auth0
+     * Only created when security is enabled
      */
     @Bean
+    @ConditionalOnProperty(name = "security.enabled", havingValue = "true", matchIfMissing = true)
     public ReactiveJwtDecoder jwtDecoder() {
+        if (issuer == null || issuer.isEmpty()) {
+            throw new IllegalStateException("JWT issuer URI must be configured when security is enabled");
+        }
+
         NimbusReactiveJwtDecoder jwtDecoder = NimbusReactiveJwtDecoder
             .withIssuerLocation(issuer)
             .build();
