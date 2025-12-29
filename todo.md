@@ -14,13 +14,13 @@
 
 ## In Progress / High Priority
 ### Infrastructure - Local Development
-- [ ] Test API Gateway Auth0 integration with real tenant
 
 ---
 
 ## Pending Tasks (By Priority)
 
 ### Priority 1: Testing & Quality
+- [ ] Test API Gateway Auth0 integration with real tenant
 - [ ] Increase unit test coverage to 80%+
 - [ ] Add contract tests between services
 - [ ] Add E2E tests with Playwright/Cypress

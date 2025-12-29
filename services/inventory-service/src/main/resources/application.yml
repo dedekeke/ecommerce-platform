@@ -117,3 +117,4 @@ inventory:
     expired-reservations-cron: "0 */5 * * * *"  # Every 5 minutes
     cleanup-old-reservations-cron: "0 0 2 * * *"  # Daily at 2 AM
     cleanup-days-threshold: 90  # Delete reservations older than 90 days
+    restock-alert-cron: "0 0 6 * * ?"  # Daily at 6 AM

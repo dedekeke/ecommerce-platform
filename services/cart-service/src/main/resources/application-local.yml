@@ -141,3 +141,12 @@ app:
 grpc:
   server:
     port: -1  # Disable gRPC server
+
+# Cart Cleanup Scheduled Job Configuration
+cart:
+  cleanup:
+    expired-cron: "0 0 2 * * ?"  # Daily at 2 AM
+    abandoned-cron: "0 0 3 * * ?"  # Daily at 3 AM
+    abandoned-threshold-hours: 24  # Mark carts as abandoned after 24 hours of inactivity
+  expiration:
+    default-hours: 168  # Default cart expiration: 7 days

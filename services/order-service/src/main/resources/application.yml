@@ -269,6 +269,14 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
+# Scheduled Tasks Configuration
+order:
+  scheduled:
+    abandoned-orders-cron: "0 0 4 * * ?"  # Daily at 4 AM
+    cleanup-old-orders-cron: "0 0 3 * * ?"  # Daily at 3 AM
+    daily-sales-report-cron: "0 0 1 * * ?"  # Daily at 1 AM
+    abandoned-hours-threshold: 24  # Cancel orders pending for more than 24 hours
+
 ---
 # Local Profile
 spring:
