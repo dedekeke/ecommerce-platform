@@ -56,6 +56,10 @@ spring:
     virtual:
       enabled: true
 
+  # Cache Configuration
+  cache:
+    type: redis
+
   # Redis Configuration (for caching user data)
   data:
     redis:

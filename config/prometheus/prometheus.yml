@@ -131,3 +131,11 @@ scrape_configs:
         labels:
           service: 'promotion-service'
           tier: 'business'
+
+  # Redis Exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+          tier: 'infrastructure'

@@ -104,6 +104,80 @@ auth0:
   domain: ${AUTH0_DOMAIN}
   audience: ${AUTH0_AUDIENCE}
 
+# Resilience4j Configuration for external payment gateway calls
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        slowCallRateThreshold: 80
+        slowCallDurationThreshold: 5s
+        waitDurationInOpenState: 60s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - java.net.ConnectException
+          - org.springframework.web.client.RestClientException
+    instances:
+      payment-gateway:
+        baseConfig: default
+        slidingWindowSize: 10
+        failureRateThreshold: 30
+        slowCallDurationThreshold: 10s
+        waitDurationInOpenState: 120s
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 1s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        exponentialMaxWaitDuration: 10s
+        retryExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+    instances:
+      payment-gateway:
+        baseConfig: default
+        maxAttempts: 2
+        waitDuration: 2s
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 10s
+        cancelRunningFuture: true
+    instances:
+      payment-gateway:
+        baseConfig: default
+        timeoutDuration: 30s
+
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: 25
+        maxWaitDuration: 0ms
+    instances:
+      payment-gateway:
+        baseConfig: default
+        maxConcurrentCalls: 10
+
+# OpenAPI Documentation
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    enabled: true
+  show-actuator: false
+
 # Logging
 logging:
   level:

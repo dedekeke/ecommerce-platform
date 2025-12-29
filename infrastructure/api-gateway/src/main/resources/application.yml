@@ -185,7 +185,28 @@ spring:
 # Security Configuration
 # Set to false to disable Auth0 for local development
 security:
-  enabled: ${SECURITY_ENABLED}
+  enabled: ${SECURITY_ENABLED:false}
+
+  # Security Headers Configuration
+  headers:
+    hsts:
+      enabled: ${SECURITY_HSTS_ENABLED:true}
+      max-age: ${SECURITY_HSTS_MAX_AGE:31536000}
+    csp:
+      enabled: ${SECURITY_CSP_ENABLED:true}
+    frame-options: ${SECURITY_FRAME_OPTIONS:DENY}
+
+  # IP Whitelist Configuration for Admin Endpoints
+  ip-whitelist:
+    enabled: ${SECURITY_IP_WHITELIST_ENABLED:true}
+    addresses: ${SECURITY_IP_WHITELIST:127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+    protected-paths: /api/admin/**
+
+# Request Logging Configuration
+request-logging:
+  enabled: ${LOGGING_REQUEST_ENABLED:true}
+  include-headers: ${LOGGING_REQUEST_HEADERS:false}
+  include-query-params: ${LOGGING_REQUEST_PARAMS:true}
 
 # Auth0 Configuration
 auth0:
