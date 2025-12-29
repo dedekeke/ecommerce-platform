@@ -90,6 +90,17 @@ management:
     health:
       show-details: always
 
+# OpenAPI Documentation
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    enabled: true
+  show-actuator: false
+
 # Security Configuration
 # Set to false to disable Auth0 for local development
 security:

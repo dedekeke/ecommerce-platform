@@ -167,6 +167,17 @@ resilience4j:
         baseConfig: default
         maxConcurrentCalls: 10
 
+# OpenAPI Documentation
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    enabled: true
+  show-actuator: false
+
 # Logging
 logging:
   level:

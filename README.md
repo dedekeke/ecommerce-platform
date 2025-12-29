@@ -1,453 +1,261 @@
 # E-Commerce Platform - Microservices Architecture
 
-A production-ready e-commerce platform built with modern microservices architecture, combining React 19 and Angular micro-frontends with Java 21 Spring Boot backend services.
+A production-ready e-commerce platform built with modern microservices architecture, combining Java 21 Spring Boot backend services with React 19 and Angular micro-frontends.
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
-This platform implements a sophisticated microservices architecture with:
+```
+                              ┌──────────────────┐
+                              │   API Gateway    │
+                              │    (Port 8080)   │
+                              └────────┬─────────┘
+                                       │
+         ┌─────────────────────────────┼─────────────────────────────┐
+         │                             │                             │
+         ▼                             ▼                             ▼
+   ┌───────────┐               ┌─────────────┐               ┌───────────┐
+   │   User    │               │   Product   │               │   Cart    │
+   │  Service  │               │   Service   │               │  Service  │
+   │  (8081)   │               │   (8082)    │               │  (8083)   │
+   └───────────┘               └─────────────┘               └─────┬─────┘
+         │                             │                           │
+         │                             │                           ▼
+         │                             │                    ┌───────────┐
+         │                             │                    │   Order   │
+         │                             │                    │  Service  │
+         │                             │                    │  (8084)   │
+         │                             │                    └─────┬─────┘
+         │                             │                          │
+         │                             │        ┌─────────────────┼─────────────────┐
+         │                             │        │                 │                 │
+         │                             │        ▼                 ▼                 ▼
+         │                             │  ┌───────────┐    ┌───────────┐    ┌─────────────┐
+         │                             │  │ Inventory │    │  Payment  │    │Notification │
+         │                             │  │  Service  │    │  Service  │    │   Service   │
+         │                             │  │  (8086)   │    │  (8085)   │    │   (8087)    │
+         │                             │  └───────────┘    └───────────┘    └─────────────┘
+         │                             │
+         │                             ▼
+         │                    ┌─────────────────────────────────────────┐
+         │                    │           Supporting Services           │
+         │                    │  ┌─────────┐ ┌─────────┐ ┌───────────┐ │
+         │                    │  │ Search  │ │  Media  │ │ Promotion │ │
+         │                    │  │ (8088)  │ │ (8089)  │ │  (8090)   │ │
+         │                    │  └─────────┘ └─────────┘ └───────────┘ │
+         │                    └─────────────────────────────────────────┘
+         │
+         ▼
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │                        Infrastructure                               │
+   │  ┌─────────┐ ┌───────────┐ ┌───────┐ ┌───────┐ ┌─────┐ ┌────────┐ │
+   │  │ Eureka  │ │PostgreSQL │ │MongoDB│ │ Redis │ │Kafka│ │Elastic │ │
+   │  │ (8761)  │ │  (5432)   │ │(27017)│ │(6379) │ │(9092│ │ (9200) │ │
+   │  └─────────┘ └───────────┘ └───────┘ └───────┘ └─────┘ └────────┘ │
+   └─────────────────────────────────────────────────────────────────────┘
+```
 
-- **11 Backend Microservices** (Java 21 + Spring Boot 3.2+)
-- **React 19 Micro-Frontends** (Product Catalog, Cart, Checkout)
-- **Angular Micro-Frontends** (User Dashboard, Admin Panel)
-- **gRPC** for high-performance internal communication
-- **REST APIs** for public-facing endpoints
-- **Event-Driven Architecture** with Apache Kafka
-- **Comprehensive Observability** (Prometheus, Grafana, Zipkin)
+### Features
 
-## 📋 Technology Stack
+**Infrastructure**
+- Eureka Server for service discovery
+- API Gateway with Spring Cloud Gateway
+- Auth0 integration for authentication
+- gRPC setup for internal communication
+- Kafka for event-driven architecture
+- Distributed tracing with Zipkin
+- Prometheus & Grafana for monitoring
 
-### Backend
-- **Java 21** with Virtual Threads for improved concurrency
-- **Spring Boot 3.2+** with Spring Cloud
-- **gRPC** for internal service communication
-- **Apache Kafka** for event streaming
-- **PostgreSQL** for transactional data
-- **MongoDB** for document storage
-- **Redis** for caching and rate limiting
-- **Elasticsearch** for product search
+**Core Services**
+- User Service (PostgreSQL + REST)
+- Product Service (PostgreSQL + REST + Redis caching)
+- Cart Service (MongoDB + gRPC)
+- Order Service (PostgreSQL + gRPC + Saga pattern)
+- Payment Service (PostgreSQL + gRPC)
+- Inventory Service (PostgreSQL + gRPC)
 
-### Frontend
-- **React 19** with Vite
-- **Angular** (latest version)
-- **Module Federation** for micro-frontend architecture
-- **Auth0** for authentication
-- **Material-UI** for React components
-- **Zustand** for state management
+**Supporting Services**
+- Notification Service (MongoDB + Kafka consumer)
+- Search Service (Elasticsearch + Kafka sync)
+- Media Service (MongoDB + file storage)
+- Promotion Service (PostgreSQL + Redis caching)
 
-### Infrastructure
-- **Eureka** for service discovery
-- **Spring Cloud Gateway** for API gateway
-- **Docker Compose** for local development
-- **Prometheus + Grafana** for monitoring
-- **Zipkin** for distributed tracing
+**Advanced Features**
+- Redis caching layer with cache warming
+- Rate limiting and security headers
+- Circuit breakers with Resilience4j
+- Scheduled tasks for cleanup and reports
+- Comprehensive API documentation
 
-## 🚀 Quick Start
+## Technology Stack
+
+| Category | Technologies |
+|----------|-------------|
+| **Backend** | Java 21, Spring Boot 3.2+, Spring Cloud |
+| **Communication** | gRPC (internal), REST (public APIs) |
+| **Databases** | PostgreSQL, MongoDB, Elasticsearch |
+| **Caching** | Redis |
+| **Messaging** | Apache Kafka |
+| **Authentication** | Auth0 (OAuth2/JWT) |
+| **Observability** | Prometheus, Grafana, Zipkin |
+| **Resilience** | Resilience4j (Circuit Breaker, Retry, Bulkhead) |
+| **Documentation** | OpenAPI/Swagger |
+
+## Quick Start
+
+See [QUICKSTART.md](QUICKSTART.md) for detailed setup instructions.
 
 ### Prerequisites
+- Java 21 (JDK 21+)
+- Maven 3.8+
+- Docker Desktop
+- Node.js 18+ (for frontend)
 
-- **Java 21** (JDK 21+)
-- **Maven 3.8+**
-- **Docker Desktop** (or Docker + Docker Compose)
-- **Node.js 18+** (for frontend development)
-- **Git**
-
-### 1. Clone the Repository
-
+### Start Infrastructure
 ```bash
-git clone https://github.com/your-org/ecommerce-platform.git
-cd ecommerce-platform
-```
-
-### 2. Setup Environment Variables
-
-```bash
+# Copy environment file
 cp .env.template .env
-# Edit .env and fill in your Auth0 credentials and other configuration
-```
 
-**Important:** You need to set up an Auth0 account and configure:
-- Auth0 Domain
-- Auth0 Client ID
-- Auth0 Client Secret
-- Auth0 API Audience
-
-See [Auth0 Setup Guide](#auth0-setup) for detailed instructions.
-
-### 3. Build the Project
-
-```bash
-# Build all modules
-mvn clean install
-
-# Or build specific module
-cd common-library
-mvn clean install
-```
-
-### 4. Start Infrastructure Services
-
-```bash
-# Start all infrastructure services (PostgreSQL, MongoDB, Kafka, Redis, etc.)
-cd docker
+# Start infrastructure services
 docker-compose up -d
 
-# Check service health
-docker-compose ps
+# Build all services
+mvn clean install -DskipTests
+
+# Run all services
+./scripts/run-all-services.sh
 ```
 
-### 5. Run Microservices
+### Access Points
 
-Each microservice can be run independently:
+| Service | URL | Description |
+|---------|-----|-------------|
+| API Gateway | http://localhost:8080 | Main entry point |
+| Swagger UI | http://localhost:8080/swagger-ui.html | API documentation |
+| Eureka Dashboard | http://localhost:8761 | Service registry |
+| Grafana | http://localhost:3000 | Monitoring dashboards |
+| Zipkin | http://localhost:9411 | Distributed tracing |
 
-```bash
-# Example: Run User Service
-cd services/user-service
-mvn spring-boot:run
-
-# Or using Docker
-docker-compose up user-service
-```
-
-### 6. Access the Application
-
-- **API Gateway:** http://localhost:8080
-- **Eureka Dashboard:** http://localhost:8761
-- **Grafana:** http://localhost:3000 (admin/admin)
-- **Zipkin:** http://localhost:9411
-- **Prometheus:** http://localhost:9090
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 ecommerce-platform/
-├── common-library/              # Shared utilities, DTOs, proto definitions
-│   ├── src/main/java/com/ecommerce/common/
-│   │   ├── dto/                # Common data transfer objects
-│   │   ├── exception/          # Common exceptions
-│   │   ├── util/               # Utility classes
-│   │   └── constants/          # Application constants
-│   └── src/main/proto/         # gRPC proto definitions
-│
-├── infrastructure/              # Infrastructure services
-│   ├── eureka-server/          # Service discovery
-│   ├── config-server/          # Centralized configuration
-│   ├── api-gateway/            # API Gateway with Auth0
-│   └── monitoring/             # Monitoring configurations
-│
-├── services/                    # Business microservices
-│   ├── user-service/           # User management (PostgreSQL + REST)
-│   ├── product-service/        # Product catalog (PostgreSQL + REST)
-│   ├── cart-service/           # Shopping cart (MongoDB + gRPC)
-│   ├── order-service/          # Order processing (PostgreSQL + gRPC)
-│   ├── payment-service/        # Payment processing (PostgreSQL + gRPC)
-│   ├── inventory-service/      # Stock management (PostgreSQL + gRPC)
-│   ├── notification-service/   # Email/SMS notifications (MongoDB + Kafka)
-│   ├── search-service/         # Elasticsearch-based search
-│   ├── media-service/          # Image/file management
-│   └── promotion-service/      # Discounts and promotions
-│
-├── frontend/                    # Frontend applications
-│   ├── shell-app/              # Shell app (React 19 + Module Federation)
-│   ├── product-catalog-mfe/    # Product catalog MFE (React)
-│   ├── cart-mfe/               # Shopping cart MFE (React)
-│   ├── checkout-mfe/           # Checkout flow MFE (React)
-│   ├── user-dashboard-mfe/     # User dashboard MFE (Angular)
-│   └── admin-dashboard-mfe/    # Admin panel MFE (Angular)
-│
-├── docker/                      # Docker configurations
-│   ├── docker-compose.yml      # Main infrastructure services
-│   ├── docker-compose.search.yml
-│   └── docker-compose.monitoring.yml
-│
-├── docs/                        # Documentation
-│   ├── architecture/           # Architecture diagrams
-│   ├── api/                    # API documentation
-│   └── guides/                 # Development guides
-│
-├── .env.template               # Environment variables template
-├── .gitignore                  # Git ignore rules
-├── pom.xml                     # Parent Maven POM
-└── README.md                   # This file
+├── common-library/          # Shared utilities, DTOs, proto definitions
+├── infrastructure/
+│   ├── eureka-server/       # Service discovery
+│   ├── config-server/       # Centralized configuration
+│   └── api-gateway/         # API Gateway with Auth0
+├── services/
+│   ├── user-service/        # User management (PostgreSQL)
+│   ├── product-service/     # Product catalog (PostgreSQL + Redis)
+│   ├── cart-service/        # Shopping cart (MongoDB + gRPC)
+│   ├── order-service/       # Order processing (PostgreSQL + gRPC)
+│   ├── payment-service/     # Payment processing (PostgreSQL + gRPC)
+│   ├── inventory-service/   # Stock management (PostgreSQL + gRPC)
+│   ├── notification-service/# Email/SMS (MongoDB + Kafka)
+│   ├── search-service/      # Product search (Elasticsearch)
+│   ├── media-service/       # File storage (MongoDB)
+│   └── promotion-service/   # Discounts (PostgreSQL + Redis)
+├── scripts/                 # Development and deployment scripts
+├── docker/                  # Docker configurations
+└── docs/                    # Documentation
 ```
 
-## 🔧 Development
+## Key Patterns & Features
 
-### Building Individual Services
+### Virtual Threads (Java 21)
+All services use virtual threads for improved concurrency on I/O-bound operations. See [docs/VIRTUAL_THREADS.md](docs/VIRTUAL_THREADS.md) for details.
 
-```bash
-# Build a specific service
-cd services/user-service
-mvn clean package
+### Resilience Patterns
+- **Circuit Breaker**: Prevents cascade failures
+- **Retry with Backoff**: Handles transient failures
+- **Bulkhead**: Limits concurrent calls
+- **Time Limiter**: Enforces timeouts
 
-# Run tests
-mvn test
+See [docs/RESILIENCE_PATTERNS.md](docs/RESILIENCE_PATTERNS.md) for configuration details.
 
-# Run with specific profile
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
-```
+### Caching Strategy
+- Product catalog: 1-hour TTL
+- Active promotions: 30-minute TTL
+- User profiles: 15-minute TTL
+- Cache warming on startup
+
+See [docs/CACHING_STRATEGY.md](docs/CACHING_STRATEGY.md) for implementation details.
+
+### Scheduled Tasks
+- Cart cleanup: Daily at 2 AM
+- Expired reservations: Every 15 minutes
+- Abandoned orders: Daily at 4 AM
+- Sales reports: Daily at 1 AM
+
+See [docs/SCHEDULED_TASKS.md](docs/SCHEDULED_TASKS.md) for the complete list.
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [QUICKSTART.md](QUICKSTART.md) | Getting started guide |
+| [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) | API reference |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
+| [docs/VIRTUAL_THREADS.md](docs/VIRTUAL_THREADS.md) | Virtual threads guide |
+| [docs/RESILIENCE_PATTERNS.md](docs/RESILIENCE_PATTERNS.md) | Resilience patterns |
+| [docs/CACHING_STRATEGY.md](docs/CACHING_STRATEGY.md) | Caching implementation |
+| [docs/SECURITY.md](docs/SECURITY.md) | Security architecture |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues |
+| [scripts/README.md](scripts/README.md) | Development scripts |
+
+## Service Ports
+
+| Service | HTTP Port | gRPC Port |
+|---------|-----------|-----------|
+| API Gateway | 8080 | - |
+| Eureka Server | 8761 | - |
+| Config Server | 8888 | - |
+| User Service | 8081 | - |
+| Product Service | 8082 | 9091 |
+| Cart Service | 8083 | - |
+| Order Service | 8084 | - |
+| Payment Service | 8085 | - |
+| Inventory Service | 8086 | 9092 |
+| Notification Service | 8087 | - |
+| Search Service | 8088 | - |
+| Media Service | 8089 | - |
+| Promotion Service | 8090 | 9090 |
+
+## Development
 
 ### Running Tests
-
 ```bash
-# Run all tests
+# Unit tests
 mvn test
 
-# Run integration tests
+# Integration tests
 mvn verify
 
-# Generate code coverage report
+# Coverage report
 mvn jacoco:report
-# Report will be in target/site/jacoco/index.html
 ```
 
-### Working with gRPC
-
+### Building Docker Images
 ```bash
-# Generate gRPC classes from proto files
-cd common-library
-mvn protobuf:compile
-mvn protobuf:compile-custom
-
-# Generated files will be in:
-# target/generated-sources/protobuf/java/
-# target/generated-sources/protobuf/grpc-java/
+./scripts/build-all.sh --deploy
 ```
 
-### Database Migrations
-
+### Checking Service Health
 ```bash
-# PostgreSQL databases are automatically created via init script
-# Location: docker/init-databases.sql
-
-# Access PostgreSQL
-docker exec -it postgres psql -U admin -d userdb
-
-# Access MongoDB
-docker exec -it mongodb mongosh -u admin -p admin123
+./scripts/check-services.sh
 ```
 
-## 🔐 Auth0 Setup
+## Upcoming
+- Frontend Shell and React Micro-Frontends
+- Angular Micro-Frontends
+- Testing, Optimization, Documentation
 
-### 1. Create Auth0 Account
+See [plan.md](plan.md) for the complete development plan.
 
-Visit [auth0.com](https://auth0.com) and create a free account.
-
-### 2. Create API
-
-1. Go to **Applications > APIs**
-2. Click **Create API**
-3. Name: `E-Commerce Platform API`
-4. Identifier: `https://api.ecommerce-platform.com`
-5. Signing Algorithm: `RS256`
-
-### 3. Create Application (SPA)
-
-1. Go to **Applications > Applications**
-2. Click **Create Application**
-3. Name: `E-Commerce Frontend`
-4. Type: **Single Page Application**
-5. Configure:
-   - Allowed Callback URLs: `http://localhost:3000/callback`
-   - Allowed Logout URLs: `http://localhost:3000`
-   - Allowed Web Origins: `http://localhost:3000`
-
-### 4. Create Application (M2M)
-
-1. Create another application
-2. Type: **Machine to Machine**
-3. Authorize for your API
-4. Grant all permissions
-
-### 5. Update .env File
-
-Copy the credentials to your `.env` file:
-```
-AUTH0_DOMAIN=your-tenant.auth0.com
-AUTH0_CLIENT_ID=<from SPA app>
-AUTH0_CLIENT_SECRET=<from SPA app>
-AUTH0_AUDIENCE=https://api.ecommerce-platform.com
-AUTH0_M2M_CLIENT_ID=<from M2M app>
-AUTH0_M2M_CLIENT_SECRET=<from M2M app>
-```
-
-## 📊 Monitoring and Observability
-
-### Prometheus Metrics
-
-Access Prometheus at http://localhost:9090
-
-Example queries:
-```promql
-# Request rate
-rate(http_server_requests_seconds_count[5m])
-
-# Error rate
-rate(http_server_requests_seconds_count{status="500"}[5m])
-
-# JVM memory usage
-jvm_memory_used_bytes
-```
-
-### Grafana Dashboards
-
-Access Grafana at http://localhost:3000 (admin/admin)
-
-Pre-configured dashboards:
-- JVM Metrics
-- HTTP Request Metrics
-- Database Metrics
-- Kafka Metrics
-
-### Distributed Tracing
-
-Access Zipkin at http://localhost:9411
-
-View traces across all microservices to debug performance issues.
-
-## 🔍 API Documentation
-
-Once the services are running, access Swagger UI:
-
-- API Gateway: http://localhost:8080/swagger-ui.html
-- User Service: http://localhost:8081/swagger-ui.html
-- Product Service: http://localhost:8082/swagger-ui.html
-
-## 🧪 Testing
-
-### Unit Tests
-
-```bash
-mvn test
-```
-
-### Integration Tests
-
-```bash
-mvn verify
-```
-
-Uses Testcontainers to spin up PostgreSQL, MongoDB, Kafka, etc.
-
-### E2E Tests (Frontend)
-
-```bash
-cd frontend/shell-app
-npm run test:e2e
-```
-
-## 🚢 Deployment
-
-### Docker Build
-
-```bash
-# Build all services
-docker-compose build
-
-# Build specific service
-docker-compose build user-service
-
-# Run all services
-docker-compose up -d
-```
-
-### Production Deployment
-
-See [docs/deployment/production.md](docs/deployment/production.md) for production deployment guide.
-
-## 📖 Additional Documentation
-
-- [Architecture Overview](docs/architecture/overview.md)
-- [Service Communication](docs/architecture/service-communication.md)
-- [gRPC vs REST Decision Guide](docs/architecture/grpc-vs-rest.md)
-- [Virtual Threads Guide](docs/development/virtual-threads.md)
-- [Security Best Practices](docs/security/best-practices.md)
-- [Troubleshooting Guide](docs/troubleshooting.md)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 Development Plan
-
-This project is being developed over 10 weeks following a detailed plan. See [plan.md](plan.md) for the complete development schedule.
-
-Current Status: **Week 1, Day 5 - Complete ✅**
-
-### Recent Completions
-- ✅ Day 5: gRPC Setup and Testing Infrastructure
-  - gRPC proto definitions for Cart, Order, Payment, Inventory services
-  - Generated 92 Java classes from proto files
-  - Testcontainers setup for PostgreSQL, MySQL, MongoDB, Kafka
-  - Base test classes for all database types
-  - GitHub Actions CI/CD pipeline
-  - Infrastructure integration tests
-  - [Day 5 Summary](docs/DAY_5_SUMMARY.md)
-
-- ✅ Day 4: API Gateway with Auth0 Integration
-  - Spring Cloud Gateway setup with JWT validation
-  - Complete route configuration for all 11 microservices
-  - Token relay implementation
-  - CORS configuration for all micro-frontends
-  - [Day 4 Summary](docs/DAY_4_SUMMARY.md)
-  - [Auth0 Setup Guide](docs/AUTH0_SETUP.md)
-
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 👥 Team
-
-- Backend Team: Java 21, Spring Boot, gRPC
-- Frontend Team: React 19, Angular, Module Federation
-- DevOps Team: Docker, Kubernetes, CI/CD
-- QA Team: Testing, Security, Performance
-
-## 🆘 Support
-
-For issues and questions:
-- Create an issue on GitHub
-- Contact: dev@ecommerce-platform.com
-- Slack: #ecommerce-platform
-
-## 🎯 Project Goals
-
-- ✅ Production-ready microservices architecture
-- ✅ Modern frontend with micro-frontends
-- ✅ High performance with gRPC and virtual threads
-- ✅ Comprehensive observability
-- ✅ Scalable and maintainable codebase
-- ✅ Security-first approach with Auth0
-- ✅ Complete test coverage (>80%)
-
-## 🔮 Roadmap
-
-### Week 1-2
-- [x] Infrastructure setup (PostgreSQL, MySQL, MongoDB, Redis, Kafka)
-- [x] Common library
-- [x] Service discovery (Eureka Server)
-- [x] API Gateway with Spring Cloud Gateway
-- [x] Auth0 integration with JWT validation
-- [x] gRPC setup and proto definitions (Cart, Order, Payment, Inventory)
-- [x] Testing infrastructure (Testcontainers, JaCoCo, GitHub Actions)
-- [ ] Config Server
-- [ ] Common security configuration
-- [ ] Virtual threads configuration
-
-### Week 3-5
-- [ ] Core services (User, Product, Cart)
-- [ ] Transaction services (Order, Payment, Inventory)
-- [ ] Supporting services
-
-### Week 6-10
-- [ ] Frontend development
-- [ ] Testing and optimization
-- [ ] Documentation
-- [ ] Production deployment
-
 ---
 
-**Built with ❤️ using Java 21, Spring Boot, React 19, and Angular**
+**Built with Java 21, Spring Boot, gRPC, and Virtual Threads**
