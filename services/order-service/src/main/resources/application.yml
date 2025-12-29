@@ -145,6 +145,11 @@ order:
   shipping:
     base-cost: 5.99
     free-threshold: 50.00
+  scheduled:
+    abandoned-orders-cron: "0 0 4 * * ?"
+    cleanup-old-orders-cron: "0 0 3 * * ?"
+    daily-sales-report-cron: "0 0 1 * * ?"
+    abandoned-hours-threshold: 24
 
 # Promotion Service URL
 promotion:
@@ -269,13 +274,7 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
-# Scheduled Tasks Configuration
-order:
-  scheduled:
-    abandoned-orders-cron: "0 0 4 * * ?"  # Daily at 4 AM
-    cleanup-old-orders-cron: "0 0 3 * * ?"  # Daily at 3 AM
-    daily-sales-report-cron: "0 0 1 * * ?"  # Daily at 1 AM
-    abandoned-hours-threshold: 24  # Cancel orders pending for more than 24 hours
+# Scheduled Tasks Configuration is under the order: key above
 
 ---
 # Local Profile

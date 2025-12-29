@@ -1,26 +1,40 @@
 # E-Commerce Platform - TODO & Progress Tracker
 
-> Last updated: 2025-12-22
+> Last updated: 2025-12-29 
 
 ---
 
 ## Completed Tasks
-- [x] Verify Zipkin accessibility (http://localhost:9411) TOP PRIORITY
+
+### Day 29 - Auth0 Integration & E2E Testing
+- [x] Test API Gateway Auth0 integration with real tenant
+- [x] Implement M2M (machine-to-machine) authentication
+- [x] Auth0 M2M token integration verified end-to-end
+- [x] Fixed API Gateway stripPrefix routing issue in `GatewayRoutesConfig.java`
+- [x] Fixed MySQL localhost authentication issue for Product Service (run in Docker)
+- [x] E2E Order Flow Testing - All 7 services running locally
+- [x] Implement batch processing and scheduled jobs
+- [x] Cart expiration & cleanup scheduled job
+
+### Previous Days
+- [x] Verify Zipkin accessibility (http://localhost:9411)
 - [x] Start Redis container for caching
 - [x] Start all services for testing all the flows
 - [x] Start Kafka container for event messaging
 - [x] Create local profile for all services to bypass Auth0 during development
+
 ---
 
 ## In Progress / High Priority
-### Infrastructure - Local Development
+- None currently
 
 ---
 
 ## Pending Tasks (By Priority)
 
 ### Priority 1: Testing & Quality
-- [ ] Test API Gateway Auth0 integration with real tenant
+- [x] Test API Gateway Auth0 integration with real tenant
+- [x] E2E Order Flow Testing with Auth0 M2M  
 - [ ] Increase unit test coverage to 80%+
 - [ ] Add contract tests between services
 - [ ] Add E2E tests with Playwright/Cypress
@@ -44,8 +58,9 @@
 - [ ] Complete distributed tracing with Zipkin
 
 ### Priority 4: Security
-- [ ] Complete Auth0 integration end-to-end
-- [ ] Implement M2M (machine-to-machine) authentication
+- [x] Complete Auth0 integration end-to-end  
+- [x] Implement M2M (machine-to-machine) authentication  
+- [x] API Gateway JWT validation with Auth0  
 - [ ] Add API key management
 - [ ] Implement RBAC (Role-Based Access Control)
 - [ ] Security audit with OWASP ZAP
@@ -54,9 +69,10 @@
 
 ### Priority 5: Backend Enhancements
 - [ ] Implement Redis caching layer
-- [ ] Add rate limiting in API Gateway
+- [x] Add rate limiting in API Gateway 
 - [ ] Configure circuit breakers with Resilience4j
-- [ ] Implement batch processing and scheduled jobs
+- [x] Implement batch processing and scheduled jobs  
+- [x] Cart expiration & cleanup scheduled job  
 - [ ] Add API versioning
 - [ ] Add GraphQL API layer (optional)
 
@@ -81,7 +97,7 @@
 
 ### Cart Service Enhancements
 - [ ] Anonymous cart support & merge on login
-- [ ] Cart expiration & cleanup scheduled job
+- [x] Cart expiration & cleanup scheduled job
 - [ ] Price validation on checkout
 - [ ] Coupon/Promotion integration
 - [ ] Saved for later feature
@@ -179,3 +195,18 @@ java -jar services/promotion-service/target/*.jar &
 - Services use virtual threads for improved concurrency
 - Integration tests require all infrastructure containers running
 - Cart service requires `local` profile for Auth0-less development
+
+### Running Product Service (MySQL Issue Workaround)
+## todo  
+- [ ] fix this later
+- Product service must run in Docker to connect to MySQL:
+```bash
+docker run -d --name product-service-test \
+  --network ecommerce-platform_ecommerce-network \
+  -v $(pwd)/services/product-service/target/product-service-1.0.0-SNAPSHOT.jar:/app/app.jar \
+  -e PRODUCT_DB_URL=jdbc:mysql://ecommerce-mysql:3306/productdb \
+  -e MYSQL_USER=admin -e MYSQL_PASSWORD=admin123 \
+  -e SECURITY_ENABLED=false -e SERVER_PORT=8082 \
+  -p 8082:8082 eclipse-temurin:21-jdk-alpine \
+  java -Dsecurity.enabled=false -jar /app/app.jar
+```

@@ -27,7 +27,6 @@ public class GatewayRoutesConfig {
             .route("user-service", r -> r
                 .path("/api/users/**")
                 .filters(f -> f
-                    .stripPrefix(1)  // Remove /api prefix
                     .tokenRelay()    // Propagate JWT token
                 )
                 .uri("lb://user-service")
@@ -37,7 +36,6 @@ public class GatewayRoutesConfig {
             .route("product-service", r -> r
                 .path("/api/products/**")
                 .filters(f -> f
-                    .stripPrefix(1)
                     .tokenRelay()
                 )
                 .uri("lb://product-service")
@@ -45,9 +43,8 @@ public class GatewayRoutesConfig {
 
             // Cart Service Routes
             .route("cart-service", r -> r
-                .path("/api/cart/**")
+                .path("/api/cart/**", "/api/carts/**")
                 .filters(f -> f
-                    .stripPrefix(1)
                     .tokenRelay()
                 )
                 .uri("lb://cart-service")
@@ -57,7 +54,6 @@ public class GatewayRoutesConfig {
             .route("order-service", r -> r
                 .path("/api/orders/**")
                 .filters(f -> f
-                    .stripPrefix(1)
                     .tokenRelay()
                 )
                 .uri("lb://order-service")
@@ -67,7 +63,6 @@ public class GatewayRoutesConfig {
             .route("payment-service", r -> r
                 .path("/api/payments/**")
                 .filters(f -> f
-                    .stripPrefix(1)
                     .tokenRelay()
                 )
                 .uri("lb://payment-service")
@@ -77,7 +72,6 @@ public class GatewayRoutesConfig {
             .route("inventory-service", r -> r
                 .path("/api/inventory/**")
                 .filters(f -> f
-                    .stripPrefix(1)
                     .tokenRelay()
                 )
                 .uri("lb://inventory-service")
@@ -87,7 +81,6 @@ public class GatewayRoutesConfig {
             .route("notification-service", r -> r
                 .path("/api/notifications/**")
                 .filters(f -> f
-                    .stripPrefix(1)
                     .tokenRelay()
                 )
                 .uri("lb://notification-service")
@@ -97,7 +90,6 @@ public class GatewayRoutesConfig {
             .route("search-service", r -> r
                 .path("/api/search/**")
                 .filters(f -> f
-                    .stripPrefix(1)
                     .tokenRelay()
                 )
                 .uri("lb://search-service")
@@ -107,7 +99,6 @@ public class GatewayRoutesConfig {
             .route("media-service", r -> r
                 .path("/api/media/**")
                 .filters(f -> f
-                    .stripPrefix(1)
                     .tokenRelay()
                 )
                 .uri("lb://media-service")
@@ -117,19 +108,19 @@ public class GatewayRoutesConfig {
             .route("promotion-service", r -> r
                 .path("/api/promotions/**")
                 .filters(f -> f
-                    .stripPrefix(1)
                     .tokenRelay()
                 )
                 .uri("lb://promotion-service")
             )
 
             // Admin routes - separate for better security control
+            // These rewrite /api/admin/* to /api/* for the downstream services
             .route("admin-products", r -> r
                 .path("/api/admin/products/**")
                 .and()
                 .method(HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE)
                 .filters(f -> f
-                    .stripPrefix(2)  // Remove /api/admin
+                    .rewritePath("/api/admin/(?<segment>.*)", "/api/${segment}")
                     .tokenRelay()
                 )
                 .uri("lb://product-service")
@@ -138,7 +129,7 @@ public class GatewayRoutesConfig {
             .route("admin-inventory", r -> r
                 .path("/api/admin/inventory/**")
                 .filters(f -> f
-                    .stripPrefix(2)
+                    .rewritePath("/api/admin/(?<segment>.*)", "/api/${segment}")
                     .tokenRelay()
                 )
                 .uri("lb://inventory-service")
@@ -147,7 +138,7 @@ public class GatewayRoutesConfig {
             .route("admin-orders", r -> r
                 .path("/api/admin/orders/**")
                 .filters(f -> f
-                    .stripPrefix(2)
+                    .rewritePath("/api/admin/(?<segment>.*)", "/api/${segment}")
                     .tokenRelay()
                 )
                 .uri("lb://order-service")
@@ -156,7 +147,7 @@ public class GatewayRoutesConfig {
             .route("admin-users", r -> r
                 .path("/api/admin/users/**")
                 .filters(f -> f
-                    .stripPrefix(2)
+                    .rewritePath("/api/admin/(?<segment>.*)", "/api/${segment}")
                     .tokenRelay()
                 )
                 .uri("lb://user-service")

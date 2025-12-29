@@ -203,11 +203,10 @@ security:
     protected-paths: /api/admin/**
 
 # Request Logging Configuration
-logging:
-  request:
-    enabled: ${LOGGING_REQUEST_ENABLED:true}
-    include-headers: ${LOGGING_REQUEST_HEADERS:false}
-    include-query-params: ${LOGGING_REQUEST_PARAMS:true}
+request-logging:
+  enabled: ${LOGGING_REQUEST_ENABLED:true}
+  include-headers: ${LOGGING_REQUEST_HEADERS:false}
+  include-query-params: ${LOGGING_REQUEST_PARAMS:true}
 
 # Auth0 Configuration
 auth0:
