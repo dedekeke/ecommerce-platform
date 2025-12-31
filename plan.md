@@ -2,7 +2,7 @@
 
 ## Progress Summary (Updated: 2025-12-30)
 
-### Current Status: Week 7, Day 33 Complete
+### Current Status: Week 7, Day 34 Complete
 
 | Week | Days | Status | Description |
 |------|------|--------|-------------|
@@ -73,6 +73,19 @@
 - [x] Store selectors for optimized re-renders
 - [x] useNotifications custom hook
 - [x] 104 unit tests passing
+
+**Day 34 - API Client and Interceptors (Complete)**
+- [x] API client with axios (baseURL, timeout, headers, retry logic)
+- [x] Request interceptor for Auth0 token injection
+- [x] Response interceptor for 401/403 error handling
+- [x] Request/response logging in development mode
+- [x] ProductService (10 methods: getProducts, search, categories, etc.)
+- [x] CartService (8 methods: getCart, addItem, sync, merge, etc.)
+- [x] OrderService (8 methods: getOrders, create, cancel, track, etc.)
+- [x] UserService (12 methods: profile, addresses, wishlist, etc.)
+- [x] Error handling utilities with toast notifications
+- [x] useApiSetup hook for Auth0 integration
+- [x] 234 unit tests passing (130 new API tests)
 
 ### Next Steps (Week 7+)
 

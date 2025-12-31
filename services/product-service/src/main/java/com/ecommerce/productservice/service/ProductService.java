@@ -30,9 +30,10 @@ public class ProductService {
     private final com.ecommerce.productservice.event.ProductEventPublisher eventPublisher;
 
     /**
-     * Get product by ID with caching.
+     * Get product by ID.
+     * Note: Caching temporarily disabled due to serialization issues with Hibernate proxies.
      */
-    @Cacheable(value = "products", key = "#id")
+    // @Cacheable(value = "products", key = "#id") // TODO: Re-enable after fixing DTO caching
     public Product getProductById(Long id) {
         log.debug("Fetching product by ID: {}", id);
         return productRepository.findById(id)
@@ -40,9 +41,10 @@ public class ProductService {
     }
 
     /**
-     * Get product by SKU with caching.
+     * Get product by SKU.
+     * Note: Caching temporarily disabled due to serialization issues with Hibernate proxies.
      */
-    @Cacheable(value = "products", key = "#sku")
+    // @Cacheable(value = "products", key = "#sku") // TODO: Re-enable after fixing DTO caching
     public Product getProductBySku(String sku) {
         log.debug("Fetching product by SKU: {}", sku);
         return productRepository.findBySku(sku)

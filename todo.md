@@ -1,16 +1,31 @@
 # E-Commerce Platform - TODO & Progress Tracker
 
-> Last updated: 2025-12-30 (Day 33 Complete)
+> Last updated: 2025-12-30 (Day 34 Complete)
 
 ---
 
 ## Current Status: Week 7 In Progress - Frontend Development
 
-Frontend development continues with Zustand state management complete.
+Frontend development continues with API client and services complete.
 
 ---
 
 ## Completed Tasks
+
+### Day 34 - API Client and Interceptors
+- [x] Create API client with axios and base configuration (baseURL, timeout, headers)
+- [x] Implement request interceptor to add Auth0 token to all requests
+- [x] Implement response interceptor for error handling (401/403 callbacks)
+- [x] Add request/response logging in development mode
+- [x] Add retry logic with axios-retry (3 retries, exponential backoff)
+- [x] Create ProductService class with TDD (10 methods)
+- [x] Create CartService class with TDD (8 methods)
+- [x] Create OrderService class with TDD (8 methods)
+- [x] Create UserService class with TDD (12 methods)
+- [x] Implement error handling utilities with toast notifications
+- [x] Create useApiSetup hook for Auth0 integration
+- [x] Write comprehensive tests for all API services (130 tests)
+- [x] Total tests: 234 passing
 
 ### Day 33 - Zustand Global State Management
 - [x] Create store types definition (User, CartItem, Notification, ThemeMode, etc.)
@@ -123,7 +138,7 @@ Frontend development continues with Zustand state management complete.
 - [x] Implement Auth0Provider in Shell App
 - [x] Create Material-UI theme and layout (Day 32)
 - [x] Implement Zustand stores (auth, cart, notifications, preferences) (Day 33)
-- [ ] Create API client with axios interceptors (Day 34)
+- [x] Create API client with axios interceptors (Day 34)
 - [ ] Micro-frontend loading infrastructure (Day 35)
 - [ ] Product Catalog MFE (React) (Day 36-37)
 - [ ] Shopping Cart MFE (React) (Day 38)
