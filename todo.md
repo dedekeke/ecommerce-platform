@@ -1,16 +1,32 @@
 # E-Commerce Platform - TODO & Progress Tracker
 
-> Last updated: 2025-12-30 (Day 34 Complete)
+> Last updated: 2026-01-11 (Day 35 - React Class Components Refactored)
 
 ---
 
-## Current Status: Week 7 In Progress - Frontend Development
+## Current Status: Week 7 Complete - Frontend Shell Development
 
-Frontend development continues with API client and services complete.
+Frontend shell development complete with MFE loading infrastructure.
 
 ---
 
 ## Completed Tasks
+
+### Day 35 - Micro-Frontend Loading Infrastructure
+- [x] Create MFE types and registry configuration
+- [x] Implement MicroFrontendLoader component with React.lazy and Suspense
+- [x] Implement MFEErrorBoundary with retry functionality and max retries
+- [x] Implement useMFEPreload hook for on-hover preloading
+- [x] Create moduleLoader utility with caching and preloading
+- [x] Integrate MFE loading into App.tsx routes
+- [x] Update routes for productCatalog, cart, checkout, userDashboard, adminDashboard
+- [x] Write comprehensive tests (66 new tests)
+- [x] Total tests: 300 passing
+- [x] **Refactored all class components to functional components** (2026-01-11)
+  - Converted `MFEErrorBoundary` from class to functional using `react-error-boundary`
+  - Converted `ErrorBoundary` from class to functional using `react-error-boundary`
+  - Added `react-error-boundary` package for modern error boundary support
+  - All 300 tests still passing after refactoring
 
 ### Day 34 - API Client and Interceptors
 - [x] Create API client with axios and base configuration (baseURL, timeout, headers)
@@ -139,7 +155,7 @@ Frontend development continues with API client and services complete.
 - [x] Create Material-UI theme and layout (Day 32)
 - [x] Implement Zustand stores (auth, cart, notifications, preferences) (Day 33)
 - [x] Create API client with axios interceptors (Day 34)
-- [ ] Micro-frontend loading infrastructure (Day 35)
+- [x] Micro-frontend loading infrastructure (Day 35)
 - [ ] Product Catalog MFE (React) (Day 36-37)
 - [ ] Shopping Cart MFE (React) (Day 38)
 - [ ] Checkout MFE (React) (Day 39)
