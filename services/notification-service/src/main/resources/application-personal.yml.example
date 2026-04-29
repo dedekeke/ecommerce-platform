@@ -1,0 +1,15 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/notificationdb
+
+  mail:
+    username: <smtp-user>
+    password: <smtp-password>
+
+notification:
+  sms:
+    api-secret: <sms-api-secret>
+
+security:
+  enabled: false
