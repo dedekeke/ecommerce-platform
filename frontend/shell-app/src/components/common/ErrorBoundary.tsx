@@ -1,4 +1,5 @@
-import { Component, type ReactNode } from 'react'
+import { useCallback, type ReactNode } from 'react'
+import { ErrorBoundary as ReactErrorBoundary, type FallbackProps } from 'react-error-boundary'
 import { Box, Typography, Button, Container, Paper } from '@mui/material'
 import { Error as ErrorIcon, Home as HomeIcon, Refresh as RefreshIcon } from '@mui/icons-material'
 
@@ -7,118 +8,98 @@ interface Props {
   fallback?: ReactNode
 }
 
-interface State {
-  hasError: boolean
-  error: Error | null
-}
-
-export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props)
-    this.state = { hasError: false, error: null }
-  }
-
-  static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error }
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo)
-  }
-
-  handleRetry = () => {
-    this.setState({ hasError: false, error: null })
-  }
-
-  handleGoHome = () => {
+function ErrorFallbackComponent({ error, resetErrorBoundary }: FallbackProps) {
+  const handleGoHome = () => {
     window.location.href = '/'
   }
 
-  render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback
-      }
+  return (
+    <Container maxWidth="sm">
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '60vh',
+          textAlign: 'center',
+        }}
+      >
+        <Paper
+          elevation={0}
+          sx={{
+            p: 4,
+            bgcolor: 'error.light',
+            color: 'error.contrastText',
+            borderRadius: 2,
+            mb: 3,
+          }}
+        >
+          <ErrorIcon sx={{ fontSize: 64 }} />
+        </Paper>
 
-      return (
-        <Container maxWidth="sm">
-          <Box
+        <Typography variant="h4" gutterBottom fontWeight={600}>
+          Something went wrong
+        </Typography>
+
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+          We're sorry, but something unexpected happened.
+        </Typography>
+
+        {error && (
+          <Paper
             sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: '60vh',
-              textAlign: 'center',
+              p: 2,
+              mb: 3,
+              bgcolor: 'grey.100',
+              width: '100%',
+              overflow: 'auto',
             }}
           >
-            <Paper
-              elevation={0}
+            <Typography
+              variant="body2"
+              component="pre"
               sx={{
-                p: 4,
-                bgcolor: 'error.light',
-                color: 'error.contrastText',
-                borderRadius: 2,
-                mb: 3,
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                m: 0,
               }}
             >
-              <ErrorIcon sx={{ fontSize: 64 }} />
-            </Paper>
-
-            <Typography variant="h4" gutterBottom fontWeight={600}>
-              Something went wrong
+              {error.message}
             </Typography>
+          </Paper>
+        )}
 
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-              We're sorry, but something unexpected happened.
-            </Typography>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button variant="contained" startIcon={<RefreshIcon />} onClick={resetErrorBoundary}>
+            Try Again
+          </Button>
+          <Button variant="outlined" startIcon={<HomeIcon />} onClick={handleGoHome}>
+            Go Home
+          </Button>
+        </Box>
+      </Box>
+    </Container>
+  )
+}
 
-            {this.state.error && (
-              <Paper
-                sx={{
-                  p: 2,
-                  mb: 3,
-                  bgcolor: 'grey.100',
-                  width: '100%',
-                  overflow: 'auto',
-                }}
-              >
-                <Typography
-                  variant="body2"
-                  component="pre"
-                  sx={{
-                    fontFamily: 'monospace',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    m: 0,
-                  }}
-                >
-                  {this.state.error.message}
-                </Typography>
-              </Paper>
-            )}
+export function ErrorBoundary({ children, fallback }: Props) {
+  const handleError = useCallback((error: Error, info: React.ErrorInfo) => {
+    console.error('Error caught by boundary:', error, info)
+  }, [])
 
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                variant="contained"
-                startIcon={<RefreshIcon />}
-                onClick={this.handleRetry}
-              >
-                Try Again
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<HomeIcon />}
-                onClick={this.handleGoHome}
-              >
-                Go Home
-              </Button>
-            </Box>
-          </Box>
-        </Container>
-      )
-    }
-
-    return this.props.children
+  if (fallback) {
+    return (
+      <ReactErrorBoundary onError={handleError} fallback={<>{fallback}</>}>
+        {children}
+      </ReactErrorBoundary>
+    )
   }
+
+  return (
+    <ReactErrorBoundary onError={handleError} FallbackComponent={ErrorFallbackComponent}>
+      {children}
+    </ReactErrorBoundary>
+  )
 }

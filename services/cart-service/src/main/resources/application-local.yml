@@ -131,6 +131,10 @@ auth0:
   domain: ${AUTH0_DOMAIN}
   audience: ${AUTH0_AUDIENCE}
 
+# OAuth2 Resource Server Configuration
+spring.security.oauth2.resourceserver.jwt:
+  issuer-uri: ${AUTH0_ISSUER_URI:https://${AUTH0_DOMAIN}/}
+
 # Custom Application Properties
 app:
   auth0:

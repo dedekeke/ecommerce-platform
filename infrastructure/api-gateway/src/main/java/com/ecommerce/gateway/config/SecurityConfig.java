@@ -14,11 +14,7 @@ import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.reactive.CorsConfigurationSource;
-import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -47,11 +43,13 @@ public class SecurityConfig {
 
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        // Disable CORS in security - handled by Spring Cloud Gateway globalcors config
+        http.cors(ServerHttpSecurity.CorsSpec::disable);
+
         if (!securityEnabled) {
             log.info("Security is DISABLED - all endpoints are public");
             http
                 .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable);
         } else {
             log.info("Security is ENABLED - JWT authentication required");
@@ -60,7 +58,8 @@ public class SecurityConfig {
                     // Public endpoints
                     .pathMatchers("/actuator/**").permitAll()
                     .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/webjars/**").permitAll()
-                    .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                    .pathMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
+                    .pathMatchers(HttpMethod.GET, "/api/v1/categories", "/api/v1/categories/**").permitAll()
                     .pathMatchers(HttpMethod.GET, "/api/search/**").permitAll()
                     .pathMatchers(HttpMethod.GET, "/api/promotions/public/**").permitAll()
 
@@ -73,7 +72,6 @@ public class SecurityConfig {
                     // All other endpoints require authentication
                     .anyExchange().authenticated()
                 )
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .oauth2ResourceServer(oauth2 -> oauth2
                     .jwt(jwt -> jwt.jwtDecoder(jwtDecoder()))
@@ -105,35 +103,6 @@ public class SecurityConfig {
         jwtDecoder.setJwtValidator(withIssuer);
 
         return jwtDecoder;
-    }
-
-    /**
-     * CORS configuration for SPA frontends
-     */
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-
-        // Allow requests from frontend origins
-        configuration.setAllowedOrigins(Arrays.asList(
-            "http://localhost:3000",  // React Shell App
-            "http://localhost:5000",  // React Shell App (Vite default)
-            "http://localhost:5001",  // Product Catalog MFE
-            "http://localhost:5002",  // Cart MFE
-            "http://localhost:5003",  // Checkout MFE
-            "http://localhost:4200",  // User Dashboard MFE (Angular)
-            "http://localhost:4201"   // Admin Dashboard MFE (Angular)
-        ));
-
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
-        configuration.setAllowCredentials(true);
-        configuration.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-
-        return source;
     }
 
     /**

@@ -88,12 +88,16 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     /**
      * Advanced search with multiple filters.
      * All parameters are optional.
+     * Category filter includes subcategories (up to 2 levels deep).
      */
     @Query("SELECT p FROM Product p WHERE " +
            "(:searchTerm IS NULL OR " +
            "  LOWER(p.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "  LOWER(p.description) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) AND " +
-           "(:categoryId IS NULL OR p.category.id = :categoryId) AND " +
+           "(:categoryId IS NULL OR " +
+           "  p.category.id = :categoryId OR " +
+           "  p.category.parent.id = :categoryId OR " +
+           "  p.category.parent.parent.id = :categoryId) AND " +
            "(:minPrice IS NULL OR p.price >= :minPrice) AND " +
            "(:maxPrice IS NULL OR p.price <= :maxPrice) AND " +
            "(:activeOnly = false OR p.active = true) AND " +

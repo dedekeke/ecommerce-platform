@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/userdb
+    username: <your-postgres-user>
+    password: <your-postgres-password>
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+
+security:
+  enabled: false

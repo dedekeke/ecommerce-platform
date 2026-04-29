@@ -5,6 +5,11 @@
 .env.local
 .env.*.local
 
+# Local-only Spring profile with developer credentials
+**/application-personal.yml
+**/application-personal.properties
+config/personal/
+
 # ============================================
 # Maven
 # ============================================
@@ -151,5 +156,8 @@ storage/
 *.bak
 *.backup
 .claude/settings.local.json
+.claude/agents/
+.claude/skills/
 /config-repo/
 /CLAUDE.md
+/.mcp.json

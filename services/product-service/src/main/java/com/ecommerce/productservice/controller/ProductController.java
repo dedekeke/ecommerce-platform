@@ -4,6 +4,7 @@ import com.ecommerce.productservice.dto.ProductRequest;
 import com.ecommerce.productservice.dto.ProductResponse;
 import com.ecommerce.productservice.mapper.ProductMapper;
 import com.ecommerce.productservice.model.Product;
+import com.ecommerce.productservice.service.CategoryService;
 import com.ecommerce.productservice.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -33,6 +34,7 @@ public class ProductController {
 
     private final ProductService productService;
     private final ProductMapper productMapper;
+    private final CategoryService categoryService;
 
     @GetMapping
     @Operation(summary = "Get all products", description = "Get all products with pagination, search, and filters")
@@ -40,8 +42,8 @@ public class ProductController {
             @Parameter(description = "Search term for name/description")
             @RequestParam(required = false) String search,
 
-            @Parameter(description = "Category ID filter")
-            @RequestParam(required = false) Long categoryId,
+            @Parameter(description = "Category ID or slug filter")
+            @RequestParam(required = false) String categoryId,
 
             @Parameter(description = "Minimum price filter")
             @RequestParam(required = false) BigDecimal minPrice,
@@ -67,17 +69,20 @@ public class ProductController {
             @Parameter(description = "Sort direction (asc/desc)")
             @RequestParam(defaultValue = "desc") String sortDirection
     ) {
-        log.info("GET /api/v1/products - search: {}, categoryId: {}, priceRange: {}-{}, activeOnly: {}, inStockOnly: {}",
+        log.info("GET /api/products - search: {}, categoryId: {}, priceRange: {}-{}, activeOnly: {}, inStockOnly: {}",
             search, categoryId, minPrice, maxPrice, activeOnly, inStockOnly);
+
+        // Resolve categoryId - can be numeric ID or slug
+        Long resolvedCategoryId = resolveCategoryId(categoryId);
 
         Sort sort = Sort.by(sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC, sortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<Product> products;
 
-        if (search != null || categoryId != null || minPrice != null || maxPrice != null) {
+        if (search != null || resolvedCategoryId != null || minPrice != null || maxPrice != null) {
             // Advanced search
-            products = productService.advancedSearch(search, categoryId, minPrice, maxPrice,
+            products = productService.advancedSearch(search, resolvedCategoryId, minPrice, maxPrice,
                 activeOnly, inStockOnly, pageable);
         } else if (activeOnly && inStockOnly) {
             products = productService.getAvailableProducts(pageable);
@@ -89,6 +94,20 @@ public class ProductController {
 
         Page<ProductResponse> response = products.map(productMapper::toResponse);
         return ResponseEntity.ok(response);
+    }
+
+    private Long resolveCategoryId(String categoryId) {
+        if (categoryId == null || categoryId.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(categoryId);
+        } catch (NumberFormatException e) {
+            // Not a number, try to resolve as slug
+            return categoryService.findCategoryBySlug(categoryId)
+                .map(category -> category.getId())
+                .orElse(null);
+        }
     }
 
     @GetMapping("/{id}")

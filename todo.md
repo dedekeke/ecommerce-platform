@@ -1,16 +1,77 @@
 # E-Commerce Platform - TODO & Progress Tracker
 
-> Last updated: 2025-12-30 (Day 33 Complete)
+> Last updated: 2026-01-11 (Day 36 - Product Catalog MFE)
 
 ---
 
-## Current Status: Week 7 In Progress - Frontend Development
+## Current Status: Week 8 - Product Catalog MFE Development
 
-Frontend development continues with Zustand state management complete.
+Product Catalog MFE initialized with core components implemented.
 
 ---
 
 ## Completed Tasks
+
+### Day 36 - Product Catalog MFE (Phase 1)
+- [x] Initialize product-catalog-mfe with Vite + React 19 + TypeScript
+- [x] Configure Module Federation as remote (port 5001)
+- [x] Set up Vitest + Testing Library + MSW for testing
+- [x] Create type definitions (Product, Category, ProductSearchParams)
+- [x] Copy/adapt MUI theme from shell-app
+- [x] Implement ProductCard component with TDD (16 tests)
+  - Product image, name, price, stock status
+  - Hover lift effect with shadow
+  - Quick-add to cart button
+- [x] Implement ProductCardSkeleton for loading states
+- [x] Implement ProductGrid component with TDD (10 tests)
+  - Responsive layout (2/3/4 columns)
+  - Loading skeleton state
+  - Empty state handling
+- [x] Implement Pagination component
+- [x] Implement SortDropdown filter component
+- [x] Create API services (productService, categoryService)
+- [x] Create custom hooks (useProducts, useProduct, useCategories)
+- [x] Create productFilterStore with Zustand
+- [x] Implement ProductListPage with filters and pagination
+- [x] Implement ProductDetailPage with image gallery and quantity selector
+- [x] Create ProductCatalog entry component with routing
+- [x] Build verified: remoteEntry.js generated successfully
+- [x] Total tests: 26 passing
+- [x] **Integration testing with real backend** (2026-01-11)
+  - Updated API Gateway CORS config for `localhost:5173`
+  - Tested with Eureka, API Gateway, Product Service
+  - Verified 8 products loading from MySQL database
+
+### Day 35 - Micro-Frontend Loading Infrastructure
+- [x] Create MFE types and registry configuration
+- [x] Implement MicroFrontendLoader component with React.lazy and Suspense
+- [x] Implement MFEErrorBoundary with retry functionality and max retries
+- [x] Implement useMFEPreload hook for on-hover preloading
+- [x] Create moduleLoader utility with caching and preloading
+- [x] Integrate MFE loading into App.tsx routes
+- [x] Update routes for productCatalog, cart, checkout, userDashboard, adminDashboard
+- [x] Write comprehensive tests (66 new tests)
+- [x] Total tests: 300 passing
+- [x] **Refactored all class components to functional components** (2026-01-11)
+  - Converted `MFEErrorBoundary` from class to functional using `react-error-boundary`
+  - Converted `ErrorBoundary` from class to functional using `react-error-boundary`
+  - Added `react-error-boundary` package for modern error boundary support
+  - All 300 tests still passing after refactoring
+
+### Day 34 - API Client and Interceptors
+- [x] Create API client with axios and base configuration (baseURL, timeout, headers)
+- [x] Implement request interceptor to add Auth0 token to all requests
+- [x] Implement response interceptor for error handling (401/403 callbacks)
+- [x] Add request/response logging in development mode
+- [x] Add retry logic with axios-retry (3 retries, exponential backoff)
+- [x] Create ProductService class with TDD (10 methods)
+- [x] Create CartService class with TDD (8 methods)
+- [x] Create OrderService class with TDD (8 methods)
+- [x] Create UserService class with TDD (12 methods)
+- [x] Implement error handling utilities with toast notifications
+- [x] Create useApiSetup hook for Auth0 integration
+- [x] Write comprehensive tests for all API services (130 tests)
+- [x] Total tests: 234 passing
 
 ### Day 33 - Zustand Global State Management
 - [x] Create store types definition (User, CartItem, Notification, ThemeMode, etc.)
@@ -123,8 +184,8 @@ Frontend development continues with Zustand state management complete.
 - [x] Implement Auth0Provider in Shell App
 - [x] Create Material-UI theme and layout (Day 32)
 - [x] Implement Zustand stores (auth, cart, notifications, preferences) (Day 33)
-- [ ] Create API client with axios interceptors (Day 34)
-- [ ] Micro-frontend loading infrastructure (Day 35)
+- [x] Create API client with axios interceptors (Day 34)
+- [x] Micro-frontend loading infrastructure (Day 35)
 - [ ] Product Catalog MFE (React) (Day 36-37)
 - [ ] Shopping Cart MFE (React) (Day 38)
 - [ ] Checkout MFE (React) (Day 39)
@@ -132,6 +193,9 @@ Frontend development continues with Zustand state management complete.
 - [ ] User Dashboard MFE (Angular) (Day 41-43)
 - [ ] Admin Dashboard MFE (Angular) (Day 44)
 - [ ] Angular MFEs Integration (Day 45)
+- [ ] Add email notifications for order confirmations and promotions using mailhog server
+- [ ] Header and footer are not full width. Also the current theme is not good
+- [ ] Remove the over-commented comments. Keep only keys/necessary/hard-logic ones
 
 ### Priority 2: Testing & Quality (Week 10)
 - [ ] Increase unit test coverage to 80%+
@@ -213,23 +277,10 @@ Frontend development continues with Zustand state management complete.
 - [ ] API documentation consolidated at Gateway
 - [ ] Developer onboarding guide
 - [ ] Operations runbook
-- [ ] Video tutorials for key workflows
 
 ---
 
-## Quick Reference - Running Services
 
-### Start All Services
-```bash
-# 1. Start infrastructure
-docker-compose up -d
-
-# 2. Build all services
-mvn clean install -DskipTests
-
-# 3. Run all services
-./scripts/run-all-services.sh
-```
 
 ### Service Ports
 | Service | HTTP Port | gRPC Port |

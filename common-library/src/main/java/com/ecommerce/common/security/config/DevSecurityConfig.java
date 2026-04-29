@@ -10,9 +10,6 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Development Security Configuration
- *
- * This configuration disables security for local development.
  * Activate by setting: security.enabled=false
  */
 @Configuration
@@ -24,6 +21,7 @@ public class DevSecurityConfig {
     @Bean
     public SecurityFilterChain devFilterChain(HttpSecurity http) throws Exception {
         http
+            .cors(AbstractHttpConfigurer::disable)  // CORS handled by API Gateway
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(authz -> authz
                 .anyRequest().permitAll()
