@@ -1,16 +1,15 @@
-import { ThemeProvider } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
 import { Routes, Route } from 'react-router-dom'
-import { theme } from './theme/theme'
 import CartPage from './pages/CartPage'
 
+/**
+ * Federated entry point for the cart MFE.
+ * ThemeProvider is intentionally omitted here — the shell-app provides it.
+ * When running standalone (via main.tsx), the ThemeProvider in main.tsx wraps this.
+ */
 export default function Cart() {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Routes>
-        <Route index element={<CartPage />} />
-      </Routes>
-    </ThemeProvider>
+    <Routes>
+      <Route index element={<CartPage />} />
+    </Routes>
   )
 }
