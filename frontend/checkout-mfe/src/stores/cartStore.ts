@@ -1,4 +1,11 @@
-// Duplicated from cart-mfe/src/stores/cartStore.ts. Day 40 will replace this with the federated shared singleton.
+/**
+ * Shared cart store for checkout-mfe.
+ *
+ * Persistence key MUST match shell-app (`cart-storage`) so all MFEs and the
+ * shell rehydrate from the same localStorage entry.  Cross-tab sync fires via
+ * the storage listener below.  Same-tab singleton sharing relies on zustand
+ * being in the federation shared array.
+ */
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { devtools } from 'zustand/middleware'
@@ -99,7 +106,7 @@ export const useCartStore = create<CartState>()(
         clearCart: () => set({ ...initialState }, false, 'clearCart'),
       }),
       {
-        name: 'cart-mfe-storage',
+        name: 'cart-storage',
         storage: createJSONStorage(() => localStorage),
         partialize: (state) => ({
           items: state.items,
@@ -115,3 +122,11 @@ export const useCartStore = create<CartState>()(
 export const selectCartItems = (state: CartState) => state.items
 export const selectCartTotal = (state: CartState) => state.total
 export const selectCartItemCount = (state: CartState) => state.itemCount
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'cart-storage') {
+      useCartStore.persist.rehydrate()
+    }
+  })
+}
