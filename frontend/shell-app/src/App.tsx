@@ -1,6 +1,6 @@
 import { Routes, Route, Link } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
-import { Container, Typography, Box, Paper, Grid } from '@mui/material'
+import { Typography, Box, Paper, Grid } from '@mui/material'
 import { MainLayout } from './components/layout'
 import { ProtectedRoute } from './components/auth'
 import { PageSkeleton } from './components/common'
@@ -14,11 +14,11 @@ interface MFERouteProps {
 
 function MFERoute({ mfeName, protected: isProtected = false }: MFERouteProps) {
   const content = (
-    <Container maxWidth="lg">
+    <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
       <MFEErrorBoundary mfeName={mfeName}>
         <MicroFrontendLoader mfeName={mfeName} />
       </MFEErrorBoundary>
-    </Container>
+    </Box>
   )
 
   if (isProtected) {
@@ -59,7 +59,7 @@ function Home() {
   ]
 
   return (
-    <Container maxWidth="lg">
+    <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
       <Box sx={{ textAlign: 'center', py: 8 }}>
         <Typography variant="h2" component="h1" gutterBottom fontWeight={700}>
           Welcome to E-Commerce
@@ -90,7 +90,7 @@ function Home() {
           ))}
         </Grid>
       </Box>
-    </Container>
+    </Box>
   )
 }
 
@@ -101,9 +101,9 @@ function App() {
   return (
     <MainLayout cartItemCount={cartItemCount}>
       {isLoading ? (
-        <Container maxWidth="lg">
+        <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
           <PageSkeleton />
-        </Container>
+        </Box>
       ) : (
         <Routes>
           <Route path="/" element={<Home />} />
