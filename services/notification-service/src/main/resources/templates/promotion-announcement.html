@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>New Promotion</title>
+</head>
+<body style="font-family: -apple-system, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">
+    <h1 style="font-size: 24px; margin: 0 0 16px;">A new promotion just dropped</h1>
+    <p style="font-size: 16px;">Hi <span th:text="${userName}">there</span>,</p>
+    <p style="font-size: 16px;">
+        <strong th:text="${name}">Promotion</strong> &mdash;
+        <span th:text="${description}">Save big this season.</span>
+    </p>
+    <p style="font-size: 16px;">
+        Use code
+        <span style="font-weight: 600; padding: 4px 8px; background: #f4f4f5; border-radius: 6px;"
+              th:text="${promoCode}">CODE</span>
+        at checkout.
+    </p>
+    <p th:if="${expiresAt}" style="font-size: 14px; color: #71717a;">
+        Hurry &mdash; expires <span th:text="${#temporals.format(expiresAt, 'MMM d, yyyy')}">soon</span>.
+    </p>
+    <a href="#" style="display: inline-block; margin-top: 16px; padding: 12px 20px;
+                       background: #18181b; color: #fff; text-decoration: none; border-radius: 8px;">
+        Shop now
+    </a>
+</body>
+</html>

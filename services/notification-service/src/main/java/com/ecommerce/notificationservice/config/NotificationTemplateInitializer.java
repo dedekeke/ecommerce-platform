@@ -86,6 +86,25 @@ public class NotificationTemplateInitializer implements CommandLineRunner {
             log.info("Created SHIPPING_NOTIFICATION template");
         }
 
+        if (!templateRepository.existsByCode("PROMOTION_ANNOUNCEMENT")) {
+            Map<String, Object> defaultVars = new HashMap<>();
+            defaultVars.put("companyName", "E-Commerce Platform");
+
+            NotificationTemplate promotionAnnouncement = NotificationTemplate.builder()
+                    .code("PROMOTION_ANNOUNCEMENT")
+                    .name("Promotion Announcement")
+                    .description("Email sent when a new promotion is created")
+                    .type(NotificationType.EMAIL)
+                    .subject("New Promotion: ${name} (${promoCode})")
+                    .body("promotion-announcement")
+                    .defaultVariables(defaultVars)
+                    .active(true)
+                    .build();
+
+            templateRepository.save(promotionAnnouncement);
+            log.info("Created PROMOTION_ANNOUNCEMENT template");
+        }
+
         log.info("Notification templates initialization completed");
     }
 }

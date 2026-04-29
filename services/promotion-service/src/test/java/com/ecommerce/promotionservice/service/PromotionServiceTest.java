@@ -1,6 +1,7 @@
 package com.ecommerce.promotionservice.service;
 
 import com.ecommerce.promotionservice.dto.*;
+import com.ecommerce.promotionservice.event.PromotionEventPublisher;
 import com.ecommerce.promotionservice.exception.PromotionNotFoundException;
 import com.ecommerce.promotionservice.exception.PromotionCodeAlreadyExistsException;
 import com.ecommerce.promotionservice.mapper.PromotionMapper;
@@ -35,6 +36,9 @@ class PromotionServiceTest {
 
     @Mock
     private PromotionMapper promotionMapper;
+
+    @Mock
+    private PromotionEventPublisher promotionEventPublisher;
 
     @InjectMocks
     private PromotionService promotionService;
@@ -103,6 +107,7 @@ class PromotionServiceTest {
             assertThat(result).isNotNull();
             assertThat(result.getCode()).isEqualTo("SAVE20");
             verify(promotionRepository).save(any(Promotion.class));
+            verify(promotionEventPublisher).publishPromotionCreated(validPromotion);
         }
 
         @Test
@@ -115,6 +120,7 @@ class PromotionServiceTest {
                     .hasMessageContaining("SAVE20");
 
             verify(promotionRepository, never()).save(any(Promotion.class));
+            verify(promotionEventPublisher, never()).publishPromotionCreated(any());
         }
     }
 

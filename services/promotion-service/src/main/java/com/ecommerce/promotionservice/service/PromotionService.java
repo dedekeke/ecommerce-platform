@@ -1,6 +1,7 @@
 package com.ecommerce.promotionservice.service;
 
 import com.ecommerce.promotionservice.dto.*;
+import com.ecommerce.promotionservice.event.PromotionEventPublisher;
 import com.ecommerce.promotionservice.exception.PromotionCodeAlreadyExistsException;
 import com.ecommerce.promotionservice.exception.PromotionNotFoundException;
 import com.ecommerce.promotionservice.mapper.PromotionMapper;
@@ -27,6 +28,7 @@ public class PromotionService {
 
     private final PromotionRepository promotionRepository;
     private final PromotionMapper promotionMapper;
+    private final PromotionEventPublisher promotionEventPublisher;
 
     public PromotionResponse createPromotion(PromotionRequest request) {
         log.info("Creating promotion with code: {}", request.getCode());
@@ -37,6 +39,8 @@ public class PromotionService {
 
         Promotion promotion = promotionMapper.toEntity(request);
         Promotion saved = promotionRepository.save(promotion);
+
+        promotionEventPublisher.publishPromotionCreated(saved);
 
         log.info("Promotion created successfully with id: {}", saved.getId());
         return promotionMapper.toResponse(saved);

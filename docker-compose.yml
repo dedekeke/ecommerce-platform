@@ -195,6 +195,23 @@ services:
   # OBSERVABILITY
   # ============================================
 
+  # MailHog - Local SMTP server for development email capture
+  # SMTP: localhost:1025  |  Web UI: http://localhost:8025
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ecommerce-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:8025/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ecommerce-network
+
   # Zipkin - Distributed Tracing
   zipkin:
     image: openzipkin/zipkin:3

@@ -7,6 +7,7 @@ import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
+import com.ecommerce.orderservice.event.OrderEventPublisher;
 import com.ecommerce.orderservice.exception.InvalidOrderStatusTransitionException;
 import com.ecommerce.orderservice.exception.OrderNotFoundException;
 import com.ecommerce.orderservice.repository.OrderRepository;
@@ -36,6 +37,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderNumberGeneratorService orderNumberGenerator;
     private final PromotionServiceClient promotionServiceClient;
+    private final OrderEventPublisher orderEventPublisher;
 
     @Value("${order.tax.rate:0.08}")
     private Double taxRate;
@@ -47,13 +49,13 @@ public class OrderService {
     private Double freeShippingThreshold;
 
     /**
-     * Create order from cart (for testing)
+     * Create order from cart (for testing) and publish ORDER_CREATED so the
+     * notification-service can render the order confirmation email.
      */
     @Transactional
     public Order createOrderFromCart(String userId, Map<String, Object> request) {
         log.info("Creating order from cart for user: {}", userId);
 
-        // Parse shipping address from request
         @SuppressWarnings("unchecked")
         Map<String, Object> addressMap = (Map<String, Object>) request.get("shippingAddress");
         Address shippingAddress = Address.builder()
@@ -65,9 +67,9 @@ public class OrderService {
             .build();
 
         String promotionCode = (String) request.getOrDefault("promotionCode", "");
+        String userEmail = (String) request.get("userEmail");
+        String userName = (String) request.get("userName");
 
-        // Create dummy order items for testing
-        // In a full implementation, this would fetch items from the cart service
         List<OrderItem> items = new ArrayList<>();
         OrderItem item = OrderItem.builder()
             .productId("1")
@@ -77,7 +79,9 @@ public class OrderService {
             .build();
         items.add(item);
 
-        return createOrder(userId, items, shippingAddress, promotionCode);
+        Order order = createOrder(userId, items, shippingAddress, promotionCode);
+        orderEventPublisher.publishOrderCreatedEvent(order, userEmail, userName);
+        return order;
     }
 
     /**

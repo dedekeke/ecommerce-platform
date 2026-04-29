@@ -1,5 +1,6 @@
 package com.ecommerce.orderservice.event;
 
+import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Publisher for order-related events to Kafka
@@ -27,10 +29,20 @@ public class OrderEventPublisher {
     private static final String ORDER_COMPLETED_TOPIC = "order.completed";
 
     /**
-     * Publish order created event
+     * Publish order created event without recipient details.
      */
     public void publishOrderCreatedEvent(Order order) {
+        publishOrderCreatedEvent(order, null, null);
+    }
+
+    /**
+     * Publish order created event with recipient email/name so the
+     * notification-service consumer can render the order confirmation email.
+     */
+    public void publishOrderCreatedEvent(Order order, String userEmail, String userName) {
         OrderEvent event = buildOrderEvent(order, "ORDER_CREATED");
+        event.setUserEmail(userEmail);
+        event.setUserName(userName);
         publishEvent(ORDER_CREATED_TOPIC, order.getId(), event);
         log.info("Published ORDER_CREATED event for order: {}", order.getOrderNumber());
     }
@@ -77,9 +89,30 @@ public class OrderEventPublisher {
                 .map(this::buildOrderItemEvent)
                 .collect(Collectors.toList()))
             .total(order.getTotal())
+            .totalAmount(order.getTotal())
             .status(order.getStatus())
             .paymentIntentId(order.getPaymentIntentId())
+            .shippingAddress(formatShippingAddress(order.getShippingAddress()))
             .build();
+    }
+
+    /**
+     * Render the structured Address as a single line for email templates
+     * which expect a flat string.
+     */
+    private String formatShippingAddress(Address address) {
+        if (address == null) {
+            return null;
+        }
+        String line = Stream.of(
+                address.getStreet(),
+                address.getCity(),
+                address.getState(),
+                address.getPostalCode(),
+                address.getCountry())
+            .filter(s -> s != null && !s.isBlank())
+            .collect(Collectors.joining(", "));
+        return line.isBlank() ? null : line;
     }
 
     /**
