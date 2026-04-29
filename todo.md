@@ -1,16 +1,46 @@
 # E-Commerce Platform - TODO & Progress Tracker
 
-> Last updated: 2026-01-11 (Day 35 - React Class Components Refactored)
+> Last updated: 2026-01-11 (Day 36 - Product Catalog MFE)
 
 ---
 
-## Current Status: Week 7 Complete - Frontend Shell Development
+## Current Status: Week 8 - Product Catalog MFE Development
 
-Frontend shell development complete with MFE loading infrastructure.
+Product Catalog MFE initialized with core components implemented.
 
 ---
 
 ## Completed Tasks
+
+### Day 36 - Product Catalog MFE (Phase 1)
+- [x] Initialize product-catalog-mfe with Vite + React 19 + TypeScript
+- [x] Configure Module Federation as remote (port 5001)
+- [x] Set up Vitest + Testing Library + MSW for testing
+- [x] Create type definitions (Product, Category, ProductSearchParams)
+- [x] Copy/adapt MUI theme from shell-app
+- [x] Implement ProductCard component with TDD (16 tests)
+  - Product image, name, price, stock status
+  - Hover lift effect with shadow
+  - Quick-add to cart button
+- [x] Implement ProductCardSkeleton for loading states
+- [x] Implement ProductGrid component with TDD (10 tests)
+  - Responsive layout (2/3/4 columns)
+  - Loading skeleton state
+  - Empty state handling
+- [x] Implement Pagination component
+- [x] Implement SortDropdown filter component
+- [x] Create API services (productService, categoryService)
+- [x] Create custom hooks (useProducts, useProduct, useCategories)
+- [x] Create productFilterStore with Zustand
+- [x] Implement ProductListPage with filters and pagination
+- [x] Implement ProductDetailPage with image gallery and quantity selector
+- [x] Create ProductCatalog entry component with routing
+- [x] Build verified: remoteEntry.js generated successfully
+- [x] Total tests: 26 passing
+- [x] **Integration testing with real backend** (2026-01-11)
+  - Updated API Gateway CORS config for `localhost:5173`
+  - Tested with Eureka, API Gateway, Product Service
+  - Verified 8 products loading from MySQL database
 
 ### Day 35 - Micro-Frontend Loading Infrastructure
 - [x] Create MFE types and registry configuration
@@ -163,6 +193,9 @@ Frontend shell development complete with MFE loading infrastructure.
 - [ ] User Dashboard MFE (Angular) (Day 41-43)
 - [ ] Admin Dashboard MFE (Angular) (Day 44)
 - [ ] Angular MFEs Integration (Day 45)
+- [ ] Add email notifications for order confirmations and promotions using mailhog server
+- [ ] Header and footer are not full width. Also the current theme is not good
+- [ ] Remove the over-commented comments. Keep only keys/necessary/hard-logic ones
 
 ### Priority 2: Testing & Quality (Week 10)
 - [ ] Increase unit test coverage to 80%+
@@ -244,23 +277,10 @@ Frontend shell development complete with MFE loading infrastructure.
 - [ ] API documentation consolidated at Gateway
 - [ ] Developer onboarding guide
 - [ ] Operations runbook
-- [ ] Video tutorials for key workflows
 
 ---
 
-## Quick Reference - Running Services
 
-### Start All Services
-```bash
-# 1. Start infrastructure
-docker-compose up -d
-
-# 2. Build all services
-mvn clean install -DskipTests
-
-# 3. Run all services
-./scripts/run-all-services.sh
-```
 
 ### Service Ports
 | Service | HTTP Port | gRPC Port |

@@ -1,7 +1,7 @@
 import axios, {
   AxiosError,
-  AxiosInstance,
-  InternalAxiosRequestConfig,
+  type AxiosInstance,
+  type InternalAxiosRequestConfig,
 } from 'axios'
 import axiosRetry from 'axios-retry'
 
