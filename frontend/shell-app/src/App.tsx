@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/auth'
 import { PageSkeleton } from './components/common'
 import { useCartStore, selectCartItemCount } from './stores'
 import { MicroFrontendLoader, MFEErrorBoundary, useMFEPreload, type MFEName } from './mfe'
+import { useExposeAuthToken } from './hooks'
 
 interface MFERouteProps {
   mfeName: MFEName
@@ -97,6 +98,7 @@ function Home() {
 function App() {
   const { isLoading } = useAuth0()
   const cartItemCount = useCartStore(selectCartItemCount)
+  useExposeAuthToken()
 
   return (
     <MainLayout cartItemCount={cartItemCount}>

@@ -31,7 +31,7 @@ describe('apiClient', () => {
 
   describe('auth token injection', () => {
     it('should attach Authorization header when window.__getAuthToken returns a token', async () => {
-      window.__getAuthToken = vi.fn().mockResolvedValue('bearer-token-xyz')
+      window.__getAuthToken = vi.fn().mockResolvedValue('checkout-token-abc')
 
       let capturedAuthHeader: string | undefined
 
@@ -45,7 +45,7 @@ describe('apiClient', () => {
       await apiClient.get('/test')
 
       expect(window.__getAuthToken).toHaveBeenCalledOnce()
-      expect(capturedAuthHeader).toBe('Bearer bearer-token-xyz')
+      expect(capturedAuthHeader).toBe('Bearer checkout-token-abc')
     })
 
     it('should not attach Authorization header when window.__getAuthToken is not set', async () => {

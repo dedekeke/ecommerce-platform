@@ -41,3 +41,7 @@ declare module 'adminDashboard/AdminDashboard' {
   const Component: React.ComponentType<unknown>
   export default Component
 }
+
+interface Window {
+  __getAuthToken?: () => Promise<string | null>
+}
