@@ -1,5 +1,7 @@
 # Distributed Tracing Setup Guide
 
+> Back to [README](../README.md).
+
 This document describes the distributed tracing infrastructure for the e-commerce platform.
 
 ## Architecture Overview

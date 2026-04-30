@@ -1,5 +1,7 @@
 # MFE Integration Smoke Test Playbook
 
+> Back to [README](../README.md).
+
 Run this manually after any change to the MFE federation config or shared store logic.
 
 ## Prerequisites

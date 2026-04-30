@@ -1,5 +1,7 @@
 # OWASP ZAP Security Scan
 
+> Back to [README](../README.md).
+
 ## Overview
 
 The `scripts/security-scan.sh` script runs an OWASP ZAP passive baseline scan against the API gateway. It uses the official `owasp/zap2docker-stable` Docker image and generates an HTML report in `security-reports/`.

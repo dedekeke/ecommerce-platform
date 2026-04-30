@@ -1,5 +1,7 @@
 # Auth0 Setup Guide
 
+> Back to [README](../README.md).
+
 This guide will walk you through setting up Auth0 for the E-Commerce Platform.
 
 ## Prerequisites

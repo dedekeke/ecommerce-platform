@@ -1,5 +1,7 @@
 # IntelliJ IDEA Run Configurations Guide
 
+> Back to [README](../README.md).
+
 This guide explains how to set up run configurations in IntelliJ IDEA for debugging microservices in the e-commerce platform.
 
 ## Prerequisites

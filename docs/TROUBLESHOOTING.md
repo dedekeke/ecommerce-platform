@@ -1,5 +1,7 @@
 # Troubleshooting Guide
 
+> Back to [README](../README.md).
+
 This guide covers common issues and their solutions when running the E-Commerce Platform.
 
 ## Quick Diagnostics

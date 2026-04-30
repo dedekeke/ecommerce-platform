@@ -1,5 +1,7 @@
 # Email Notifications (Local Dev with MailHog)
 
+> Back to [README](../README.md).
+
 The notification-service sends transactional emails (order confirmation,
 payment receipt, shipping, promotion announcement) by reacting to Kafka
 events. In local development those emails are captured by **MailHog**

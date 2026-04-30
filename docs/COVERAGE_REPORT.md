@@ -1,5 +1,7 @@
 # Frontend Coverage Report
 
+> Back to [README](../README.md).
+
 Generated: 2026-04-29
 
 Coverage threshold: **≥80% statements** for all packages.

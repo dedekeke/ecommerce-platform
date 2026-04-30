@@ -1,5 +1,7 @@
 # Local Dev Profile (`personal`)
 
+> Back to [README](../README.md).
+
 To stop committing credentials to YAML, each service ships an
 `application-personal.yml.example` (or `.properties.example`) under
 `src/main/resources/`. Copy it (drop the `.example` suffix) and fill in

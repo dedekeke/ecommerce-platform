@@ -1,5 +1,7 @@
 # Security Architecture
 
+> Back to [README](../README.md).
+
 This document describes the security architecture and measures implemented in the e-commerce platform's API Gateway.
 
 ## Overview
