@@ -1,0 +1,89 @@
+.order-card {
+  border-radius: 16px;
+  border: 1px solid #e4e4e7;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease-out;
+  cursor: pointer;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.15);
+  }
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+
+  &__label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    display: block;
+  }
+
+  &__value {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #0a0a0a;
+  }
+
+  &__badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  &__meta {
+    display: flex;
+    gap: 16px;
+    color: #71717a;
+    font-size: 0.875rem;
+    margin-bottom: 12px;
+  }
+
+  &__total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    &-label {
+      font-size: 0.875rem;
+      color: #52525b;
+    }
+
+    &-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #0a0a0a;
+      font-family: 'JetBrains Mono', monospace;
+    }
+  }
+}
+
+.badge--success {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.badge--warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.badge--info {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+
+.badge--error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
