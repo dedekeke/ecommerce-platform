@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal, TemplateRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -150,6 +150,7 @@ export class ProductsPage implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(FormBuilder);
+  private readonly router = inject(Router);
 
   readonly products = signal<ProductRow[]>([]);
   readonly loading = signal(true);
@@ -209,7 +210,7 @@ export class ProductsPage implements OnInit {
   }
 
   onRowClick(row: ProductRow): void {
-    window.location.href = `/admin/products/${row['id']}`;
+    this.router.navigate(['/admin/products', row['id']]);
   }
 
   openCreateDrawer(): void {

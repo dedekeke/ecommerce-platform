@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ProductsPage } from './products.page';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -109,5 +109,14 @@ describe('ProductsPage', () => {
     expect(fixture.componentInstance.statusVariant('ACTIVE')).toBe('success');
     expect(fixture.componentInstance.statusVariant('INACTIVE')).toBe('neutral');
     expect(fixture.componentInstance.statusVariant('OUT_OF_STOCK')).toBe('warning');
+  });
+
+  it('should navigate to product detail route on row click', () => {
+    const router = TestBed.inject(Router);
+    const navigateSpy = spyOn(router, 'navigate').and.resolveTo(true);
+
+    fixture.componentInstance.onRowClick(mockProduct as unknown as Record<string, unknown> & Product);
+
+    expect(navigateSpy).toHaveBeenCalledWith(['/admin/products', 'prod-1']);
   });
 });
