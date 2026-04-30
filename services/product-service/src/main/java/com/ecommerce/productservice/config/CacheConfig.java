@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
+import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -34,14 +36,25 @@ public class CacheConfig {
 
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
-        // Configure ObjectMapper for Redis serialization with Java 8 date/time support
+        // Configure ObjectMapper for Redis serialization with Java 8 date/time support.
+        // SECURITY: Use a type-allowlist validator instead of the default (permissive)
+        // PolymorphicTypeValidator that ships with NON_FINAL. The allowlist restricts
+        // deserialization to known application packages, preventing Jackson gadget attacks
+        // via crafted Redis payloads.
+        PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
+            .allowIfBaseType(Object.class)
+            .allowIfSubType("com.ecommerce.productservice")
+            .allowIfSubType("java.util")
+            .allowIfSubType("java.math")
+            .allowIfSubType("java.time")
+            .build();
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         objectMapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         objectMapper.activateDefaultTyping(
-            objectMapper.getPolymorphicTypeValidator(),
+            typeValidator,
             ObjectMapper.DefaultTyping.NON_FINAL,
             JsonTypeInfo.As.PROPERTY
         );
