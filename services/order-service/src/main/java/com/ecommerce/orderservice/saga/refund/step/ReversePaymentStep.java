@@ -26,6 +26,11 @@ public class ReversePaymentStep implements SagaStep {
     }
 
     @Override
+    public boolean hasCompensation() {
+        return true;
+    }
+
+    @Override
     public StepResult execute(RefundSagaContext ctx) {
         if (ctx.getPaymentIntentId() == null || ctx.getPaymentIntentId().isBlank()) {
             return StepResult.failure("No payment intent on order — cannot reverse");

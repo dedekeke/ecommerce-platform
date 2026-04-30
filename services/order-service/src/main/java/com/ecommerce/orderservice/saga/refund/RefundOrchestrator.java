@@ -206,18 +206,33 @@ public class RefundOrchestrator {
      * Walk completed steps in reverse and compensate. Failures during
      * compensation are logged but never re-thrown — at this point we have
      * already accepted the saga is doomed; loud crashing helps no one.
+     *
+     * <p>If no steps were completed (e.g. validation failed first), there is
+     * nothing to roll back — the saga is simply marked FAILED, skipping the
+     * COMPENSATING / COMPENSATED states.</p>
      */
     private void compensate(RefundSagaContext ctx, RefundSagaStep failedStep) {
         RefundSagaState state = ctx.getState();
+        List<RefundSagaStep> completed = state.completedStepsInOrder();
+        boolean anyCompensable = completed.stream()
+            .map(stepsById::get).anyMatch(SagaStep::hasCompensation);
+        if (!anyCompensable) {
+            log.warn("Refund saga {} failed at {} with nothing to compensate",
+                state.getId(), failedStep);
+            return;
+        }
         state.setStatus(RefundSagaStatus.COMPENSATING);
         sagaRepository.save(state);
         log.warn("Compensating refund saga {} after failure at {}", state.getId(), failedStep);
 
-        List<RefundSagaStep> completed = state.completedStepsInOrder();
         for (int i = completed.size() - 1; i >= 0; i--) {
             RefundSagaStep stepId = completed.get(i);
+            SagaStep stepImpl = stepsById.get(stepId);
+            if (!stepImpl.hasCompensation()) {
+                continue;
+            }
             try {
-                stepsById.get(stepId).compensate(ctx);
+                stepImpl.compensate(ctx);
             } catch (Exception e) {
                 log.error("Compensation for step {} threw — continuing", stepId, e);
             }

@@ -25,6 +25,11 @@ public class UpdateOrderStep implements SagaStep {
     }
 
     @Override
+    public boolean hasCompensation() {
+        return true;
+    }
+
+    @Override
     @Transactional
     public StepResult execute(RefundSagaContext ctx) {
         Order order = orderRepository.findById(ctx.getOrderId()).orElse(null);

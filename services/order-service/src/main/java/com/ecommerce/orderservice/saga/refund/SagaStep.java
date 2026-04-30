@@ -20,4 +20,14 @@ public interface SagaStep {
     default void compensate(RefundSagaContext ctx) {
         // no-op by default
     }
+
+    /**
+     * Steps that own no rollback (validation, best-effort notifications) return
+     * {@code false} and the orchestrator skips invoking their {@link #compensate}
+     * entirely. Steps with real undo work (payment, inventory, order status)
+     * override this to {@code true}.
+     */
+    default boolean hasCompensation() {
+        return false;
+    }
 }

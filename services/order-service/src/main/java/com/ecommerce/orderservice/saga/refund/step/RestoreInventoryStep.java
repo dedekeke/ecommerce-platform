@@ -28,6 +28,11 @@ public class RestoreInventoryStep implements SagaStep {
     }
 
     @Override
+    public boolean hasCompensation() {
+        return true;
+    }
+
+    @Override
     public StepResult execute(RefundSagaContext ctx) {
         if (ctx.getOrder() == null || ctx.getOrder().getItems() == null
             || ctx.getOrder().getItems().isEmpty()) {
