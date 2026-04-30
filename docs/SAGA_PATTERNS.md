@@ -65,22 +65,94 @@ References worth reading:
   recovery scheduler, controller separation. Read it side-by-side with
   `OrderCreationSaga` to see how the same pattern scales.
 
-### 2.3 `InventoryReplenishmentChoreography` — choreography (placeholder)
+### 2.3 `InventoryReplenishmentChoreography` — choreography (pedagogical)
 
-> Not yet implemented. Will land on the next branch.
+When stock for a product drops below its reorder threshold, three peer
+services react in parallel without a central coordinator. When stock returns,
+the same three services reverse what they did. There is no saga state row.
+The flow exists only as Kafka topics and `@KafkaListener`s.
 
-- Planned package: `services/inventory-service/src/main/java/com/ecommerce/inventoryservice/saga/replenishment/`.
-- Planned scenario: when stock for a product drops below its reorder threshold,
-  inventory-service emits `stock.low`. A supplier-service consumes it, places
-  a purchase order and emits `purchase-order.placed`. A receiving-service
-  consumes that and emits `stock.received`, which inventory-service consumes
-  to top up. No coordinator — each service only knows the events it cares
-  about.
-- Pedagogical contrast points to look for:
-  - No saga state row anywhere — each service tracks its own progress.
-  - Compensation is itself an event (e.g. `purchase-order.cancelled`).
-  - The flow exists only as a sequence of Kafka topics and consumers — there's
-    no single class describing it.
+**Trigger publisher (inventory-service)**
+- `services/inventory-service/src/main/java/com/ecommerce/inventoryservice/saga/replenishment/`
+  - `StockLowDetector` — `@Scheduled` (default 30s) scanner that edge-triggers events.
+  - `ReplenishmentEventPublisher` — emits `stock.low.detected` and `stock.replenished`.
+  - `package-info.java` — the master javadoc on choreography theory; read this first.
+- Tests: `services/inventory-service/src/test/java/com/ecommerce/inventoryservice/saga/replenishment/StockLowDetectorTest.java`
+
+**Peer participants**
+- `services/promotion-service/src/main/java/com/ecommerce/promotionservice/saga/replenishment/`
+  — `PromotionStockListener` pauses / resumes promotions; idempotency via
+  JPA table `promotion_consumed_replenishment_event`.
+- `services/search-service/src/main/java/com/ecommerce/searchservice/saga/replenishment/`
+  — `SearchStockListener` applies / clears a `lowStockPenalty` (stubbed save);
+  in-memory dedup via `ConsumedEventStore`.
+- `services/notification-service/src/main/java/com/ecommerce/notificationservice/saga/replenishment/`
+  — `StockAlertListener` emails the admin via the existing `EmailService`;
+  Mongo dedup collection `replenishment_consumed_events`.
+
+**Topic contracts (all JSON)**
+| Topic | Direction | Payload |
+|---|---|---|
+| `stock.low.detected` | inventory → all peers | `{eventId: UUID, productId: Long, sku: String, currentQty: int, threshold: int, detectedAt: Instant}` |
+| `stock.replenished` | inventory → all peers | `{eventId: UUID, productId: Long, sku: String, currentQty: int, replenishedAt: Instant}` |
+| `promotion.paused.due-to-stock` | promotion → audit | `{eventId, causedByEventId, productId, pausedPromotionCount, pausedAt}` |
+| `promotion.resumed.due-to-stock` | promotion → audit | `{eventId, causedByEventId, productId, resumedPromotionCount, resumedAt}` |
+| `search.deboosted.due-to-stock` | search → audit | `{eventId, causedByEventId, productId, deboostedAt}` |
+| `search.reboosted.due-to-stock` | search → audit | `{eventId, causedByEventId, productId, reboostedAt}` |
+| `admin.notified.due-to-stock` | notification → audit | `{eventId, causedByEventId, productId, adminEmail, notifiedAt}` |
+| `admin.stock-back.due-to-stock` | notification → audit | `{eventId, causedByEventId, productId, adminEmail, notifiedAt}` |
+
+**Sequence diagram**
+
+```mermaid
+sequenceDiagram
+    participant Inv as inventory-service
+    participant K as Kafka
+    participant Promo as promotion-service
+    participant Search as search-service
+    participant Notif as notification-service
+
+    Note over Inv: @Scheduled scan every 30s
+    Inv->>K: stock.low.detected {productId, sku, currentQty, threshold, eventId}
+    par Promotion reacts
+        K-->>Promo: stock.low.detected
+        Promo->>Promo: pause active promotions
+        Promo->>K: promotion.paused.due-to-stock
+    and Search reacts
+        K-->>Search: stock.low.detected
+        Search->>Search: set lowStockPenalty (stubbed)
+        Search->>K: search.deboosted.due-to-stock
+    and Notification reacts
+        K-->>Notif: stock.low.detected
+        Notif->>Notif: emailService.sendEmail(admin, ...)
+        Notif->>K: admin.notified.due-to-stock
+    end
+
+    Note over Inv: stock recovers above threshold
+    Inv->>K: stock.replenished {productId, sku, currentQty, eventId}
+    par Compensations fan out
+        K-->>Promo: stock.replenished
+        Promo->>K: promotion.resumed.due-to-stock
+    and
+        K-->>Search: stock.replenished
+        Search->>K: search.reboosted.due-to-stock
+    and
+        K-->>Notif: stock.replenished
+        Notif->>K: admin.stock-back.due-to-stock
+    end
+```
+
+**Pedagogical contrast points to look for**
+- No saga state row anywhere — each service tracks its own progress in a
+  per-service dedup table / set.
+- Compensation is itself an event (`stock.replenished`) — not a method call
+  on a `SagaStep`.
+- The flow exists only as a sequence of Kafka topics. Compare to
+  `RefundOrchestrator.execute()` where the workflow is a method body you can
+  read top to bottom.
+- Adding a fourth participant (e.g. analytics) is a new `@KafkaListener` in
+  a new service — zero edits to inventory-service or its peers.
+- No saga timeout, no recovery scheduler, no global retry policy.
 
 ---
 
@@ -105,6 +177,14 @@ Rules of thumb:
    and at-least-once message delivery all replay steps. Use idempotency keys
    (`restorationId`, `refundTransactionId`) and let participants short-circuit
    on duplicate calls.
+7. **Use choreography when adding a new participant should not require code
+   changes elsewhere.** The replenishment saga proves the point: a future
+   analytics-service that wants to log low-stock incidents can subscribe to
+   `stock.low.detected` and ship independently — no edits to
+   inventory-service, promotion-service, search-service or
+   notification-service. The same change against `RefundOrchestrator` would
+   touch the orchestrator class, the `RefundSagaContext` DTO, and the step
+   ordering.
 
 ---
 
