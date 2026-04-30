@@ -46,6 +46,23 @@
   --duration-fast: 0.15s;
   --duration-normal: 0.2s;
   --duration-slow: 0.3s;
+
+  // Semantic surface tokens
+  --surface-bg: var(--color-gray-100);
+  --surface-paper: #ffffff;
+  --text-primary: var(--color-primary);
+  --text-secondary: var(--color-gray-500);
+  --border-color: var(--color-gray-200);
+}
+
+// Dark mode — shell sets class="dark" on <html>
+html.dark {
+  --color-primary: #fafafa;
+  --surface-bg: #18181b;
+  --surface-paper: #27272a;
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --border-color: rgba(255, 255, 255, 0.08);
 }
 
 // Angular Material custom theme — Indigo primary, Teal accent
@@ -69,7 +86,6 @@ $ud-theme: mat.m2-define-light-theme(
 
 @include mat.all-component-themes($ud-theme);
 
-// Global reset and base
 *,
 *::before,
 *::after {
@@ -83,8 +99,14 @@ body {
   font-family: var(--font-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: var(--color-gray-100);
-  color: var(--color-primary);
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  transition: background-color var(--duration-normal) var(--ease-out),
+    color var(--duration-normal) var(--ease-out);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -93,13 +115,11 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.01em;
 }
 
-// Global focus indicator for WCAG 2.1 AA
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-// Override Material primary button with gradient
 .mat-mdc-raised-button.mat-primary,
 .mat-mdc-flat-button.mat-primary {
   background: var(--gradient-cta) !important;
@@ -108,25 +128,39 @@ h1, h2, h3, h4, h5, h6 {
   &:hover {
     transform: scale(1.02);
     box-shadow: var(--shadow-lg) !important;
+
+    @media (prefers-reduced-motion: reduce) {
+      transform: none;
+    }
   }
 
   &:active {
-    transform: scale(0.98);
+    transform: scale(0.97);
+
+    @media (prefers-reduced-motion: reduce) {
+      transform: none;
+    }
   }
 }
 
-// Card lift on hover
 .mat-mdc-card {
   transition: all var(--duration-normal) var(--ease-out);
 
   &:hover {
     box-shadow: var(--shadow-card-hover) !important;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
-// Smooth page transitions
 router-outlet + * {
   animation: fadeInUp 0.3s var(--ease-out);
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: fadeIn 0.1s ease;
+  }
 }
 
 @keyframes fadeInUp {
@@ -140,7 +174,11 @@ router-outlet + * {
   }
 }
 
-// Reduced motion preference
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
