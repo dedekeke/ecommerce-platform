@@ -20,39 +20,13 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Orchestration saga that coordinates a customer refund.
  *
- * <h2>What is an orchestration saga?</h2>
- * <p>An orchestration saga is a long-running business transaction split into
- * many local transactions, each in its own service. A single coordinator
- * (this class) tells each service "do step N" in sequence. If a step fails,
- * the orchestrator runs <em>compensating</em> actions — reverse-order rollbacks
- * — for the steps that already succeeded. There is no native distributed
- * transaction; consistency is eventual and developer-driven.</p>
- *
- * <h2>Pros</h2>
- * <ul>
- *   <li>Single place to look when debugging — the flow lives here.</li>
- *   <li>Easy to add / reorder / branch steps without changing services.</li>
- *   <li>Centralised retry, timeout and compensation policy.</li>
- *   <li>Saga state ({@link RefundSagaState}) gives you a clean audit log.</li>
- * </ul>
- *
- * <h2>Cons</h2>
- * <ul>
- *   <li>Orchestrator can become a god-object as more sagas are added.</li>
- *   <li>Tight coupling: orchestrator knows every participant's API.</li>
- *   <li>If the orchestrator JVM crashes mid-flow, the saga is stuck —
- *       mitigated here by persisting {@link RefundSagaState} per step and
- *       running {@link RefundSagaRecoveryScheduler} every 5 minutes.</li>
- * </ul>
- *
- * <h2>Compare with choreography</h2>
- * <p>In a <em>choreography</em> saga (see the upcoming
- * {@code services/inventory-service/.../saga/replenishment/InventoryReplenishmentChoreography}
- * package) there is no central coordinator: each service reacts to events
- * published by the previous one. Choreography decouples services but the
- * flow is implicit — no single class describes "what happens after step 2".
- * Rule of thumb: orchestration when one team owns the workflow, choreography
- * when many teams own pieces and you want loose coupling.</p>
+ * <p>Sequences five participants — order validation, payment reversal,
+ * inventory restoration, order status update, and customer notification —
+ * via local transactions. {@link RefundSagaState} is persisted per step so
+ * {@link RefundSagaRecoveryScheduler} can resume a saga whose orchestrator
+ * crashed mid-flow. Every step's {@code execute} must be idempotent
+ * (carried out via {@code restoration_id} / {@code refund_id} keys passed
+ * to participants).
  *
  * <h2>Happy-path flow</h2>
  * <pre>
@@ -73,22 +47,11 @@ import java.util.concurrent.CompletableFuture;
  *
  * <h2>Failure handling</h2>
  * <ul>
- *   <li>VALIDATE fails -> nothing to compensate, mark FAILED.</li>
- *   <li>REVERSE_PAYMENT fails -> nothing completed, mark FAILED.</li>
+ *   <li>VALIDATE / REVERSE_PAYMENT fail -> nothing to compensate, mark FAILED.</li>
  *   <li>RESTORE_INVENTORY fails -> compensate REVERSE_PAYMENT (re-charge).</li>
  *   <li>UPDATE_ORDER fails -> compensate inventory then payment.</li>
  *   <li>NOTIFY is best-effort and never fails the saga.</li>
  * </ul>
- *
- * <h2>Idempotency</h2>
- * <p>Every step's {@code execute} MUST be safely re-runnable so the recovery
- * scheduler can resume a saga from the last persisted point without
- * double-charging or double-restoring stock. We achieve this with the
- * {@code restoration_id}/{@code refund_id} keys passed to participants.</p>
- *
- * <p>Pedagogical note: this saga is intentionally <em>hand-rolled</em>; we
- * avoid Axon/Eventuate so the mechanism is visible. In production you might
- * adopt a framework once the patterns repeat.</p>
  */
 @Slf4j
 @Service

@@ -14,15 +14,11 @@
  * </ul>
  *
  * <p><strong>Local action</strong>: send the admin email via the existing
- * {@link com.ecommerce.notificationservice.service.EmailService}. The
- * {@code stock-low-alert} / {@code stock-back-alert} Thymeleaf templates are
- * stubs — the email service mock-logs in dev unless
- * {@code notification.email.enabled=true}.
+ * {@link com.ecommerce.notificationservice.service.EmailService} using the
+ * {@code stock-low-alert} / {@code stock-back-alert} Thymeleaf templates.
+ * The mailer mock-logs in dev unless {@code notification.email.enabled=true}.
  *
  * <p><strong>Idempotency</strong>: every consumed event is recorded in the
- * {@code replenishment_consumed_events} Mongo collection. Replays are dropped.
- *
- * <p>For the master javadoc on choreography saga theory, read
- * {@link com.ecommerce.inventoryservice.saga.replenishment}.
+ * {@code replenishment_consumed_events} Mongo collection. Replays are dropped.</p>
  */
 package com.ecommerce.notificationservice.saga.replenishment;
