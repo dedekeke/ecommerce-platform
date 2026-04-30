@@ -16,6 +16,7 @@ export const mfeRegistry: Record<MFEName, MFEConfig> = {
     exposedModule: './ProductCatalog',
     fallbackSkeleton: 'productList',
     requiresAuth: false,
+    runtime: 'webpack',
   },
   cart: {
     name: 'cart',
@@ -24,6 +25,7 @@ export const mfeRegistry: Record<MFEName, MFEConfig> = {
     exposedModule: './Cart',
     fallbackSkeleton: 'cart',
     requiresAuth: false,
+    runtime: 'webpack',
   },
   checkout: {
     name: 'checkout',
@@ -32,23 +34,26 @@ export const mfeRegistry: Record<MFEName, MFEConfig> = {
     exposedModule: './Checkout',
     fallbackSkeleton: 'page',
     requiresAuth: true,
+    runtime: 'webpack',
   },
   userDashboard: {
     name: 'userDashboard',
     displayName: 'User Dashboard',
-    remoteUrl: `${MFE_BASE_URLS.userDashboard}/assets/remoteEntry.js`,
+    remoteUrl: `${MFE_BASE_URLS.userDashboard}/remoteEntry.json`,
     exposedModule: './UserDashboard',
     fallbackSkeleton: 'profile',
     requiresAuth: true,
+    runtime: 'native',
   },
   adminDashboard: {
     name: 'adminDashboard',
     displayName: 'Admin Dashboard',
-    remoteUrl: `${MFE_BASE_URLS.adminDashboard}/assets/remoteEntry.js`,
+    remoteUrl: `${MFE_BASE_URLS.adminDashboard}/remoteEntry.json`,
     exposedModule: './AdminDashboard',
     fallbackSkeleton: 'page',
     requiresAuth: true,
     requiredRoles: ['admin'],
+    runtime: 'native',
   },
 }
 

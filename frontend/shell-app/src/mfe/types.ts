@@ -7,6 +7,8 @@ export type MFEName =
 
 export type MFEStatus = 'idle' | 'loading' | 'loaded' | 'error'
 
+export type MFERuntime = 'webpack' | 'native'
+
 export interface MFEConfig {
   name: MFEName
   displayName: string
@@ -15,6 +17,7 @@ export interface MFEConfig {
   fallbackSkeleton: 'page' | 'productList' | 'cart' | 'profile'
   requiresAuth: boolean
   requiredRoles?: string[]
+  runtime: MFERuntime
 }
 
 export interface MFEState {

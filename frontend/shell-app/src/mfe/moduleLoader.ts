@@ -1,5 +1,7 @@
+import React from 'react'
 import type { MFEName, MFELoadResult } from './types'
 import { getMFEConfig } from './registry'
+import { AngularMFEWrapper } from './AngularMFEWrapper'
 
 type ModuleFactory = () => Promise<MFELoadResult>
 
@@ -26,12 +28,19 @@ export function loadRemoteModule(mfeName: MFEName): Promise<MFELoadResult> {
 }
 
 async function importRemoteModule(mfeName: MFEName): Promise<MFELoadResult> {
-  const moduleFactories: Record<MFEName, ModuleFactory> = {
+  const config = getMFEConfig(mfeName)
+
+  if (config.runtime === 'native') {
+    const WrappedAngular: React.ComponentType<unknown> = () =>
+      React.createElement(AngularMFEWrapper, { mfeName })
+    WrappedAngular.displayName = `AngularMFE(${mfeName})`
+    return { default: WrappedAngular }
+  }
+
+  const moduleFactories: Partial<Record<MFEName, ModuleFactory>> = {
     productCatalog: () => import('productCatalog/ProductCatalog'),
     cart: () => import('cart/Cart'),
     checkout: () => import('checkout/Checkout'),
-    userDashboard: () => import('userDashboard/UserDashboard'),
-    adminDashboard: () => import('adminDashboard/AdminDashboard'),
   }
 
   const factory = moduleFactories[mfeName]

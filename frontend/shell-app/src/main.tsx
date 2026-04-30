@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/common'
 import theme from './theme'
 import App from './App.tsx'
 import './index.css'
+import { initNativeFederation } from './mfe/nativeFederation'
 
 // One-time localStorage key migration: cart-mfe-storage → cart-storage.
 // Runs before React mounts so the store rehydrates with the correct key.
@@ -26,17 +27,30 @@ import './index.css'
   }
 })()
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <BrowserRouter>
-        <Auth0ProviderWithNavigate>
-          <ErrorBoundary>
-            <App />
-          </ErrorBoundary>
-        </Auth0ProviderWithNavigate>
-      </BrowserRouter>
-    </ThemeProvider>
-  </StrictMode>,
-)
+function mountApp() {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <BrowserRouter>
+          <Auth0ProviderWithNavigate>
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
+          </Auth0ProviderWithNavigate>
+        </BrowserRouter>
+      </ThemeProvider>
+    </StrictMode>,
+  )
+}
+
+// Initialize native-federation import maps for Angular MFEs before mounting.
+// A failure here is non-fatal: Angular MFEs will show their own error state
+// via AngularMFEWrapper, while all webpack-based MFEs continue to work.
+initNativeFederation()
+  .catch((err: unknown) => {
+    console.warn('[shell] Native federation init failed — Angular MFEs may not load:', err)
+  })
+  .finally(() => {
+    mountApp()
+  })

@@ -3,6 +3,7 @@ import { useAuth0 } from '@auth0/auth0-react'
 import { Typography, Box, Paper, Grid } from '@mui/material'
 import { MainLayout } from './components/layout'
 import { ProtectedRoute } from './components/auth'
+import { RoleGuard } from './components/auth/RoleGuard'
 import { PageSkeleton } from './components/common'
 import { useCartStore, selectCartItemCount } from './stores'
 import { MicroFrontendLoader, MFEErrorBoundary, useMFEPreload, type MFEName } from './mfe'
@@ -132,7 +133,17 @@ function App() {
           />
           <Route
             path="/admin/*"
-            element={<MFERoute mfeName="adminDashboard" protected />}
+            element={
+              <ProtectedRoute>
+                <RoleGuard requiredRoles={['admin']}>
+                  <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
+                    <MFEErrorBoundary mfeName="adminDashboard">
+                      <MicroFrontendLoader mfeName="adminDashboard" />
+                    </MFEErrorBoundary>
+                  </Box>
+                </RoleGuard>
+              </ProtectedRoute>
+            }
           />
         </Routes>
       )}

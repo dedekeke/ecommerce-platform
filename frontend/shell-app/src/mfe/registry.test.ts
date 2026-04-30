@@ -27,10 +27,11 @@ describe('mfeRegistry', () => {
     Object.entries(mfeRegistry).forEach(([name, config]) => {
       expect(config.name).toBe(name)
       expect(config.displayName).toBeTruthy()
-      expect(config.remoteUrl).toContain('remoteEntry.js')
+      expect(config.remoteUrl).toMatch(/remoteEntry\.(js|json)$/)
       expect(config.exposedModule).toMatch(/^\.\//)
       expect(['page', 'productList', 'cart', 'profile']).toContain(config.fallbackSkeleton)
       expect(typeof config.requiresAuth).toBe('boolean')
+      expect(['webpack', 'native']).toContain(config.runtime)
     })
   })
 
@@ -42,6 +43,10 @@ describe('mfeRegistry', () => {
     it('should use productList skeleton', () => {
       expect(mfeRegistry.productCatalog.fallbackSkeleton).toBe('productList')
     })
+
+    it('should use webpack runtime', () => {
+      expect(mfeRegistry.productCatalog.runtime).toBe('webpack')
+    })
   })
 
   describe('cart config', () => {
@@ -51,6 +56,10 @@ describe('mfeRegistry', () => {
 
     it('should use cart skeleton', () => {
       expect(mfeRegistry.cart.fallbackSkeleton).toBe('cart')
+    })
+
+    it('should use webpack runtime', () => {
+      expect(mfeRegistry.cart.runtime).toBe('webpack')
     })
   })
 
@@ -68,6 +77,14 @@ describe('mfeRegistry', () => {
     it('should use profile skeleton', () => {
       expect(mfeRegistry.userDashboard.fallbackSkeleton).toBe('profile')
     })
+
+    it('should use native runtime', () => {
+      expect(mfeRegistry.userDashboard.runtime).toBe('native')
+    })
+
+    it('should point remoteUrl to remoteEntry.json', () => {
+      expect(mfeRegistry.userDashboard.remoteUrl).toContain('remoteEntry.json')
+    })
   })
 
   describe('adminDashboard config', () => {
@@ -77,6 +94,14 @@ describe('mfeRegistry', () => {
 
     it('should require admin role', () => {
       expect(mfeRegistry.adminDashboard.requiredRoles).toContain('admin')
+    })
+
+    it('should use native runtime', () => {
+      expect(mfeRegistry.adminDashboard.runtime).toBe('native')
+    })
+
+    it('should point remoteUrl to remoteEntry.json', () => {
+      expect(mfeRegistry.adminDashboard.remoteUrl).toContain('remoteEntry.json')
     })
   })
 })
