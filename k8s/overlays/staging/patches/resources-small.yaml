@@ -1,0 +1,10 @@
+# JSON-style strategic merge patch — applied to every backend Deployment in staging.
+- op: replace
+  path: /spec/template/spec/containers/0/resources
+  value:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"

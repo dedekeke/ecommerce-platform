@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+  namespace: ecommerce
+spec:
+  schedule: "0 3 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: mysqldump
+              image: mysql:8.2
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  microdnf install -y awscli || (apt-get update && apt-get install -y awscli)
+                  TS=$(date -u +%Y%m%dT%H%M%SZ)
+                  for DB in productdb promotiondb; do
+                    mysqldump -h mysql -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" \
+                              --single-transaction --routines --triggers --events "$DB" \
+                      | gzip \
+                      | aws s3 cp - "s3://${S3_BUCKET}/backups/mysql/${DB}/${TS}.sql.gz"
+                  done
+              env:
+                - name: MYSQL_USER
+                  valueFrom: { secretKeyRef: { name: ecommerce-secrets, key: MYSQL_USER } }
+                - name: MYSQL_PASSWORD
+                  valueFrom: { secretKeyRef: { name: ecommerce-secrets, key: MYSQL_PASSWORD } }
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom: { secretKeyRef: { name: backup-secrets, key: AWS_ACCESS_KEY_ID } }
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: backup-secrets, key: AWS_SECRET_ACCESS_KEY } }
+                - name: S3_BUCKET
+                  valueFrom: { secretKeyRef: { name: backup-secrets, key: S3_BUCKET } }
+              resources:
+                requests: { memory: "256Mi", cpu: "100m" }
+                limits:   { memory: "512Mi", cpu: "500m" }
