@@ -1,6 +1,7 @@
 # E-Commerce Platform - TODO & Progress Tracker
 
-> Last updated: 2026-01-11 (Day 36 - Product Catalog MFE)
+> Last updated: 2026-04-30 — Days 38-45 + production readiness shipped.
+> Previous update: 2026-01-11 (Day 36 - Product Catalog MFE)
 
 ---
 
@@ -11,6 +12,30 @@ Product Catalog MFE initialized with core components implemented.
 ---
 
 ## Completed Tasks
+
+### Completed Days 38-45 — MFEs + Production Readiness + Documentation
+- [x] **Day 38** — Shopping Cart MFE (React) implemented and federated
+- [x] **Day 39** — Checkout MFE (React) implemented with multi-step flow
+- [x] **Day 40** — React MFEs integration tests (`docs/MFE_INTEGRATION_TEST.md`)
+- [x] **Day 41-43** — User Dashboard MFE (Angular) — orders, profile, wishlist
+- [x] **Day 44** — Admin Dashboard MFE (Angular) — products, orders, users
+- [x] **Day 45** — Angular MFEs integration into Shell App
+- [x] Email notifications (order, payment, shipping, promotion) via MailHog (`docs/EMAIL_NOTIFICATIONS.md`)
+- [x] Header/footer full-width and theme polish across MFEs
+- [x] Comment cleanup pass — removed redundant comments per CLAUDE.md rule 6
+- [x] **Production readiness**
+  - [x] `docker-compose.prod.yml` with resource limits + log rotation
+  - [x] Kubernetes manifests under `k8s/` (Kustomize overlays for staging/prod)
+  - [x] Helm umbrella chart `helm/ecommerce/` with 11 backend subcharts
+  - [x] CI/CD workflows (`ci.yml`, `cd-staging.yml`, `cd-production.yml`)
+  - [x] Centralized logging (Loki + Promtail + Grafana) — see `monitoring/README.md`
+  - [x] Backup & DR plan with RTO 4 h / RPO 1 h — `docs/BACKUP_AND_DR.md`
+- [x] **Documentation consolidation**
+  - [x] Aggregated Swagger UI at gateway (`http://localhost:8080/swagger-ui.html`) via Springdoc 2.5.0 + `/aggregate/<svc>` proxy routes
+  - [x] Developer onboarding guide — `docs/ONBOARDING.md`
+  - [x] Operations runbook (alerts, rollback, restart, DR drill) — `docs/OPERATIONS_RUNBOOK.md`
+  - [x] README documentation map organized by audience (Getting Started, Architecture, API/Frontend, Operations, Security)
+  - [x] Back-links to README added to all 22 docs in `docs/`
 
 ### Day 36 - Product Catalog MFE (Phase 1)
 - [x] Initialize product-catalog-mfe with Vite + React 19 + TypeScript
@@ -186,16 +211,16 @@ Product Catalog MFE initialized with core components implemented.
 - [x] Implement Zustand stores (auth, cart, notifications, preferences) (Day 33)
 - [x] Create API client with axios interceptors (Day 34)
 - [x] Micro-frontend loading infrastructure (Day 35)
-- [ ] Product Catalog MFE (React) (Day 36-37)
-- [ ] Shopping Cart MFE (React) (Day 38)
-- [ ] Checkout MFE (React) (Day 39)
-- [ ] React MFEs Integration (Day 40)
-- [ ] User Dashboard MFE (Angular) (Day 41-43)
-- [ ] Admin Dashboard MFE (Angular) (Day 44)
-- [ ] Angular MFEs Integration (Day 45)
-- [ ] Add email notifications for order confirmations and promotions using mailhog server
-- [ ] Header and footer are not full width. Also the current theme is not good
-- [ ] Remove the over-commented comments. Keep only keys/necessary/hard-logic ones
+- [x] Product Catalog MFE (React) (Day 36-37)
+- [x] Shopping Cart MFE (React) (Day 38)
+- [x] Checkout MFE (React) (Day 39)
+- [x] React MFEs Integration (Day 40)
+- [x] User Dashboard MFE (Angular) (Day 41-43)
+- [x] Admin Dashboard MFE (Angular) (Day 44)
+- [x] Angular MFEs Integration (Day 45)
+- [x] Email notifications via MailHog (order/payment/shipping/promotion)
+- [x] Header/footer full-width and theme polish
+- [x] Comment cleanup (CLAUDE.md rule 6)
 
 ### Priority 2: Testing & Quality (Week 10)
 - [ ] Increase unit test coverage to 80%+
@@ -266,17 +291,17 @@ Product Catalog MFE initialized with core components implemented.
 - [ ] Implement scroll-triggered animations for marketing sections
 
 ### Priority 3: Production Readiness
-- [ ] Create production docker-compose.yml
-- [ ] Kubernetes deployment manifests
-- [ ] Helm charts
-- [ ] CI/CD pipeline refinement
-- [ ] Configure production logging (centralized)
-- [ ] Set up backup and disaster recovery
+- [x] Create production docker-compose.yml
+- [x] Kubernetes deployment manifests
+- [x] Helm charts
+- [x] CI/CD pipeline refinement
+- [x] Configure production logging (centralized)
+- [x] Set up backup and disaster recovery
 
 ### Priority 4: Documentation
-- [ ] API documentation consolidated at Gateway
-- [ ] Developer onboarding guide
-- [ ] Operations runbook
+- [x] API documentation consolidated at Gateway (Swagger UI at `/swagger-ui.html`)
+- [x] Developer onboarding guide (`docs/ONBOARDING.md`)
+- [x] Operations runbook (`docs/OPERATIONS_RUNBOOK.md`)
 
 ---
 
@@ -317,17 +342,16 @@ Product Catalog MFE initialized with core components implemented.
 
 ## Documentation
 
+The README has the full audience-organized [Documentation Map](README.md#documentation-map). Top picks:
+
 | Document | Description |
 |----------|-------------|
-| [README.md](README.md) | Project overview |
+| [README.md](README.md) | Project overview + documentation map |
 | [QUICKSTART.md](QUICKSTART.md) | Getting started guide |
+| [docs/ONBOARDING.md](docs/ONBOARDING.md) | New-engineer onboarding flow |
+| [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) | Production on-call playbook |
+| [docs/BACKUP_AND_DR.md](docs/BACKUP_AND_DR.md) | Backup & DR runbooks |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
-| [docs/VIRTUAL_THREADS.md](docs/VIRTUAL_THREADS.md) | Virtual threads guide |
-| [docs/RESILIENCE_PATTERNS.md](docs/RESILIENCE_PATTERNS.md) | Circuit breakers |
-| [docs/CACHING_STRATEGY.md](docs/CACHING_STRATEGY.md) | Redis caching |
-| [docs/SECURITY.md](docs/SECURITY.md) | Security architecture |
-| [docs/SCHEDULED_TASKS.md](docs/SCHEDULED_TASKS.md) | Batch processing |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues |
-| [docs/frontend-design-brief.md](docs/frontend-design-brief.md) | **Frontend Design System & UI/UX Guidelines** |
+| [docs/frontend-design-brief.md](docs/frontend-design-brief.md) | Frontend design system |
 | [scripts/README.md](scripts/README.md) | Development scripts |
 | [plan.md](plan.md) | Development plan |
