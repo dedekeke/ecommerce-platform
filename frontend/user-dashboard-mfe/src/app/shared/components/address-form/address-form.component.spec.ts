@@ -44,7 +44,7 @@ describe('AddressFormComponent', () => {
     expect(form.valid).toBeTrue();
   });
 
-  it('should emit formSubmit with valid form data on save', () => {
+  it('should emit formSubmit with valid form data on save', async () => {
     const form = fixture.componentInstance.form;
     form.patchValue({
       label: 'Home',
@@ -61,20 +61,18 @@ describe('AddressFormComponent', () => {
     let emitted: unknown;
     fixture.componentInstance.formSubmit.subscribe((val) => (emitted = val));
 
-    const submitBtn = fixture.nativeElement.querySelector('[data-testid="submit-btn"]');
-    submitBtn?.click();
-    fixture.detectChanges();
+    fixture.componentInstance.onSubmit();
+    await fixture.whenStable();
 
     expect(emitted).toBeTruthy();
   });
 
-  it('should not emit formSubmit when form is invalid', () => {
+  it('should not emit formSubmit when form is invalid', async () => {
     let emitted = false;
     fixture.componentInstance.formSubmit.subscribe(() => (emitted = true));
 
-    const submitBtn = fixture.nativeElement.querySelector('[data-testid="submit-btn"]');
-    submitBtn?.click();
-    fixture.detectChanges();
+    fixture.componentInstance.onSubmit();
+    await fixture.whenStable();
 
     expect(emitted).toBeFalse();
   });

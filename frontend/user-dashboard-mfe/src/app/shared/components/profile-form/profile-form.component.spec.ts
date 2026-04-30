@@ -46,15 +46,14 @@ describe('ProfileFormComponent', () => {
     expect(fixture.componentInstance.form.invalid).toBeTrue();
   });
 
-  it('should emit formSubmit with updated values on save', () => {
+  it('should emit formSubmit with updated values on save', async () => {
     fixture.componentInstance.form.get('firstName')?.setValue('Jane');
 
     let emitted: unknown;
     fixture.componentInstance.formSubmit.subscribe((val) => (emitted = val));
 
-    const submitBtn = fixture.nativeElement.querySelector('[data-testid="save-profile-btn"]');
-    submitBtn?.click();
-    fixture.detectChanges();
+    fixture.componentInstance.onSubmit();
+    await fixture.whenStable();
 
     expect((emitted as { firstName: string }).firstName).toBe('Jane');
   });

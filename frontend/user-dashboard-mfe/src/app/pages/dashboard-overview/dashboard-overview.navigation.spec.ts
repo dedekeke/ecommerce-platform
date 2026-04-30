@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DashboardOverviewPage } from './dashboard-overview.page';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -70,16 +70,13 @@ describe('DashboardOverviewPage — navigation', () => {
     fixture.detectChanges();
   });
 
-  it('should set window.location.href to the order detail URL on onViewOrder', () => {
-    let capturedHref = '';
-    const locationSpy = spyOnProperty(window, 'location').and.returnValue({
-      ...window.location,
-      set href(v: string) { capturedHref = v; },
-      get href() { return capturedHref; },
-    });
+  it('should navigate to the order detail route on onViewOrder', () => {
+    const router = TestBed.inject(Router);
+    const navigateSpy = spyOn(router, 'navigate').and.resolveTo(true);
+
     component.onViewOrder('order-dash-1');
-    expect(capturedHref).toContain('order-dash-1');
-    locationSpy.and.callThrough();
+
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/orders', 'order-dash-1']);
   });
 
   it('should display recent orders when orders are returned', async () => {

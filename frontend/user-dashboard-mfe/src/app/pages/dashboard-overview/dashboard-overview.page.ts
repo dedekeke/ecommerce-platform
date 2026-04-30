@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -109,6 +109,7 @@ const DEMO_USER_ID = 'me';
 export class DashboardOverviewPage implements OnInit {
   private readonly userService = inject(UserService);
   private readonly orderService = inject(OrderService);
+  private readonly router = inject(Router);
 
   readonly profile = signal<UserProfile | null>(null);
   readonly recentOrders = signal<Order[]>([]);
@@ -129,6 +130,6 @@ export class DashboardOverviewPage implements OnInit {
   }
 
   onViewOrder(orderId: string): void {
-    window.location.href = `/dashboard/orders/${orderId}`;
+    this.router.navigate(['/dashboard/orders', orderId]);
   }
 }
