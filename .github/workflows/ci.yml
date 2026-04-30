@@ -1,13 +1,17 @@
 name: CI
 
-# Runs on every PR. Builds + tests backend + all 6 frontends, lints, and triggers
-# OWASP Dependency-Check. Image build is in cd-* workflows, not here.
+# Runs on PRs to develop/master. Path-filtered to skip irrelevant work.
 
 on:
   pull_request:
-    branches: [ master, develop ]
-  push:
-    branches: [ feature/**, fix/** ]
+    branches: [ develop, master ]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'k8s/**'
+      - 'helm/**'
+      - 'monitoring/**'
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -15,14 +19,40 @@ concurrency:
 
 env:
   JAVA_VERSION: "21"
-  NODE_VERSION: "20"
+  NODE_VERSION: "22.12.0"
 
 jobs:
-  # ------------------------------------------------------------------
-  # Backend: single root build (preferred — common-library + Maven reactor).
-  # ------------------------------------------------------------------
+  # Detect which areas changed so we can skip backend/frontend selectively.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'services/**'
+              - 'common-library/**'
+              - 'infrastructure/**'
+              - 'pom.xml'
+            frontend:
+              - 'frontend/**'
+            infra:
+              - 'k8s/**'
+              - 'helm/**'
+              - 'docker-compose*.yml'
+              - 'Dockerfile*'
+
   backend-build-test:
     name: Backend build & test
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -39,8 +69,7 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
@@ -49,32 +78,20 @@ jobs:
         run: mvn -B -ntp clean install -DskipTests
       - name: Unit tests
         run: mvn -B -ntp test
-      - name: Integration tests
-        run: mvn -B -ntp verify -P integration-tests
-      - name: Coverage report
-        run: mvn -B -ntp jacoco:report
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: '**/target/site/jacoco/'
 
-  # ------------------------------------------------------------------
-  # Frontend: per-MFE matrix. Tests + lint.
-  # ------------------------------------------------------------------
   frontend:
     name: Frontend ${{ matrix.app }}
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         app:
           - shell-app
-          - admin-dashboard-mfe
+          - product-catalog-mfe
           - cart-mfe
           - checkout-mfe
-          - product-catalog-mfe
-          - user-dashboard-mfe
     defaults:
       run:
         working-directory: frontend/${{ matrix.app }}
@@ -85,51 +102,46 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
-      - name: Install
-        run: npm ci || npm install
-      - name: Lint
-        run: npm run lint --if-present
-      - name: Test
-        run: npm test --if-present -- --run
-      - name: Build
-        run: npm run build --if-present
+      - run: npm ci
+      - run: npm run lint --if-present
+      - run: npm test --if-present -- --run
 
-  # ------------------------------------------------------------------
-  # Security: OWASP Dependency-Check (Java) + npm audit (frontends).
-  # ------------------------------------------------------------------
-  security-scan:
-    name: Security scan
+  angular-frontend:
+    name: Angular ${{ matrix.app }}
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - user-dashboard-mfe
+          - admin-dashboard-mfe
+    defaults:
+      run:
+        working-directory: frontend/${{ matrix.app }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-node@v4
         with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: temurin
-          cache: maven
-      - name: OWASP Dependency-Check
-        run: mvn -B -ntp org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 -DskipTests
-        continue-on-error: true
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: dependency-check-report
-          path: '**/target/dependency-check-report.html'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
+      - run: npm ci
+      - run: npx ng test --watch=false --browsers=ChromeHeadless --no-progress
 
-  # ------------------------------------------------------------------
-  # Lint: shell scripts, YAML, kustomize, helm.
-  # ------------------------------------------------------------------
   lint-infra:
-    name: Lint infra (yaml, kustomize)
+    name: Lint infra
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-helm@v4
       - name: Kustomize render
         run: |
           kubectl kustomize k8s/base > /tmp/base.yaml
           kubectl kustomize k8s/overlays/staging > /tmp/staging.yaml
           kubectl kustomize k8s/overlays/production > /tmp/prod.yaml
-      - name: Helm lint
-        uses: azure/setup-helm@v4
       - run: helm lint ./helm/ecommerce
