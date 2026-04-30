@@ -55,6 +55,16 @@ public class OrderCreationSaga {
     private PaymentServiceGrpc.PaymentServiceBlockingStub paymentServiceStub;
 
     /**
+     * Execute the order creation saga without recipient enrichment.
+     * Delegates to the enriched overload with null userEmail/userName so the
+     * notification-service falls back to its lookup path.
+     */
+    @Transactional
+    public Order executeOrderCreationSaga(String userId, Address shippingAddress, String promotionCode) {
+        return executeOrderCreationSaga(userId, shippingAddress, promotionCode, null, null);
+    }
+
+    /**
      * Execute the order creation saga
      * Steps:
      * 1. Get cart items from Cart Service (gRPC)
@@ -63,12 +73,19 @@ public class OrderCreationSaga {
      * 4. Apply promotion (increment usage) if promotion was used
      * 5. Create payment intent in Payment Service (gRPC)
      * 6. Clear cart
-     * 7. Publish OrderCreatedEvent to Kafka
+     * 7. Publish OrderCreatedEvent to Kafka with recipient details so the
+     *    notification-service can render the order confirmation email.
      *
      * If any step fails, compensate previous steps
      */
     @Transactional
-    public Order executeOrderCreationSaga(String userId, Address shippingAddress, String promotionCode) {
+    public Order executeOrderCreationSaga(
+        String userId,
+        Address shippingAddress,
+        String promotionCode,
+        String userEmail,
+        String userName
+    ) {
         log.info("Starting order creation saga for user: {}", userId);
 
         String reservationId = null;
@@ -140,9 +157,10 @@ public class OrderCreationSaga {
             log.info("Saga Step 6: Clearing cart for user: {}", userId);
             clearCart(userId);
 
-            // Step 7: Publish event
+            // Step 7: Publish event with recipient details so the
+            // notification-service can render the personalised confirmation email.
             log.info("Saga Step 7: Publishing order created event");
-            eventPublisher.publishOrderCreatedEvent(order);
+            eventPublisher.publishOrderCreatedEvent(order, userEmail, userName);
 
             log.info("Order creation saga completed successfully for order: {}", order.getOrderNumber());
             return order;

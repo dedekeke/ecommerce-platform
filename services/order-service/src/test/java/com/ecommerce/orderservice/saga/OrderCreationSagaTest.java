@@ -176,13 +176,46 @@ class OrderCreationSagaTest {
         // Verify all steps were called
         verify(orderService, times(1)).createOrder(eq(userId), anyList(), eq(address), isNull());
         verify(orderService, times(1)).setPaymentIntent(eq(orderId), anyString());
-        verify(eventPublisher, times(1)).publishOrderCreatedEvent(mockOrder);
+        // No-arg overload defers to enriched overload with null recipient details
+        verify(eventPublisher, times(1)).publishOrderCreatedEvent(mockOrder, null, null);
 
         // Verify gRPC calls
         assertTrue(mockCartService.wasGetCartCalled());
         assertTrue(mockInventoryService.wasReserveStockCalled());
         assertTrue(mockPaymentService.wasCreatePaymentIntentCalled());
         assertTrue(mockCartService.wasClearCartCalled());
+    }
+
+    @Test
+    void testSuccessfulOrderCreation_PublishesEnrichedEvent() {
+        // Arrange
+        String userId = "user-with-email";
+        String userEmail = "buyer@example.com";
+        String userName = "Buyer Name";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-00099";
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockPaymentService.setPaymentSuccess(true);
+
+        Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+            .thenReturn(mockOrder);
+        when(orderService.setPaymentIntent(eq(orderId), anyString()))
+            .thenReturn(mockOrder);
+
+        // Act
+        Order result = saga.executeOrderCreationSaga(userId, address, null, userEmail, userName);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(orderNumber, result.getOrderNumber());
+        // Saga must forward recipient details to the enriched event so saga-driven
+        // orders also produce personalised confirmation emails.
+        verify(eventPublisher, times(1)).publishOrderCreatedEvent(mockOrder, userEmail, userName);
+        verify(eventPublisher, never()).publishOrderCreatedEvent(any(Order.class));
     }
 
     @Test
@@ -202,7 +235,8 @@ class OrderCreationSagaTest {
 
         assertTrue(exception.getMessage().contains("Cart is empty"));
         verify(orderService, never()).createOrder(anyString(), anyList(), any(), any());
-        verify(eventPublisher, never()).publishOrderCreatedEvent(any());
+        verify(eventPublisher, never()).publishOrderCreatedEvent(any(Order.class));
+        verify(eventPublisher, never()).publishOrderCreatedEvent(any(Order.class), any(), any());
     }
 
     @Test
@@ -225,7 +259,8 @@ class OrderCreationSagaTest {
         // Verify compensation - cart should NOT be cleared on failure
         assertFalse(mockCartService.wasClearCartCalled());
         verify(orderService, never()).createOrder(anyString(), anyList(), any(), any());
-        verify(eventPublisher, never()).publishOrderCreatedEvent(any());
+        verify(eventPublisher, never()).publishOrderCreatedEvent(any(Order.class));
+        verify(eventPublisher, never()).publishOrderCreatedEvent(any(Order.class), any(), any());
     }
 
     @Test
