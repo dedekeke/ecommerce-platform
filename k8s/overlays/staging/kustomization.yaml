@@ -42,5 +42,7 @@ patches:
     target:
       kind: Deployment
 
-commonLabels:
-  environment: staging
+labels:
+  - includeSelectors: true
+    pairs:
+      environment: staging

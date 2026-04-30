@@ -35,5 +35,7 @@ resources:
   - cronjobs/mongodb-backup.yaml
   - cronjobs/mysql-backup.yaml
 
-commonLabels:
-  app.kubernetes.io/part-of: ecommerce-platform
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/part-of: ecommerce-platform
