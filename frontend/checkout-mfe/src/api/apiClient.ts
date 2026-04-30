@@ -1,4 +1,9 @@
-import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
+import axios, {
+  type AxiosError,
+  type AxiosInstance,
+  type InternalAxiosRequestConfig,
+} from 'axios'
+import axiosRetry from 'axios-retry'
 
 declare global {
   interface Window {
@@ -13,6 +18,29 @@ export const apiClient: AxiosInstance = axios.create({
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
+  },
+})
+
+axiosRetry(apiClient, {
+  retries: 3,
+  retryDelay: axiosRetry.exponentialDelay,
+  retryCondition: (error: AxiosError) => {
+    return (
+      axiosRetry.isNetworkOrIdempotentRequestError(error) ||
+      error.response?.status === 429 ||
+      (error.response?.status !== undefined && error.response.status >= 500)
+    )
+  },
+  onRetry: (retryCount, error) => {
+    if (import.meta.env.DEV) {
+      console.log(
+        `[API Retry] Attempt ${retryCount} for ${error.config?.url}`,
+        {
+          status: error.response?.status,
+          message: error.message,
+        }
+      )
+    }
   },
 })
 

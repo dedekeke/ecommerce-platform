@@ -96,4 +96,24 @@ describe('apiClient', () => {
       expect(capturedAuthHeader).toBeNull()
     })
   })
+
+  describe('retry behaviour', () => {
+    it('should retry on 503 then resolve with 200', async () => {
+      let callCount = 0
+      server.use(
+        http.get('http://localhost:8080/api/retry', () => {
+          callCount += 1
+          if (callCount === 1) {
+            return HttpResponse.json({ message: 'Service Unavailable' }, { status: 503 })
+          }
+          return HttpResponse.json({ ok: true, attempt: callCount })
+        })
+      )
+
+      const { data } = await apiClient.get('/retry')
+
+      expect(callCount).toBe(2)
+      expect(data).toEqual({ ok: true, attempt: 2 })
+    }, 15000)
+  })
 })
