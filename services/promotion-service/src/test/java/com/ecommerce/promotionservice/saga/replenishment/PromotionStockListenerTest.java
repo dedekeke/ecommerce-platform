@@ -68,7 +68,7 @@ class PromotionStockListenerTest {
     @DisplayName("should pause active promotions and emit promotion.paused.due-to-stock when stock.low.detected arrives")
     void should_pausePromotions_when_stockLowReceived() throws Exception {
         Promotion p = activePromotion(1L);
-        when(promotionRepository.findByActiveTrue()).thenReturn(List.of(p));
+        when(promotionRepository.findActiveByProductId(100L)).thenReturn(List.of(p));
         when(consumedRepository.existsById(any())).thenReturn(false);
 
         StockLowDetectedEvent event = new StockLowDetectedEvent(
@@ -85,6 +85,46 @@ class PromotionStockListenerTest {
         PromotionPausedEvent emitted = (PromotionPausedEvent) kafkaPayload.getValue();
         assertThat(emitted.causedByEventId()).isEqualTo(event.eventId());
         assertThat(emitted.pausedPromotionCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("should only pause promotions linked to the specific product (not all active)")
+    void should_pauseOnlyLinkedPromotion_when_otherActivePromotionsExistForOtherProducts() throws Exception {
+        Promotion linked = activePromotion(10L);
+        // Repository returns ONLY the promotion linked to product 100L; others
+        // active in the system but linked to different products are absent.
+        when(promotionRepository.findActiveByProductId(100L)).thenReturn(List.of(linked));
+        when(consumedRepository.existsById(any())).thenReturn(false);
+
+        StockLowDetectedEvent event = new StockLowDetectedEvent(
+                UUID.randomUUID(), 100L, "SKU-100", 2, 5, Instant.now());
+        listener.onStockLow(objectMapper.writeValueAsString(event));
+
+        assertThat(linked.getActive()).isFalse();
+        ArgumentCaptor<List<Promotion>> savedCaptor = ArgumentCaptor.forClass(List.class);
+        verify(promotionRepository).saveAll(savedCaptor.capture());
+        assertThat(savedCaptor.getValue()).hasSize(1);
+        assertThat(savedCaptor.getValue().get(0).getId()).isEqualTo(10L);
+
+        ArgumentCaptor<PromotionPausedEvent> emittedCaptor = ArgumentCaptor.forClass(PromotionPausedEvent.class);
+        verify(kafkaTemplate).send(eq("promotion.paused.due-to-stock"), anyString(), emittedCaptor.capture());
+        assertThat(emittedCaptor.getValue().pausedPromotionCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("should emit zero-count event when no promotions target the affected product")
+    void should_emitZeroCount_when_noPromotionsLinkedToProduct() throws Exception {
+        when(promotionRepository.findActiveByProductId(999L)).thenReturn(List.of());
+        when(consumedRepository.existsById(any())).thenReturn(false);
+
+        StockLowDetectedEvent event = new StockLowDetectedEvent(
+                UUID.randomUUID(), 999L, "SKU-999", 2, 5, Instant.now());
+        listener.onStockLow(objectMapper.writeValueAsString(event));
+
+        verify(promotionRepository).saveAll(List.of());
+        ArgumentCaptor<PromotionPausedEvent> emittedCaptor = ArgumentCaptor.forClass(PromotionPausedEvent.class);
+        verify(kafkaTemplate).send(eq("promotion.paused.due-to-stock"), anyString(), emittedCaptor.capture());
+        assertThat(emittedCaptor.getValue().pausedPromotionCount()).isZero();
     }
 
     @Test
@@ -106,7 +146,7 @@ class PromotionStockListenerTest {
     void should_resumePromotions_when_stockReplenishedReceived() throws Exception {
         Promotion paused = activePromotion(2L);
         paused.setActive(false);
-        when(promotionRepository.findAll()).thenReturn(List.of(paused));
+        when(promotionRepository.findInactiveByProductId(100L)).thenReturn(List.of(paused));
         when(consumedRepository.existsById(any())).thenReturn(false);
 
         StockReplenishedEvent event = new StockReplenishedEvent(

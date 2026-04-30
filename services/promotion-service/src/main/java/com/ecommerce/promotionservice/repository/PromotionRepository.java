@@ -34,4 +34,22 @@ public interface PromotionRepository extends JpaRepository<Promotion, Long> {
            "AND (p.maxUses IS NULL OR p.currentUses < p.maxUses)")
     Optional<Promotion> findValidPromotionByCode(@Param("code") String code,
                                                    @Param("currentDate") LocalDateTime currentDate);
+
+    /**
+     * Active promotions explicitly linked to a product via the
+     * {@code promotion_products} table. Used by the replenishment saga to
+     * find promotions to pause when stock runs low.
+     */
+    @Query("SELECT p FROM Promotion p JOIN p.applicableProducts pp " +
+           "WHERE pp = :productId AND p.active = true")
+    List<Promotion> findActiveByProductId(@Param("productId") Long productId);
+
+    /**
+     * Inactive promotions linked to a product. Used to resume promotions
+     * when stock returns. {@code DISTINCT} guards against duplicate rows from
+     * the join.
+     */
+    @Query("SELECT DISTINCT p FROM Promotion p JOIN p.applicableProducts pp " +
+           "WHERE pp = :productId AND p.active = false")
+    List<Promotion> findInactiveByProductId(@Param("productId") Long productId);
 }

@@ -106,22 +106,15 @@ public class PromotionStockListener {
     }
 
     /**
-     * Look up active promotions that target the given product.
-     *
-     * <p><strong>Stub:</strong> the existing {@code Promotion} model targets
-     * categories, not individual products, so the production wiring would
-     * need a {@code promotion_products} link table. For this learning
-     * example we return the full active list; the test mocks the repository
-     * to control behaviour.
+     * Active promotions linked to the given product via the
+     * {@code promotion_products} join table.
      */
     List<Promotion> findActivePromotionsForProduct(Long productId) {
-        return promotionRepository.findByActiveTrue();
+        return promotionRepository.findActiveByProductId(productId);
     }
 
-    /** See {@link #findActivePromotionsForProduct(Long)} — same stub caveat. */
+    /** Promotions previously paused for this product, ready to resume. */
     List<Promotion> findPausedPromotionsForProduct(Long productId) {
-        return promotionRepository.findAll().stream()
-                .filter(p -> Boolean.FALSE.equals(p.getActive()))
-                .toList();
+        return promotionRepository.findInactiveByProductId(productId);
     }
 }

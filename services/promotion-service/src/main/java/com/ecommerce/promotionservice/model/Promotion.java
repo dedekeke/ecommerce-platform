@@ -84,6 +84,12 @@ public class Promotion implements Serializable {
     @Builder.Default
     private Set<Long> applicableCategories = new HashSet<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "promotion_products", joinColumns = @JoinColumn(name = "promotion_id"))
+    @Column(name = "product_id")
+    @Builder.Default
+    private Set<Long> applicableProducts = new HashSet<>();
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -114,6 +120,10 @@ public class Promotion implements Serializable {
 
     public boolean isApplicableToCategory(Long categoryId) {
         return applicableCategories.isEmpty() || applicableCategories.contains(categoryId);
+    }
+
+    public boolean isApplicableToProduct(Long productId) {
+        return applicableProducts.contains(productId);
     }
 
     public void incrementUsage() {
