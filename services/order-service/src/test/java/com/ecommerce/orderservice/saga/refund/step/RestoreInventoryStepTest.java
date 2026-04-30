@@ -96,6 +96,26 @@ class RestoreInventoryStepTest {
         step.compensate(RefundSagaContext.builder().build());
     }
 
+    @Test
+    void execute_should_returnFailure_whenStubThrows() {
+        RestoreInventoryStep broken = new RestoreInventoryStep();
+        broken.inventoryServiceStub = null;
+
+        StepResult result = broken.execute(ctxWithItems());
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.message()).contains("Inventory service error");
+    }
+
+    @Test
+    void execute_should_fail_whenOrderIsNull() {
+        RefundSagaContext ctx = RefundSagaContext.builder().orderId("o1").build();
+
+        StepResult result = step.execute(ctx);
+
+        assertThat(result.successful()).isFalse();
+    }
+
     private RefundSagaContext ctxWithItems() {
         Order order = new Order();
         order.setId("o1");

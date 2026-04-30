@@ -95,6 +95,42 @@ class ReversePaymentStepTest {
         assertThat(mockPaymentService.lastCreateIntentRequest).isNull();
     }
 
+    @Test
+    void execute_should_returnFailure_whenStubThrows() {
+        // Force a runtime exception path by using an invalid stub.
+        ReversePaymentStep brokenStep = new ReversePaymentStep();
+        brokenStep.paymentServiceStub = null;
+
+        RefundSagaContext ctx = RefundSagaContext.builder()
+            .paymentIntentId("pi_x").refundAmount(java.math.BigDecimal.ONE).build();
+        StepResult result = brokenStep.execute(ctx);
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.message()).contains("Payment service error");
+    }
+
+    @Test
+    void compensate_should_handle_grpcException_silently() {
+        ReversePaymentStep brokenStep = new ReversePaymentStep();
+        brokenStep.paymentServiceStub = null;
+
+        // Should not throw despite null stub.
+        brokenStep.compensate(RefundSagaContext.builder()
+            .refundTransactionId("ref-9").orderId("o1").build());
+    }
+
+    @Test
+    void execute_should_useEmptyReason_whenContextHasNone() {
+        mockPaymentService.refundSuccess = true;
+        RefundSagaContext ctx = RefundSagaContext.builder()
+            .paymentIntentId("pi").refundAmount(null).build();
+
+        step.execute(ctx);
+
+        assertThat(mockPaymentService.lastRefundRequest.getReason()).isEqualTo("Customer refund");
+        assertThat(mockPaymentService.lastRefundRequest.getAmount()).isEqualTo(0d);
+    }
+
     private static class MockPaymentService extends PaymentServiceGrpc.PaymentServiceImplBase {
         boolean refundSuccess = true;
         String refundId = "default-ref";

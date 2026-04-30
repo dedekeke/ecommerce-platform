@@ -97,4 +97,35 @@ class UpdateOrderStepTest {
 
         verify(orderRepository, never()).save(any());
     }
+
+    @Test
+    void compensate_should_doNothing_whenOrderMissing() {
+        when(orderRepository.findById("missing")).thenReturn(Optional.empty());
+
+        step.compensate(RefundSagaContext.builder().orderId("missing").build());
+
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    void compensate_should_swallow_repositoryException() {
+        when(orderRepository.findById("o1")).thenThrow(new RuntimeException("DB down"));
+
+        step.compensate(RefundSagaContext.builder().orderId("o1").build());
+        // assertion: did not propagate
+    }
+
+    @Test
+    void execute_should_returnFailure_whenSaveThrows() {
+        Order order = new Order();
+        order.setId("o1");
+        order.setStatus(OrderStatus.DELIVERED);
+        when(orderRepository.findById("o1")).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenThrow(new RuntimeException("DB down"));
+
+        StepResult result = step.execute(RefundSagaContext.builder().orderId("o1").build());
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.message()).contains("DB down");
+    }
 }
