@@ -21,15 +21,24 @@ export const apiClient: AxiosInstance = axios.create({
   },
 })
 
+// SECURITY: Only retry idempotent HTTP methods (GET, HEAD, OPTIONS, PUT, DELETE) on 5xx /
+// network errors. POST and PATCH mutations MUST NOT be retried blindly because a
+// successful-but-timed-out POST request could cause duplicate side-effects.
+const IDEMPOTENT_METHODS = new Set(['get', 'head', 'options', 'put', 'delete'])
+
 axiosRetry(apiClient, {
   retries: 3,
   retryDelay: axiosRetry.exponentialDelay,
   retryCondition: (error: AxiosError) => {
-    return (
-      axiosRetry.isNetworkOrIdempotentRequestError(error) ||
-      error.response?.status === 429 ||
-      (error.response?.status !== undefined && error.response.status >= 500)
-    )
+    const method = (error.config?.method ?? '').toLowerCase()
+    const isIdempotent = IDEMPOTENT_METHODS.has(method)
+    const status = error.response?.status
+
+    if (axiosRetry.isNetworkOrIdempotentRequestError(error)) return true
+    if (status === 429 && isIdempotent) return true
+    if (status !== undefined && status >= 500 && isIdempotent) return true
+
+    return false
   },
   onRetry: (retryCount, error) => {
     if (import.meta.env.DEV) {
