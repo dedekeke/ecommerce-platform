@@ -274,9 +274,9 @@ spring:
       port: ${REDIS_PORT}
 
 # Security Configuration
-# Set to false to disable Auth0 for local development
+# Defaults to true (secure-by-default). Override with SECURITY_ENABLED=false for local development only.
 security:
-  enabled: ${SECURITY_ENABLED:false}
+  enabled: ${SECURITY_ENABLED:true}
 
   # Security Headers Configuration
   headers:

@@ -127,9 +127,9 @@ logging:
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 # Security Configuration
-# Set to false to disable Auth0 for local development
+# Defaults to true (secure-by-default). Override with SECURITY_ENABLED=false for local development only.
 security:
-  enabled: ${SECURITY_ENABLED:false}
+  enabled: ${SECURITY_ENABLED:true}
 
 # Auth0 Configuration
 auth0:
