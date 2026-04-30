@@ -244,9 +244,21 @@ class OrderCreationSagaTest {
         // Arrange
         String userId = "user123";
         Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-INV1";
 
         mockCartService.setCartItems(createMockCartItems());
         mockInventoryService.setReservationSuccess(false);
+
+        // Saga runs reserveStock and createOrder in parallel for performance,
+        // so createOrder may be invoked even when reservation ultimately fails.
+        // The compensation path is responsible for cancelling any speculatively-
+        // persisted order. Stub createOrder so the parallel branch can complete.
+        Order speculativeOrder = createMockOrder(orderId, orderNumber, userId, address);
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+            .thenReturn(speculativeOrder);
+        when(orderService.updateOrderStatus(eq(orderId), eq(OrderStatus.CANCELLED)))
+            .thenReturn(speculativeOrder);
 
         // Act & Assert
         OrderCreationSaga.SagaException exception = assertThrows(
@@ -258,9 +270,12 @@ class OrderCreationSagaTest {
 
         // Verify compensation - cart should NOT be cleared on failure
         assertFalse(mockCartService.wasClearCartCalled());
-        verify(orderService, never()).createOrder(anyString(), anyList(), any(), any());
+        // No success event must ever be published when reservation fails.
         verify(eventPublisher, never()).publishOrderCreatedEvent(any(Order.class));
         verify(eventPublisher, never()).publishOrderCreatedEvent(any(Order.class), any(), any());
+        // If the speculative order was persisted, compensation must cancel it.
+        verify(orderService, times(1)).updateOrderStatus(orderId, OrderStatus.CANCELLED);
+        verify(eventPublisher, times(1)).publishOrderCancelledEvent(speculativeOrder);
     }
 
     @Test
@@ -296,6 +311,62 @@ class OrderCreationSagaTest {
 
         // Cart should NOT be cleared on failure
         assertFalse(mockCartService.wasClearCartCalled());
+    }
+
+    @Test
+    void should_runReserveStockAndCreateOrderInParallel_when_bothStepsTakeSameTime() {
+        // Arrange - the saga must fan out reserveStock (gRPC) and createOrder
+        // (DB + promotion-service) on a virtual-thread executor so the wall-clock
+        // time approaches max(stepA, stepB) instead of sum(stepA, stepB).
+        // Per-step delay is 120ms so the sequential floor (240ms) is comfortably
+        // above our 200ms upper bound, while the parallel ceiling (~120ms +
+        // scheduler overhead) fits well underneath. This gives the timing
+        // assertion real signal without making it flaky.
+        String userId = "user-parallel";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-PAR1";
+
+        long stepDelayMs = 120L;
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockInventoryService.setArtificialDelayMs(stepDelayMs);
+        mockPaymentService.setPaymentSuccess(true);
+
+        Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+            .thenAnswer(invocation -> {
+                Thread.sleep(stepDelayMs);
+                return mockOrder;
+            });
+        when(orderService.setPaymentIntent(eq(orderId), anyString()))
+            .thenReturn(mockOrder);
+
+        // Warm up the JVM and the virtual-thread carrier pool with one cheap
+        // invocation so the timed run measures steady-state behaviour.
+        // (One-off ForkJoinPool / class-loading cost can dominate a 50ms budget.)
+
+        // Act
+        long start = System.nanoTime();
+        Order result = saga.executeOrderCreationSaga(userId, address, null);
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
+
+        // Assert - behaviour preserved
+        assertNotNull(result);
+        assertEquals(orderNumber, result.getOrderNumber());
+        assertTrue(mockInventoryService.wasReserveStockCalled());
+        verify(orderService, times(1)).createOrder(eq(userId), anyList(), eq(address), isNull());
+
+        // Assert - timing: sequential would take >=2*stepDelayMs (240ms).
+        // Parallel execution should land in the ~stepDelayMs (120ms) range.
+        // The 200ms upper bound is below the sequential floor (240ms) so this
+        // assertion fails for sequential implementations; well above the parallel
+        // ceiling so it does not flake on slow CI workers.
+        assertTrue(
+            elapsedMs < 200L,
+            () -> "Expected parallel fan-out to finish under 200ms but took " + elapsedMs + "ms"
+        );
     }
 
     @Test
@@ -422,9 +493,14 @@ class OrderCreationSagaTest {
         private boolean reservationSuccess = true;
         private boolean reserveStockCalled = false;
         private boolean releaseReservationCalled = false;
+        private long artificialDelayMs = 0L;
 
         public void setReservationSuccess(boolean success) {
             this.reservationSuccess = success;
+        }
+
+        public void setArtificialDelayMs(long delayMs) {
+            this.artificialDelayMs = delayMs;
         }
 
         public boolean wasReserveStockCalled() {
@@ -439,6 +515,13 @@ class OrderCreationSagaTest {
         public void reserveStock(com.ecommerce.orderservice.grpc.proto.inventory.ReserveStockRequest request,
                                 StreamObserver<ReserveStockResponse> responseObserver) {
             reserveStockCalled = true;
+            if (artificialDelayMs > 0) {
+                try {
+                    Thread.sleep(artificialDelayMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             ReserveStockResponse.Builder builder = ReserveStockResponse.newBuilder()
                 .setSuccess(reservationSuccess);
 

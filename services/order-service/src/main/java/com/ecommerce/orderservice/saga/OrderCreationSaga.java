@@ -30,6 +30,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 /**
@@ -44,6 +48,23 @@ public class OrderCreationSaga {
     private final OrderService orderService;
     private final OrderEventPublisher eventPublisher;
     private final PromotionServiceClient promotionServiceClient;
+
+    /*
+     * Virtual-thread executor used to fan out the two independent saga steps
+     * (inventory reservation + order persistence). We deliberately use
+     * CompletableFuture rather than the JDK 21 preview API
+     * java.util.concurrent.StructuredTaskScope so the build stays free of
+     * --enable-preview flags across maven-compiler-plugin / surefire / runtime
+     * args. Because each forked task is a synchronous blocking call (gRPC or
+     * JDBC), virtual threads are the right primitive: they park cheaply on
+     * I/O without pinning a platform carrier thread, giving us the same
+     * structured-concurrency throughput characteristics as
+     * StructuredTaskScope.ShutdownOnFailure for this workload.
+     */
+    private static final ExecutorService SAGA_FANOUT_EXECUTOR =
+        Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("order-saga-fanout-", 0L).factory()
+        );
 
     @GrpcClient("cart-service")
     private CartServiceGrpc.CartServiceBlockingStub cartServiceStub;
@@ -103,18 +124,37 @@ public class OrderCreationSaga {
 
             List<OrderItem> orderItems = convertCartItemsToOrderItems(cartResponse.getItemsList());
 
-            // Step 2: Reserve stock
-            log.info("Saga Step 2: Reserving stock for {} items", orderItems.size());
-            ReserveStockResponse reserveResponse = reserveStock(orderItems);
+            // Steps 2 & 3 are independent of each other (createOrder does not
+            // need the reservationId; reserveStock does not need the persisted
+            // order) so we fan them out on virtual threads. Wall-clock cost
+            // becomes max(stepA, stepB) instead of stepA + stepB.
+            log.info("Saga Steps 2+3 (parallel): Reserving stock for {} items and creating order", orderItems.size());
+            CompletableFuture<ReserveStockResponse> reserveFuture =
+                CompletableFuture.supplyAsync(() -> reserveStock(orderItems), SAGA_FANOUT_EXECUTOR);
+            CompletableFuture<Order> createOrderFuture =
+                CompletableFuture.supplyAsync(
+                    () -> orderService.createOrder(userId, orderItems, shippingAddress, promotionCode),
+                    SAGA_FANOUT_EXECUTOR
+                );
+
+            ReserveStockResponse reserveResponse;
+            try {
+                CompletableFuture.allOf(reserveFuture, createOrderFuture).join();
+                reserveResponse = reserveFuture.join();
+                order = createOrderFuture.join();
+            } catch (CompletionException ce) {
+                Throwable cause = ce.getCause() != null ? ce.getCause() : ce;
+                if (cause instanceof RuntimeException re) {
+                    throw re;
+                }
+                throw new SagaException("Parallel saga step failed: " + cause.getMessage(), cause);
+            }
+
             if (!reserveResponse.getSuccess()) {
                 throw new SagaException("Failed to reserve stock: " + reserveResponse.getMessage());
             }
             reservationId = reserveResponse.getReservationId();
             log.info("Stock reserved successfully. Reservation ID: {}", reservationId);
-
-            // Step 3: Create order (promotion validation happens inside OrderService.createOrder)
-            log.info("Saga Step 3: Creating order in database");
-            order = orderService.createOrder(userId, orderItems, shippingAddress, promotionCode);
             log.info("Order created: {}", order.getOrderNumber());
 
             // Step 4: Apply promotion (increment usage) if promotion was successfully applied to order
