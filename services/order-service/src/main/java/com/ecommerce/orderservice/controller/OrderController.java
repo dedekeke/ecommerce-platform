@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -69,7 +70,8 @@ public class OrderController {
     }
 
     @PutMapping("/{orderId}/status")
-    @Operation(summary = "Update order status")
+    @Operation(summary = "Update order status (admin only)")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
     public ResponseEntity<Order> updateOrderStatus(
         @PathVariable String orderId,
         @RequestParam OrderStatus status
