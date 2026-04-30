@@ -1,0 +1,17 @@
+global:
+  imageTag: staging-latest
+  ingress:
+    host: staging.example.com
+
+# 1 replica per service in staging
+api-gateway: { replicaCount: 1 }
+user-service: { replicaCount: 1 }
+product-service:
+  replicaCount: 1
+  hpa: { enabled: false }
+order-service:
+  replicaCount: 1
+  hpa: { enabled: false }
+payment-service:
+  replicaCount: 1
+  hpa: { enabled: false }

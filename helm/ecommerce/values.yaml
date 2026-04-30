@@ -1,0 +1,100 @@
+# Default umbrella values. Each subchart inherits its values from the matching key here.
+# Overridable via -f values-staging.yaml / values-prod.yaml or --set.
+
+global:
+  imageRegistry: "ecommerce"   # placeholder; replace with private registry, e.g. ghcr.io/your-org
+  imageTag: "1.0.0"
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  namespace: ecommerce
+  ingress:
+    enabled: true
+    host: example.com  # TODO replace
+    className: nginx
+    tls:
+      enabled: true
+      secretName: ecommerce-tls
+
+api-gateway:
+  enabled: true
+  service:
+    name: api-gateway
+    port: 8080
+  image:
+    repository: ecommerce/api-gateway
+  replicaCount: 1
+  resources:
+    requests: { memory: "256Mi", cpu: "200m" }
+    limits:   { memory: "512Mi", cpu: "500m" }
+
+user-service: &svc-defaults
+  enabled: true
+  service:
+    name: user-service
+    port: 8081
+  image:
+    repository: ecommerce/user-service
+  replicaCount: 1
+  resources:
+    requests: { memory: "256Mi", cpu: "100m" }
+    limits:   { memory: "512Mi", cpu: "500m" }
+
+product-service:
+  <<: *svc-defaults
+  service: { name: product-service, port: 8082 }
+  image: { repository: ecommerce/product-service }
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+cart-service:
+  <<: *svc-defaults
+  service: { name: cart-service, port: 8083 }
+  image: { repository: ecommerce/cart-service }
+
+order-service:
+  <<: *svc-defaults
+  service: { name: order-service, port: 8084 }
+  image: { repository: ecommerce/order-service }
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+payment-service:
+  <<: *svc-defaults
+  service: { name: payment-service, port: 8085 }
+  image: { repository: ecommerce/payment-service }
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+inventory-service:
+  <<: *svc-defaults
+  service: { name: inventory-service, port: 8086 }
+  image: { repository: ecommerce/inventory-service }
+
+notification-service:
+  <<: *svc-defaults
+  service: { name: notification-service, port: 8087 }
+  image: { repository: ecommerce/notification-service }
+
+search-service:
+  <<: *svc-defaults
+  service: { name: search-service, port: 8088 }
+  image: { repository: ecommerce/search-service }
+
+media-service:
+  <<: *svc-defaults
+  service: { name: media-service, port: 8089 }
+  image: { repository: ecommerce/media-service }
+
+promotion-service:
+  <<: *svc-defaults
+  service: { name: promotion-service, port: 8090 }
+  image: { repository: ecommerce/promotion-service }

@@ -1,0 +1,53 @@
+global:
+  imageTag: "1.0.0"
+  ingress:
+    host: example.com  # TODO replace
+
+api-gateway:
+  replicaCount: 2
+  resources:
+    requests: { memory: "512Mi", cpu: "300m" }
+    limits:   { memory: "1Gi",   cpu: "1000m" }
+
+user-service:
+  replicaCount: 2
+  resources:
+    requests: { memory: "512Mi", cpu: "200m" }
+    limits:   { memory: "1Gi",   cpu: "1000m" }
+
+product-service:
+  replicaCount: 2
+  resources:
+    requests: { memory: "1Gi", cpu: "500m" }
+    limits:   { memory: "2Gi", cpu: "2000m" }
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+
+order-service:
+  replicaCount: 2
+  resources:
+    requests: { memory: "1Gi", cpu: "500m" }
+    limits:   { memory: "2Gi", cpu: "2000m" }
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+
+payment-service:
+  replicaCount: 2
+  resources:
+    requests: { memory: "1Gi", cpu: "500m" }
+    limits:   { memory: "2Gi", cpu: "2000m" }
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+
+cart-service:    { replicaCount: 2 }
+inventory-service: { replicaCount: 2 }
+notification-service: { replicaCount: 2 }
+search-service:  { replicaCount: 2 }
+media-service:   { replicaCount: 2 }
+promotion-service: { replicaCount: 2 }
