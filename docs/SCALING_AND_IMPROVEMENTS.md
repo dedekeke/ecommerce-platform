@@ -337,6 +337,8 @@ spring:
 
 For virtual-thread services, also set `hikari.allow-pool-suspension=false` and monitor `hikari.pending-threads` via Prometheus — sustained > 0 pending threads signals pool exhaustion.
 
+**Applied 2026-04-30** — values rolled out to user, product, cart, order, payment, inventory and promotion services: `maximum-pool-size: 20`, `minimum-idle: 5`, `connection-timeout: 3000`, `idle-timeout: 600000`, `max-lifetime: 1800000`, `leak-detection-threshold: 60000`, `pool-name: ${spring.application.name}-hikari`, `register-mbeans: true`, `validation-timeout: 1000`. The pool size was bumped from 10 to 20 because virtual threads multiply the number of concurrent in-flight DB calls (each virtual thread parks on connection acquisition rather than blocking a platform thread); a per-pod ceiling of 20 still fits comfortably under the per-DB `max_connections` (PostgreSQL 100, MySQL 151) across the projected pod count (≤4 pods/service in staging). `connection-timeout` was tightened to 3 s for fail-fast under saturation, `leak-detection-threshold` (60 s) gives observability into long-running transactions, and `register-mbeans: true` exposes the pool over JMX for ad-hoc debugging. Cart-service config lives in profile-specific YAMLs (`application-local.yml` and `application-docker.yml`) because its canonical `application.yml` is config-server style and intentionally bare; values were applied identically in both. Notification-service was skipped (MongoDB only). Search-service (Elasticsearch) and media-service (file storage / Mongo) also skipped — no JDBC datasource.
+
 **Trigger.** `hikari.pending-threads` > 0 for more than 10 s, OR p99 latency spikes without corresponding CPU increase, OR DB max connections exceeded.
 
 **Effort.** S
