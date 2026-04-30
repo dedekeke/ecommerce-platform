@@ -72,10 +72,15 @@ describe('CheckoutPage — order submission', () => {
       expect(screen.getByRole('button', { name: /place order/i })).toBeInTheDocument()
     })
     await userEvent.click(screen.getByRole('button', { name: /place order/i }))
-    await waitFor(() => {
-      expect(screen.getByText(/failed to place order/i)).toBeInTheDocument()
-    })
-  })
+    // axios-retry replays 5xx three times with exponential backoff before
+    // the error reaches the UI, so allow extra time for the alert to appear.
+    await waitFor(
+      () => {
+        expect(screen.getByText(/failed to place order/i)).toBeInTheDocument()
+      },
+      { timeout: 10000 }
+    )
+  }, 15000)
 
   it('should disable Place Order button while submitting', async () => {
     const { http, HttpResponse } = await import('msw')
