@@ -191,11 +191,15 @@ JWT tokens from Auth0 are validated for all protected endpoints.
 - `GET /api/search/**` - Product search
 - `GET /api/promotions/public/**` - Public promotions
 - `/actuator/**` - Health checks
-- `/swagger-ui/**` - API documentation
+- `/swagger-ui/**`, `/v3/api-docs`, `/v3/api-docs/swagger-config` - Swagger UI assets and gateway-level config
 
-**Admin Endpoints** (Require `admin` scope):
+**Protected Endpoints** (Require any valid JWT):
+- `/aggregate/*/v3/api-docs/**` - Per-service OpenAPI schemas (require authentication to protect internal API contracts)
+
+**Admin Endpoints** (Require `SCOPE_admin`):
 - `POST/PUT/DELETE /api/products/**`
 - `/api/admin/**`
+- `PUT /api/orders/{id}/status` - Order status management
 
 ### 6. CORS Configuration
 
@@ -220,7 +224,7 @@ Cross-Origin Resource Sharing is configured for frontend applications:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECURITY_ENABLED` | `false` | Enable/disable JWT authentication |
+| `SECURITY_ENABLED` | `true` | Enable/disable JWT authentication (secure-by-default; set `false` for local dev only) |
 | `SECURITY_HSTS_ENABLED` | `true` | Enable HSTS header |
 | `SECURITY_HSTS_MAX_AGE` | `31536000` | HSTS max-age in seconds |
 | `SECURITY_CSP_ENABLED` | `true` | Enable Content-Security-Policy |
@@ -295,14 +299,28 @@ Configure alerts for:
 - High rate of 403 (Forbidden) responses
 - Unusual request patterns from single IPs
 
+## Security Hardening Changes (2026-04-29)
+
+The following changes were applied on branch `feature/security-hardening`:
+
+- **Secure-by-default**: `SECURITY_ENABLED` now defaults to `true` in the gateway, product-service, and cart-service docker profile. Previously a misconfigured deployment with a missing env var would run with auth disabled.
+- **OpenAPI schema protection**: `/aggregate/*/v3/api-docs/**` routes now require authentication when security is enabled. Only the Swagger UI top-level config remains public.
+- **Order status endpoint RBAC**: `PUT /api/orders/{id}/status` now requires `SCOPE_admin` via `@PreAuthorize`. `@EnableMethodSecurity` enabled on order-service `SecurityConfig`.
+- **Jackson type validator**: `ObjectMapper.DefaultTyping.NON_FINAL` in product-service Redis cache config replaced with `BasicPolymorphicTypeValidator` allowlisting application packages, preventing gadget-chain attacks via crafted cache payloads.
+- **window.__getAuthToken immutability**: Token bridge property defined with `Object.defineProperty(writable:false)` preventing MFE or extension hijacking.
+- **Idempotent retry policy**: All MFE axios clients now restrict 5xx retries to idempotent HTTP methods (GET, HEAD, OPTIONS, PUT, DELETE). POST/PATCH mutations are not retried on 5xx to prevent duplicate orders.
+- **Kafka replay guard**: Notification Kafka consumers now check the notification log for existing SENT/PENDING/RETRYING records before dispatching to prevent email spam via replay attacks.
+
 ## Security Best Practices
 
 1. **Always use HTTPS in production** - HSTS header enforces this
 2. **Rotate Auth0 secrets regularly** - Use environment variables
-3. **Review IP whitelist periodically** - Remove stale entries
-4. **Monitor rate limit breaches** - Indicates potential attacks
-5. **Keep dependencies updated** - Regular security patches
-6. **Review logs for suspicious activity** - Automated alerting recommended
+3. **Rotate the product-service MySQL password** - The credential `gahmaq-deqWit-4nixco` was previously committed to git history. The working tree is clean but the history is not. Rotate the credential and consider `git filter-repo` if the repository will be made public.
+4. **Configure Kafka broker ACLs** - Restrict write access to `order.created`, `payment.completed`, `order.shipped` topics to the order-service and payment-service principals only.
+5. **Review IP whitelist periodically** - Remove stale entries
+6. **Monitor rate limit breaches** - Indicates potential attacks
+7. **Keep dependencies updated** - Regular security patches
+8. **Review logs for suspicious activity** - Automated alerting recommended
 
 ## Troubleshooting
 
