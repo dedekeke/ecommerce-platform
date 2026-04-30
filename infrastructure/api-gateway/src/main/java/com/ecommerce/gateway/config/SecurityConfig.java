@@ -57,7 +57,12 @@ public class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                     // Public endpoints
                     .pathMatchers("/actuator/**").permitAll()
-                    .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/webjars/**").permitAll()
+                    // Swagger UI assets are public; the per-service api-docs proxied via
+                    // /aggregate/<svc>/v3/api-docs require authentication in production so that
+                    // internal API schemas are not exposed without a valid JWT.
+                    .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/webjars/**").permitAll()
+                    .pathMatchers("/v3/api-docs", "/v3/api-docs/swagger-config").permitAll()
+                    .pathMatchers("/aggregate/*/v3/api-docs/**").authenticated()
                     .pathMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
                     .pathMatchers(HttpMethod.GET, "/api/v1/categories", "/api/v1/categories/**").permitAll()
                     .pathMatchers(HttpMethod.GET, "/api/search/**").permitAll()
