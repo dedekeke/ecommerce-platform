@@ -1,7 +1,7 @@
 # Transactional Outbox Pattern
 
-> **Applied:** 2026-04-30
-> **Scope:** `order-service`, `payment-service`
+> **Applied:** 2026-04-30 (order-service, payment-service); 2026-04-29 (inventory-service)
+> **Scope:** `order-service`, `payment-service`, `inventory-service`
 > **Implementation:** Polling relay (Spring `@Scheduled`)
 > **Future migration target:** Debezium CDC (see §6)
 
