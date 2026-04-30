@@ -200,6 +200,73 @@ spring:
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
 
+        # ------------------------------------------------------------------
+        # OpenAPI aggregation routes — proxy /aggregate/<svc>/v3/api-docs to
+        # the corresponding service's /v3/api-docs endpoint. Used by Swagger
+        # UI at http://localhost:8080/swagger-ui.html to fetch each service
+        # spec without CORS issues.
+        # ------------------------------------------------------------------
+        - id: openapi-user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/aggregate/user-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-product-service
+          uri: lb://product-service
+          predicates:
+            - Path=/aggregate/product-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-cart-service
+          uri: lb://cart-service
+          predicates:
+            - Path=/aggregate/cart-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/aggregate/order-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/aggregate/payment-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-inventory-service
+          uri: lb://inventory-service
+          predicates:
+            - Path=/aggregate/inventory-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/aggregate/notification-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-search-service
+          uri: lb://search-service
+          predicates:
+            - Path=/aggregate/search-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-media-service
+          uri: lb://media-service
+          predicates:
+            - Path=/aggregate/media-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-promotion-service
+          uri: lb://promotion-service
+          predicates:
+            - Path=/aggregate/promotion-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+
   # Redis configuration for rate limiting
   data:
     redis:
@@ -297,6 +364,8 @@ logging:
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 # SpringDoc OpenAPI Configuration
+# Aggregates all backend services' /v3/api-docs into a single Swagger UI at the gateway.
+# Each entry is fetched by the browser via the gateway's proxy routes.
 springdoc:
   api-docs:
     enabled: true
@@ -304,24 +373,30 @@ springdoc:
   swagger-ui:
     enabled: true
     path: /swagger-ui.html
+    config-url: /v3/api-docs/swagger-config
+    disable-swagger-default-url: true
+    display-request-duration: true
+    operations-sorter: method
+    tags-sorter: alpha
+    urls-primary-name: product-service
     urls:
       - name: user-service
-        url: /api/users/v3/api-docs
+        url: /aggregate/user-service/v3/api-docs
       - name: product-service
-        url: /api/products/v3/api-docs
+        url: /aggregate/product-service/v3/api-docs
       - name: cart-service
-        url: /api/cart/v3/api-docs
+        url: /aggregate/cart-service/v3/api-docs
       - name: order-service
-        url: /api/orders/v3/api-docs
+        url: /aggregate/order-service/v3/api-docs
       - name: payment-service
-        url: /api/payments/v3/api-docs
+        url: /aggregate/payment-service/v3/api-docs
       - name: inventory-service
-        url: /api/inventory/v3/api-docs
+        url: /aggregate/inventory-service/v3/api-docs
       - name: notification-service
-        url: /api/notifications/v3/api-docs
+        url: /aggregate/notification-service/v3/api-docs
       - name: search-service
-        url: /api/search/v3/api-docs
+        url: /aggregate/search-service/v3/api-docs
       - name: media-service
-        url: /api/media/v3/api-docs
+        url: /aggregate/media-service/v3/api-docs
       - name: promotion-service
-        url: /api/promotions/v3/api-docs
+        url: /aggregate/promotion-service/v3/api-docs
