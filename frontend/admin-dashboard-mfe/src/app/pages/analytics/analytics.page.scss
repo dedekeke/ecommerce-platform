@@ -1,0 +1,38 @@
+.analytics-page {
+  &__header {
+    margin-bottom: 32px;
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }
+  }
+
+  &__subtitle {
+    color: var(--color-gray-500);
+    margin: 0;
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+
+    @media (max-width: 1024px) {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+.analytics-card {
+  border-radius: var(--radius-lg);
+
+  mat-card-content {
+    padding-top: 16px;
+  }
+
+  &__skeleton {
+    padding: 8px 0;
+  }
+}
