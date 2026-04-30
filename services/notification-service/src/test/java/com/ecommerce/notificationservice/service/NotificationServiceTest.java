@@ -249,19 +249,29 @@ class NotificationServiceTest {
                 .thenReturn(Optional.of(failedLog));
         when(templateRepository.findByCode("ORDER_CONFIRMATION"))
                 .thenReturn(Optional.of(emailTemplate));
-        when(logRepository.save(any(NotificationLog.class)))
-                .thenReturn(failedLog);
+
+        // Snapshot the retry-update save at capture time, since the same
+        // NotificationLog reference is mutated again by the subsequent
+        // sendNotification call and ArgumentCaptor records by reference.
+        java.util.concurrent.atomic.AtomicInteger capturedRetryCount = new java.util.concurrent.atomic.AtomicInteger(-1);
+        java.util.concurrent.atomic.AtomicReference<NotificationStatus> capturedStatus = new java.util.concurrent.atomic.AtomicReference<>();
+        when(logRepository.save(any(NotificationLog.class))).thenAnswer(invocation -> {
+            NotificationLog arg = invocation.getArgument(0);
+            if ("log123".equals(arg.getId()) && capturedRetryCount.get() == -1) {
+                capturedRetryCount.set(arg.getRetryCount());
+                capturedStatus.set(arg.getStatus());
+            }
+            return arg;
+        });
 
         // When
         notificationService.retryNotification("log123");
 
         // Then
-        ArgumentCaptor<NotificationLog> logCaptor = ArgumentCaptor.forClass(NotificationLog.class);
-        verify(logRepository, atLeastOnce()).save(logCaptor.capture());
-
-        NotificationLog updatedLog = logCaptor.getValue();
-        assertThat(updatedLog.getRetryCount()).isEqualTo(2);
-        assertThat(updatedLog.getStatus()).isEqualTo(NotificationStatus.RETRYING);
+        // retryNotification must increment retry count and set status to RETRYING
+        // before delegating to sendNotification.
+        assertThat(capturedRetryCount.get()).isEqualTo(2);
+        assertThat(capturedStatus.get()).isEqualTo(NotificationStatus.RETRYING);
     }
 
     @Test

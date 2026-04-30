@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
 
@@ -44,16 +45,25 @@ public class PromotionServiceClient {
     public DiscountResult validatePromotion(PromotionValidationRequest request) {
         log.info("Validating promotion code: {} for amount: {}", request.getCode(), request.getPurchaseAmount());
 
-        DiscountResult result = restClient.post()
-            .uri("/api/promotions/validate")
-            .body(request)
-            .retrieve()
-            .body(DiscountResult.class);
+        try {
+            DiscountResult result = restClient.post()
+                .uri("/api/promotions/validate")
+                .body(request)
+                .retrieve()
+                .body(DiscountResult.class);
 
-        log.info("Promotion validation result: valid={}, discount={}",
-            result.isValid(), result.getDiscountAmount());
+            log.info("Promotion validation result: valid={}, discount={}",
+                result.isValid(), result.getDiscountAmount());
 
-        return result;
+            return result;
+        } catch (RestClientException e) {
+            // Defensive fallback for callers that bypass Resilience4j AOP (e.g.
+            // plain unit tests). The circuit breaker fallback handles the
+            // production runtime path; this guarantees graceful degradation
+            // even when the breaker isn't active.
+            log.warn("Promotion service unavailable during validation: {}", e.getMessage());
+            return validatePromotionFallback(request, e);
+        }
     }
 
     /**

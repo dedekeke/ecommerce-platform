@@ -62,6 +62,12 @@ public class EmailService {
         } catch (MessagingException e) {
             log.error("Failed to send email to: {}", to, e);
             throw new RuntimeException("Failed to send email", e);
+        } catch (RuntimeException e) {
+            // Wrap unchecked failures (template engine errors, mail sender issues)
+            // so callers see a consistent "Failed to send email" message and can
+            // distinguish notification failures from generic runtime errors.
+            log.error("Failed to send email to: {}", to, e);
+            throw new RuntimeException("Failed to send email", e);
         }
     }
 
@@ -88,6 +94,9 @@ public class EmailService {
             log.info("Plain text email sent successfully to: {}", to);
 
         } catch (MessagingException e) {
+            log.error("Failed to send plain text email to: {}", to, e);
+            throw new RuntimeException("Failed to send email", e);
+        } catch (RuntimeException e) {
             log.error("Failed to send plain text email to: {}", to, e);
             throw new RuntimeException("Failed to send email", e);
         }

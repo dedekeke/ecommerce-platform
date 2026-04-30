@@ -64,7 +64,7 @@ class SmsServiceTest {
     @ValueSource(strings = {
             "1234567890",        // Missing +
             "+1",                // Too short
-            "+123456789012345",  // Too long (16 digits)
+            "+1234567890123456", // Too long (16 digits) - exceeds E.164 max of 15
             "",                  // Empty
             "+0123456789",       // Starts with 0
             "abc",               // Non-numeric
