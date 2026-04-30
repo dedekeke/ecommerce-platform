@@ -8,17 +8,6 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.scheduling.annotation.EnableAsync;
 
-/**
- * Product Service - Product catalog management service optimized for read-heavy workload.
- *
- * This service manages:
- * - Product catalog (CRUD operations)
- * - Category hierarchy management
- * - Product search and filtering
- * - Stock quantity tracking
- *
- * Uses MySQL for read-optimized performance with proper indexing.
- */
 @SpringBootApplication
 @ComponentScan(
     basePackages = {"com.ecommerce.productservice", "com.ecommerce.common"},

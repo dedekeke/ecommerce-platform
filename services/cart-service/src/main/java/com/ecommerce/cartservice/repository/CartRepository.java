@@ -11,43 +11,20 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Cart Repository
- *
- * Data access layer for Cart entity.
- */
 @Repository
 public interface CartRepository extends JpaRepository<Cart, Long> {
 
-    /**
-     * Find active cart by user ID
-     */
     Optional<Cart> findByUserIdAndStatus(String userId, CartStatus status);
 
-    /**
-     * Find all carts for a user
-     */
     List<Cart> findByUserId(String userId);
 
-    /**
-     * Find expired carts
-     */
     @Query("SELECT c FROM Cart c WHERE c.expiresAt < :now AND c.status = :status")
     List<Cart> findExpiredCarts(@Param("now") Instant now, @Param("status") CartStatus status);
 
-    /**
-     * Find abandoned carts (not updated for a long time)
-     */
     @Query("SELECT c FROM Cart c WHERE c.updatedAt < :threshold AND c.status = :status")
     List<Cart> findAbandonedCarts(@Param("threshold") Instant threshold, @Param("status") CartStatus status);
 
-    /**
-     * Delete carts by user ID and status
-     */
     void deleteByUserIdAndStatus(String userId, CartStatus status);
 
-    /**
-     * Check if user has an active cart
-     */
     boolean existsByUserIdAndStatus(String userId, CartStatus status);
 }

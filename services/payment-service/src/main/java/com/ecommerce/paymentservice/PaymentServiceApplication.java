@@ -6,9 +6,6 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.kafka.annotation.EnableKafka;
 
-/**
- * Main application class for Payment Service
- */
 @SpringBootApplication
 @EnableDiscoveryClient
 @EnableJpaRepositories

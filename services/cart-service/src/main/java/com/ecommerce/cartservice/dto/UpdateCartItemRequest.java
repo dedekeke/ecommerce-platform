@@ -7,9 +7,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * Request to update cart item quantity
- */
 @Data
 @Builder
 @NoArgsConstructor

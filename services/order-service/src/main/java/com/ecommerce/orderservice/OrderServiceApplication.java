@@ -7,9 +7,6 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-/**
- * Main application class for Order Service
- */
 @SpringBootApplication
 @EnableDiscoveryClient
 @EnableJpaRepositories

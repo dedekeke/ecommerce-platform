@@ -1,10 +1,8 @@
-// Stores
 export { useAuthStore } from './authStore'
 export { useCartStore } from './cartStore'
 export { useNotificationStore } from './notificationStore'
 export { useUserPreferencesStore } from './userPreferencesStore'
 
-// Selectors - Auth
 export {
   selectToken,
   selectUser,
@@ -13,7 +11,6 @@ export {
   selectUserName,
 } from './authStore'
 
-// Selectors - Cart
 export {
   selectCartItems,
   selectCartTotal,
@@ -22,7 +19,6 @@ export {
   selectIsInCart,
 } from './cartStore'
 
-// Selectors - Notifications
 export {
   selectNotifications,
   selectNotificationById,
@@ -30,7 +26,6 @@ export {
   selectHasNotifications,
 } from './notificationStore'
 
-// Selectors - User Preferences
 export {
   selectTheme,
   selectLanguage,
@@ -39,7 +34,6 @@ export {
   selectIsSystemTheme,
 } from './userPreferencesStore'
 
-// Types
 export type {
   User,
   AuthState,

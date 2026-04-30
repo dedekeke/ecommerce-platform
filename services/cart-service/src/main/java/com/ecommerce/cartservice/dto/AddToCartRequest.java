@@ -8,9 +8,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * Request to add an item to cart
- */
 @Data
 @Builder
 @NoArgsConstructor

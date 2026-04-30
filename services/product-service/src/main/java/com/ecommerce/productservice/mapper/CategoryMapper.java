@@ -9,15 +9,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Mapper for converting between Category entities and DTOs.
- */
 @Component
 public class CategoryMapper {
 
-    /**
-     * Convert CategoryRequest to Category entity.
-     */
     public Category toEntity(CategoryRequest request) {
         if (request == null) {
             return null;
@@ -41,16 +35,10 @@ public class CategoryMapper {
         return builder.build();
     }
 
-    /**
-     * Convert Category entity to CategoryResponse.
-     */
     public CategoryResponse toResponse(Category category) {
         return toResponse(category, false);
     }
 
-    /**
-     * Convert Category entity to CategoryResponse with optional children.
-     */
     public CategoryResponse toResponse(Category category, boolean includeChildren) {
         if (category == null) {
             return null;
@@ -85,9 +73,6 @@ public class CategoryMapper {
         return builder.build();
     }
 
-    /**
-     * Update existing Category entity with values from CategoryRequest.
-     */
     public void updateEntity(Category category, CategoryRequest request) {
         if (category == null || request == null) {
             return;

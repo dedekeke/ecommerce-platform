@@ -7,9 +7,6 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
-/**
- * Product DTO for internal service communication
- */
 @Data
 @Builder
 @NoArgsConstructor

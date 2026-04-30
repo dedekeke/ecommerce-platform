@@ -1,4 +1,3 @@
-// API Client
 export {
   apiClient,
   ApiClientError,
@@ -13,7 +12,6 @@ export {
   logResponse,
 } from './apiClient'
 
-// Error Handling
 export {
   handleApiError,
   createErrorHandler,
@@ -32,7 +30,6 @@ export {
   type ErrorHandlerOptions,
 } from './errorHandling'
 
-// Services
 export {
   productService,
   cartService,
@@ -41,7 +38,6 @@ export {
   type OrderTrackingInfo,
 } from './services'
 
-// Types
 export type {
   ApiResponse,
   PaginatedResponse,
