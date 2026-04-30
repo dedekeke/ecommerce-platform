@@ -31,4 +31,15 @@ public interface NotificationLogRepository extends MongoRepository<NotificationL
     );
 
     long countByStatusAndCreatedAtAfter(NotificationStatus status, Instant after);
+
+    /**
+     * Idempotency check: returns true when a notification for the given entity + template has
+     * already been delivered (SENT) or is pending delivery (PENDING / RETRYING). Used by Kafka
+     * consumers to skip duplicate events produced by at-least-once delivery or replay attacks.
+     */
+    boolean existsByRelatedEntityIdAndTemplateCodeAndStatusIn(
+            String relatedEntityId,
+            String templateCode,
+            List<NotificationStatus> statuses
+    );
 }
