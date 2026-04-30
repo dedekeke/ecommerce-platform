@@ -29,6 +29,9 @@ vi.mock('./components/layout', () => ({
 
 vi.mock('./components/common', () => ({
   PageSkeleton: () => <div data-testid="page-skeleton" />,
+  NotFound: () => <div data-testid="not-found">Not Found</div>,
+  RouteProgressBar: () => null,
+  PageTransition: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
 vi.mock('./components/auth', () => ({
@@ -152,5 +155,10 @@ describe('App routing', () => {
     renderAppAtRoute('/')
     expect(screen.getByTestId('page-skeleton')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /welcome/i })).not.toBeInTheDocument()
+  })
+
+  it('renders NotFound for unknown routes', () => {
+    renderAppAtRoute('/this-route-does-not-exist')
+    expect(screen.getByTestId('not-found')).toBeInTheDocument()
   })
 })
