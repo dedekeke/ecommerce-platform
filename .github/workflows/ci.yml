@@ -1,10 +1,11 @@
 name: CI
 
-# Runs on PRs to develop/master. Path-filtered to skip irrelevant work.
+# Final safety net — runs only on push to master (post-merge from develop).
+# Day-to-day verification is done locally via `scripts/ci-local.sh`.
 
 on:
-  pull_request:
-    branches: [ develop, master ]
+  push:
+    branches: [ master ]
     paths-ignore:
       - 'docs/**'
       - '**/*.md'

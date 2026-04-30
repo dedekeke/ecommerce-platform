@@ -6,6 +6,7 @@ This directory contains shell scripts to help with local development and testing
 
 | Script | Description | Usage |
 |--------|-------------|-------|
+| `ci-local.sh` | Local CI replacement (backend + frontend + infra lint) | `./ci-local.sh [--backend\|--frontend\|--infra] [--quick]` |
 | `setup-local-dev.sh` | Setup local development environment | `./setup-local-dev.sh` |
 | `build-all.sh` | Build all services | `./build-all.sh [--test] [--deploy]` |
 | `run-service.sh` | Run a single service | `./run-service.sh <service-name>` |
