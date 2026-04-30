@@ -21,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.Set;
 
 /**
  * REST controller for Product management.
@@ -35,6 +36,16 @@ public class ProductController {
     private final ProductService productService;
     private final ProductMapper productMapper;
     private final CategoryService categoryService;
+
+    /**
+     * Allowlist of entity property names permitted as sort fields.
+     * Prevents JPA property-path injection where an attacker could supply arbitrary
+     * property paths (e.g. "category.name") to probe schema structure.
+     */
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "name", "price", "createdAt", "updatedAt", "stockQuantity", "sku"
+    );
+    private static final String DEFAULT_SORT_FIELD = "createdAt";
 
     @GetMapping
     @Operation(summary = "Get all products", description = "Get all products with pagination, search, and filters")
@@ -75,7 +86,9 @@ public class ProductController {
         // Resolve categoryId - can be numeric ID or slug
         Long resolvedCategoryId = resolveCategoryId(categoryId);
 
-        Sort sort = Sort.by(sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC, sortBy);
+        // SECURITY: Validate sortBy against an allowlist to prevent JPA property-path injection.
+        String safeSortBy = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : DEFAULT_SORT_FIELD;
+        Sort sort = Sort.by(sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC, safeSortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<Product> products;
