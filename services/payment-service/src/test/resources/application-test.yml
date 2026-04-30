@@ -1,0 +1,36 @@
+# Test profile config — keeps tests deterministic.
+spring:
+  datasource:
+    url: jdbc:h2:mem:payment-service-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      auto-offset-reset: earliest
+
+outbox:
+  relay:
+    enabled: false
+    poll-interval-ms: 500
+    batch-size: 100
+
+security:
+  enabled: false
+
+auth0:
+  domain: test-tenant.auth0.com
+  audience: test-audience
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false

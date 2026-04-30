@@ -618,6 +618,18 @@ For i18n: externalise all frontend strings to JSON locale files (`en.json`, `nl.
 
 ### 4.1 Outbox Pattern via Debezium CDC
 
+> **Status (2026-04-30).** A polling-based transactional outbox is now live in
+> `order-service` and `payment-service`. See [`OUTBOX_PATTERN.md`](./OUTBOX_PATTERN.md)
+> for the implementation guide. The Debezium CDC variant described below is
+> the next-step migration target — defer until Postgres logical replication
+> and Kafka Connect are available in the target environment, or sustained
+> outbox throughput exceeds ~2 000 writes/s. The schema, headers, and
+> consumer dedup contract are already in place, so swapping the polling
+> relay for a Debezium connector is a configuration change, not a code
+> change. Open follow-ups: extend the same pattern to `inventory-service`
+> replenishment events; convert the cancel-flow choreography in
+> `OrderCreationSaga` to also use the outbox publisher.
+
 **What.** Replace the current dual-write pattern (write to DB then publish to Kafka in the same service) with a transactional outbox. Each service writes an `outbox_events` table row inside the same DB transaction as its domain write. Debezium CDC (Change Data Capture) reads the MySQL/PostgreSQL binlog and publishes the row to Kafka without any application-layer involvement.
 
 **Why.** The current dual-write is not atomic: if the Kafka publish fails after the DB commit, the event is lost. If the DB write fails after Kafka publish, a ghost event propagates. The outbox pattern provides exactly-once DB + event publication using only DB transaction guarantees — no distributed transaction required.

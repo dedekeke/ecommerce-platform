@@ -1,0 +1,59 @@
+# Test profile config — keeps tests deterministic.
+# - Outbox relay is disabled so tests drive `relay()` synchronously when needed.
+# - Auth0 placeholders satisfied so SpringBootTest contexts can load.
+spring:
+  datasource:
+    url: jdbc:h2:mem:order-service-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      auto-offset-reset: earliest
+
+outbox:
+  relay:
+    enabled: false
+    poll-interval-ms: 500
+    batch-size: 100
+
+security:
+  enabled: false
+
+auth0:
+  domain: test-tenant.auth0.com
+  audience: test-audience
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+# Default values for env placeholders so SpringBootTest can stand up the
+# context without real infra.
+PROMOTION_SERVICE_URL: http://localhost:65535/promotion
+SPRING_KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+ORDER_DB_URL: jdbc:h2:mem:order-service-test
+POSTGRES_USER: sa
+POSTGRES_PASSWORD: ""
+SPRING_PROFILES_ACTIVE: test
+EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://localhost:8761/eureka
+ZIPKIN_ENDPOINT: http://localhost:9411/api/v2/spans
+GRPC_CLIENT_CART_SERVICE: localhost:0
+GRPC_CLIENT_PAYMENT_SERVICE: localhost:0
+GRPC_CLIENT_INVENTORY_SERVICE: localhost:0
+SECURITY_ENABLED: "false"
+AUTH0_DOMAIN: test-tenant.auth0.com
+AUTH0_AUDIENCE: test-audience
+
+promotion:
+  service:
+    url: http://localhost:65535/promotion

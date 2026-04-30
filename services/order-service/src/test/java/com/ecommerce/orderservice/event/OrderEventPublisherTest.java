@@ -4,34 +4,38 @@ import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
+import com.ecommerce.orderservice.outbox.OutboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.kafka.core.KafkaTemplate;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
- * Verifies the publisher emits payloads compatible with notification-service
- * (userEmail, userName, totalAmount, shippingAddress as flat string).
+ * Verifies the publisher records outbox events with payloads compatible with
+ * the notification-service consumer (userEmail, userName, totalAmount, flat
+ * shippingAddress string) and propagates outbox failures so the surrounding
+ * transaction rolls back.
  */
 @ExtendWith(MockitoExtension.class)
 class OrderEventPublisherTest {
 
     @Mock
-    private KafkaTemplate<String, OrderEvent> kafkaTemplate;
+    private OutboxService outboxService;
 
     private OrderEventPublisher publisher;
 
@@ -39,7 +43,7 @@ class OrderEventPublisherTest {
 
     @BeforeEach
     void setUp() {
-        publisher = new OrderEventPublisher(kafkaTemplate);
+        publisher = new OrderEventPublisher(outboxService);
 
         Address address = Address.builder()
             .street("123 Main St")
@@ -75,16 +79,19 @@ class OrderEventPublisherTest {
     }
 
     @Test
-    void should_populateNotificationFields_when_publishingOrderCreatedWithRecipient() {
-        when(kafkaTemplate.send(eq("order.created"), eq("order-id-1"), any(OrderEvent.class)))
-            .thenReturn(new CompletableFuture<>());
-
+    void should_recordOutboxEventWithRecipientFields_when_publishingOrderCreatedWithRecipient() {
         publisher.publishOrderCreatedEvent(order, "jane@example.com", "Jane Doe");
 
-        ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
-        verify(kafkaTemplate).send(eq("order.created"), eq("order-id-1"), eventCaptor.capture());
+        ArgumentCaptor<OrderEvent> payloadCaptor = ArgumentCaptor.forClass(OrderEvent.class);
+        verify(outboxService).recordEvent(
+            eq("Order"),
+            eq("order-id-1"),
+            eq("ORDER_CREATED"),
+            eq("order.created"),
+            payloadCaptor.capture()
+        );
 
-        OrderEvent published = eventCaptor.getValue();
+        OrderEvent published = payloadCaptor.getValue();
         assertThat(published.getUserEmail()).isEqualTo("jane@example.com");
         assertThat(published.getUserName()).isEqualTo("Jane Doe");
         assertThat(published.getTotalAmount()).isEqualByComparingTo("21.60");
@@ -96,19 +103,20 @@ class OrderEventPublisherTest {
             .contains("USA");
         assertThat(published.getOrderNumber()).isEqualTo("ORD-2026-00001");
         assertThat(published.getUserId()).isEqualTo("user-1");
+        assertThat(published.getEventType()).isEqualTo("ORDER_CREATED");
     }
 
     @Test
-    void should_fallbackToBlankRecipient_when_emailAndNameNotProvided() {
-        when(kafkaTemplate.send(eq("order.created"), eq("order-id-1"), any(OrderEvent.class)))
-            .thenReturn(new CompletableFuture<>());
-
+    void should_omitRecipientFields_when_emailAndNameNotProvided() {
         publisher.publishOrderCreatedEvent(order);
 
-        ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
-        verify(kafkaTemplate).send(eq("order.created"), eq("order-id-1"), eventCaptor.capture());
+        ArgumentCaptor<OrderEvent> payloadCaptor = ArgumentCaptor.forClass(OrderEvent.class);
+        verify(outboxService).recordEvent(
+            eq("Order"), eq("order-id-1"), eq("ORDER_CREATED"), eq("order.created"),
+            payloadCaptor.capture()
+        );
 
-        OrderEvent published = eventCaptor.getValue();
+        OrderEvent published = payloadCaptor.getValue();
         assertThat(published.getOrderNumber()).isEqualTo("ORD-2026-00001");
         assertThat(published.getUserEmail()).isNull();
         assertThat(published.getUserName()).isNull();
@@ -116,12 +124,83 @@ class OrderEventPublisherTest {
     }
 
     @Test
-    void should_swallowKafkaException_when_sendFails() {
-        when(kafkaTemplate.send(eq("order.created"), eq("order-id-1"), any(OrderEvent.class)))
-            .thenThrow(new RuntimeException("broker down"));
+    void should_routeUpdatedEvent_when_publishingOrderUpdated() {
+        publisher.publishOrderUpdatedEvent(order);
 
-        publisher.publishOrderCreatedEvent(order, "x@y.z", "X");
+        verify(outboxService).recordEvent(
+            eq("Order"), eq("order-id-1"), eq("ORDER_UPDATED"), eq("order.updated"),
+            any(OrderEvent.class)
+        );
+    }
 
-        verify(kafkaTemplate).send(eq("order.created"), eq("order-id-1"), any(OrderEvent.class));
+    @Test
+    void should_routeCancelledEvent_when_publishingOrderCancelled() {
+        publisher.publishOrderCancelledEvent(order);
+
+        verify(outboxService).recordEvent(
+            eq("Order"), eq("order-id-1"), eq("ORDER_CANCELLED"), eq("order.cancelled"),
+            any(OrderEvent.class)
+        );
+    }
+
+    @Test
+    void should_routeCompletedEvent_when_publishingOrderCompleted() {
+        publisher.publishOrderCompletedEvent(order);
+
+        verify(outboxService).recordEvent(
+            eq("Order"), eq("order-id-1"), eq("ORDER_COMPLETED"), eq("order.completed"),
+            any(OrderEvent.class)
+        );
+    }
+
+    @Test
+    void should_propagateException_when_outboxRecordFails() {
+        // Outbox failures must surface so the caller's transaction rolls back —
+        // the entire point of the pattern is "no commit without event".
+        doThrow(new RuntimeException("DB down"))
+            .when(outboxService).recordEvent(any(), any(), any(), any(), any());
+
+        assertThatThrownBy(() -> publisher.publishOrderCreatedEvent(order, "x@y.z", "X"))
+            .isInstanceOf(RuntimeException.class)
+            .hasMessage("DB down");
+    }
+
+    @Test
+    void should_serialiseFlattenedAddress_when_shippingAddressBlankFieldsPresent() {
+        Address sparse = Address.builder()
+            .street("1 Sparse Ln")
+            .city("")
+            .state(null)
+            .postalCode("00000")
+            .country("USA")
+            .build();
+        order.setShippingAddress(sparse);
+
+        publisher.publishOrderCreatedEvent(order);
+
+        ArgumentCaptor<OrderEvent> captor = ArgumentCaptor.forClass(OrderEvent.class);
+        verify(outboxService).recordEvent(
+            eq("Order"), eq("order-id-1"), eq("ORDER_CREATED"), eq("order.created"),
+            captor.capture()
+        );
+        // Blank/null address fragments must not appear as ", ," in the rendered string.
+        assertThat(captor.getValue().getShippingAddress())
+            .isEqualTo("1 Sparse Ln, 00000, USA");
+    }
+
+    @Test
+    void should_recordNothingTwice_when_calledOnce() {
+        publisher.publishOrderCreatedEvent(order);
+        // Defensive: verify exactly-one outbox write per call so we never
+        // accidentally regress to double-emitting events.
+        verify(outboxService, never()).recordEvent(
+            eq("Order"), eq("order-id-1"), eq("ORDER_UPDATED"), eq("order.updated"),
+            any(OrderEvent.class)
+        );
+    }
+
+    @Test
+    void should_doNothingOnOutbox_when_publisherNeverInvoked() {
+        verifyNoInteractions(outboxService);
     }
 }

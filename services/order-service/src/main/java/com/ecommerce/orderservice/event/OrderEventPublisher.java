@@ -3,9 +3,9 @@ package com.ecommerce.orderservice.event;
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
+import com.ecommerce.orderservice.outbox.OutboxService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -14,69 +14,64 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Publisher for order-related events to Kafka
+ * Publisher for order-related events.
+ *
+ * <p>Refactored to use the transactional outbox pattern. Public API is
+ * unchanged so callers (saga, OrderService) continue to compile and behave
+ * identically — but instead of calling {@code KafkaTemplate.send(...)} (the
+ * dual-write that could lose events on crash between DB commit and broker
+ * ack) we now record the event in the {@code outbox_event} table inside the
+ * caller's existing transaction. The {@link OutboxService} requires the
+ * caller to already be transactional ({@code Propagation.MANDATORY}) so we
+ * fail loudly if a caller bypasses the saga / service layer.
+ *
+ * <p>The {@link com.ecommerce.orderservice.outbox.OutboxRelay} ships rows
+ * to Kafka asynchronously.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class OrderEventPublisher {
 
-    private final KafkaTemplate<String, OrderEvent> kafkaTemplate;
+    private final OutboxService outboxService;
+
+    private static final String AGGREGATE_TYPE = "Order";
 
     private static final String ORDER_CREATED_TOPIC = "order.created";
     private static final String ORDER_UPDATED_TOPIC = "order.updated";
     private static final String ORDER_CANCELLED_TOPIC = "order.cancelled";
     private static final String ORDER_COMPLETED_TOPIC = "order.completed";
 
-    /**
-     * Publish order created event without recipient details.
-     */
     public void publishOrderCreatedEvent(Order order) {
         publishOrderCreatedEvent(order, null, null);
     }
 
-    /**
-     * Publish order created event with recipient email/name so the
-     * notification-service consumer can render the order confirmation email.
-     */
     public void publishOrderCreatedEvent(Order order, String userEmail, String userName) {
         OrderEvent event = buildOrderEvent(order, "ORDER_CREATED");
         event.setUserEmail(userEmail);
         event.setUserName(userName);
-        publishEvent(ORDER_CREATED_TOPIC, order.getId(), event);
-        log.info("Published ORDER_CREATED event for order: {}", order.getOrderNumber());
+        record(ORDER_CREATED_TOPIC, "ORDER_CREATED", order.getId(), event);
+        log.info("Recorded ORDER_CREATED outbox event for order: {}", order.getOrderNumber());
     }
 
-    /**
-     * Publish order updated event
-     */
     public void publishOrderUpdatedEvent(Order order) {
         OrderEvent event = buildOrderEvent(order, "ORDER_UPDATED");
-        publishEvent(ORDER_UPDATED_TOPIC, order.getId(), event);
-        log.info("Published ORDER_UPDATED event for order: {}", order.getOrderNumber());
+        record(ORDER_UPDATED_TOPIC, "ORDER_UPDATED", order.getId(), event);
+        log.info("Recorded ORDER_UPDATED outbox event for order: {}", order.getOrderNumber());
     }
 
-    /**
-     * Publish order cancelled event
-     */
     public void publishOrderCancelledEvent(Order order) {
         OrderEvent event = buildOrderEvent(order, "ORDER_CANCELLED");
-        publishEvent(ORDER_CANCELLED_TOPIC, order.getId(), event);
-        log.info("Published ORDER_CANCELLED event for order: {}", order.getOrderNumber());
+        record(ORDER_CANCELLED_TOPIC, "ORDER_CANCELLED", order.getId(), event);
+        log.info("Recorded ORDER_CANCELLED outbox event for order: {}", order.getOrderNumber());
     }
 
-    /**
-     * Publish order completed event
-     */
     public void publishOrderCompletedEvent(Order order) {
         OrderEvent event = buildOrderEvent(order, "ORDER_COMPLETED");
-        publishEvent(ORDER_COMPLETED_TOPIC, order.getId(), event);
-        log.info("Published ORDER_COMPLETED event for order: {}", order.getOrderNumber());
+        record(ORDER_COMPLETED_TOPIC, "ORDER_COMPLETED", order.getId(), event);
+        log.info("Recorded ORDER_COMPLETED outbox event for order: {}", order.getOrderNumber());
     }
 
-    /**
-     * Build order event from order entity
-     */
     private OrderEvent buildOrderEvent(Order order, String eventType) {
         return OrderEvent.builder()
             .eventId(UUID.randomUUID().toString())
@@ -96,10 +91,6 @@ public class OrderEventPublisher {
             .build();
     }
 
-    /**
-     * Render the structured Address as a single line for email templates
-     * which expect a flat string.
-     */
     private String formatShippingAddress(Address address) {
         if (address == null) {
             return null;
@@ -115,9 +106,6 @@ public class OrderEventPublisher {
         return line.isBlank() ? null : line;
     }
 
-    /**
-     * Build order item event from order item entity
-     */
     private OrderEvent.OrderItemEvent buildOrderItemEvent(OrderItem item) {
         return OrderEvent.OrderItemEvent.builder()
             .productId(item.getProductId())
@@ -128,21 +116,14 @@ public class OrderEventPublisher {
             .build();
     }
 
-    /**
-     * Publish event to Kafka topic
-     */
-    private void publishEvent(String topic, String key, OrderEvent event) {
+    private void record(String topic, String eventType, String aggregateId, OrderEvent event) {
         try {
-            kafkaTemplate.send(topic, key, event)
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish event to topic: {}", topic, ex);
-                    } else {
-                        log.debug("Event published successfully to topic: {} with key: {}", topic, key);
-                    }
-                });
-        } catch (Exception e) {
-            log.error("Error publishing event to Kafka", e);
+            outboxService.recordEvent(AGGREGATE_TYPE, aggregateId, eventType, topic, event);
+        } catch (RuntimeException e) {
+            // Re-throw: the caller's transaction MUST roll back if we cannot
+            // record the event — that is the entire point of the outbox.
+            log.error("Failed to record outbox event {} for aggregate {}", eventType, aggregateId, e);
+            throw e;
         }
     }
 }
