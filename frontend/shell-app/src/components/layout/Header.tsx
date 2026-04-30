@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
 import {
-  AppBar,
   Toolbar,
   Typography,
   Button,
@@ -23,8 +22,12 @@ import {
   ShoppingCart as ShoppingCartIcon,
   Person as PersonIcon,
   Logout as LogoutIcon,
+  LightMode as LightModeIcon,
+  DarkMode as DarkModeIcon,
 } from '@mui/icons-material'
 import { alpha, styled } from '@mui/material/styles'
+import { useColorMode } from '../../hooks/useColorMode'
+import { designTokens } from '../../theme'
 
 interface HeaderProps {
   cartItemCount: number
@@ -34,9 +37,9 @@ interface HeaderProps {
 const Search = styled('div')(({ theme }) => ({
   position: 'relative',
   borderRadius: theme.shape.borderRadius,
-  backgroundColor: alpha(theme.palette.common.white, 0.15),
+  backgroundColor: alpha(theme.palette.text.primary, 0.06),
   '&:hover': {
-    backgroundColor: alpha(theme.palette.common.white, 0.25),
+    backgroundColor: alpha(theme.palette.text.primary, 0.1),
   },
   marginRight: theme.spacing(2),
   marginLeft: 0,
@@ -45,6 +48,7 @@ const Search = styled('div')(({ theme }) => ({
     marginLeft: theme.spacing(3),
     width: 'auto',
   },
+  transition: `background-color ${designTokens.duration.fast} ${designTokens.easing.out}`,
 }))
 
 const SearchIconWrapper = styled('div')(({ theme }) => ({
@@ -74,11 +78,17 @@ const StyledInputBase = styled(InputBase)(({ theme }) => ({
 }))
 
 const NavLink = styled(RouterLink)(({ theme }) => ({
-  color: theme.palette.common.white,
+  color: theme.palette.text.primary,
   textDecoration: 'none',
   marginRight: theme.spacing(3),
+  fontWeight: 500,
+  fontSize: '0.9rem',
+  padding: '6px 12px',
+  borderRadius: 8,
+  transition: `all ${designTokens.duration.fast} ${designTokens.easing.out}`,
   '&:hover': {
-    color: alpha(theme.palette.common.white, 0.8),
+    color: theme.palette.primary.main,
+    backgroundColor: alpha(theme.palette.primary.main, 0.08),
   },
 }))
 
@@ -86,9 +96,20 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const { isAuthenticated, isLoading, user, loginWithRedirect, logout } = useAuth0()
+  const { resolvedMode, toggle } = useColorMode()
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
+  const [scrolled, setScrolled] = useState(false)
   const isMenuOpen = Boolean(anchorEl)
+
+  const handleScroll = useCallback(() => {
+    setScrolled(window.scrollY > 80)
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [handleScroll])
 
   const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget)
@@ -103,16 +124,38 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
     logout({ logoutParams: { returnTo: window.location.origin } })
   }
 
+  const glassBg =
+    resolvedMode === 'dark'
+      ? designTokens.glass.bgDark
+      : designTokens.glass.bg
+
+  const headerSx = {
+    position: 'sticky' as const,
+    top: 0,
+    zIndex: theme.zIndex.appBar,
+    width: '100%',
+    backdropFilter: designTokens.glass.blur,
+    WebkitBackdropFilter: designTokens.glass.blur,
+    backgroundColor: glassBg,
+    borderBottom: `1px solid ${scrolled
+      ? resolvedMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+      : 'transparent'}`,
+    boxShadow: scrolled ? designTokens.shadows.elevation : 'none',
+    transition: `box-shadow ${designTokens.duration.normal} ${designTokens.easing.out}, border-color ${designTokens.duration.normal} ${designTokens.easing.out}`,
+    '@media (prefers-reduced-motion: reduce)': {
+      transition: 'none',
+    },
+  }
+
   return (
-    <AppBar position="sticky" color="primary">
+    <Box component="header" sx={headerSx} data-testid="app-header">
       <Toolbar>
         <IconButton
           edge="start"
-          color="inherit"
           aria-label="menu"
           onClick={onMenuClick}
           data-testid="mobile-menu-button"
-          sx={{ mr: 2, display: { md: 'none' } }}
+          sx={{ mr: 2, display: { md: 'none' }, color: 'text.primary' }}
         >
           <MenuIcon />
         </IconButton>
@@ -123,9 +166,10 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
           to="/"
           sx={{
             textDecoration: 'none',
-            color: 'inherit',
+            color: 'text.primary',
             fontWeight: 700,
             flexGrow: { xs: 1, md: 0 },
+            letterSpacing: '-0.02em',
           }}
         >
           E-Commerce
@@ -142,7 +186,7 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
         <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, justifyContent: 'center' }}>
           <Search>
             <SearchIconWrapper>
-              <SearchIcon />
+              <SearchIcon sx={{ color: 'text.secondary' }} />
             </SearchIconWrapper>
             <StyledInputBase
               placeholder="Search products..."
@@ -151,16 +195,32 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
           </Search>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <IconButton
+            onClick={toggle}
+            aria-label={resolvedMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            data-testid="theme-toggle-button"
+            sx={{
+              color: 'text.primary',
+              transition: `transform ${designTokens.duration.fast} ${designTokens.easing.out}`,
+              '&:hover': { transform: 'rotate(15deg)' },
+              '@media (prefers-reduced-motion: reduce)': {
+                '&:hover': { transform: 'none' },
+              },
+            }}
+          >
+            {resolvedMode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
+
           <IconButton
             component={RouterLink}
             to="/cart"
-            color="inherit"
             aria-label="shopping cart"
+            sx={{ color: 'text.primary' }}
           >
             <Badge
               badgeContent={cartItemCount}
-              color="secondary"
+              color="primary"
               data-testid="cart-badge"
             >
               <ShoppingCartIcon />
@@ -171,9 +231,8 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
             <>
               <IconButton
                 onClick={handleUserMenuOpen}
-                color="inherit"
                 data-testid="user-menu-button"
-                sx={{ ml: 1 }}
+                sx={{ ml: 0.5 }}
               >
                 <Avatar
                   src={user.picture}
@@ -187,6 +246,16 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
                 onClose={handleUserMenuClose}
                 transformOrigin={{ horizontal: 'right', vertical: 'top' }}
                 anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+                slotProps={{
+                  paper: {
+                    sx: {
+                      mt: 0.5,
+                      borderRadius: 2,
+                      minWidth: 180,
+                      boxShadow: designTokens.shadows.lg,
+                    },
+                  },
+                }}
               >
                 <MenuItem disabled>
                   <Typography variant="body2" color="text.secondary">
@@ -219,16 +288,20 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
             </>
           ) : (
             <Button
-              color="inherit"
+              variant="contained"
               onClick={() => loginWithRedirect()}
               disabled={isLoading}
-              sx={{ ml: 1 }}
+              sx={{
+                ml: 1,
+                borderRadius: designTokens.radius.full,
+                px: 3,
+              }}
             >
               Log In
             </Button>
           )}
         </Box>
       </Toolbar>
-    </AppBar>
+    </Box>
   )
 }

@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider, CssBaseline } from '@mui/material'
 import { Auth0ProviderWithNavigate } from './providers/Auth0ProviderWithNavigate'
 import { ErrorBoundary } from './components/common'
-import theme from './theme'
+import { useColorMode } from './hooks/useColorMode'
 import App from './App.tsx'
 import './index.css'
 import { initNativeFederation } from './mfe/nativeFederation'
@@ -27,19 +27,27 @@ import { initNativeFederation } from './mfe/nativeFederation'
   }
 })()
 
+function ThemedApp() {
+  const { muiTheme } = useColorMode()
+
+  return (
+    <ThemeProvider theme={muiTheme}>
+      <CssBaseline />
+      <Auth0ProviderWithNavigate>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </Auth0ProviderWithNavigate>
+    </ThemeProvider>
+  )
+}
+
 function mountApp() {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <BrowserRouter>
-          <Auth0ProviderWithNavigate>
-            <ErrorBoundary>
-              <App />
-            </ErrorBoundary>
-          </Auth0ProviderWithNavigate>
-        </BrowserRouter>
-      </ThemeProvider>
+      <BrowserRouter>
+        <ThemedApp />
+      </BrowserRouter>
     </StrictMode>,
   )
 }
