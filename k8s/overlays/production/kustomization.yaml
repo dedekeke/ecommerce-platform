@@ -40,6 +40,10 @@ patches:
     target:
       kind: Deployment
       labelSelector: tier=backend
+  # KEDA ScaledObject max-replica caps for production
+  - path: scaling/notification-service-maxreplicas.yaml
+  - path: scaling/search-service-maxreplicas.yaml
+  - path: scaling/order-service-maxreplicas.yaml
 
 labels:
   - includeSelectors: true

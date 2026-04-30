@@ -245,6 +245,8 @@
 
 **Effort.** M — KEDA operator install + one `ScaledObject` YAML per consumer deployment.
 
+**Applied 2026-04-30** — manifests at `k8s/base/scaling/` (notification-service, search-service, order-service) with per-environment maxReplicaCount overrides in `k8s/overlays/{staging,production}/scaling/`. Staging caps all three at 2; production runs notification-service 1->6, search-service and order-service 1->4. Requires KEDA operator installed via `kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.14.0/keda-2.14.0.yaml`. Operator install + lag-test runbook lives at `monitoring/keda/README.md`.
+
 **Risk if skipped.** Kafka consumers will fall behind under burst load and cannot self-heal without manual replica adjustment or CPU-triggered HPA (which won't fire for idle consumers).
 
 **References.**

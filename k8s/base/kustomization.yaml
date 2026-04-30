@@ -29,6 +29,7 @@ resources:
   - frontend/user-dashboard-mfe.yaml
   # cross-cutting
   - hpa.yaml
+  - scaling
   - policies/network-policy.yaml
   - ingress/ingress.yaml
   - cronjobs/postgres-backup.yaml

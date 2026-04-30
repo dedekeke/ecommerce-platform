@@ -41,6 +41,10 @@ patches:
   - path: patches/replicas.yaml
     target:
       kind: Deployment
+  # KEDA ScaledObject max-replica caps for staging (smaller fleet)
+  - path: scaling/notification-service-maxreplicas.yaml
+  - path: scaling/search-service-maxreplicas.yaml
+  - path: scaling/order-service-maxreplicas.yaml
 
 labels:
   - includeSelectors: true
