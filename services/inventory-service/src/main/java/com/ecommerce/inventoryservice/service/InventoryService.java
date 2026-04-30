@@ -2,6 +2,7 @@ package com.ecommerce.inventoryservice.service;
 
 import com.ecommerce.inventoryservice.domain.entity.Inventory;
 import com.ecommerce.inventoryservice.domain.entity.InventoryReservation;
+import com.ecommerce.inventoryservice.domain.entity.InventoryRestoration;
 import com.ecommerce.inventoryservice.domain.enums.InventoryStatus;
 import com.ecommerce.inventoryservice.domain.enums.ReservationStatus;
 import com.ecommerce.inventoryservice.event.InventoryUpdatedEvent;
@@ -12,6 +13,7 @@ import com.ecommerce.inventoryservice.exception.InvalidReservationException;
 import com.ecommerce.inventoryservice.exception.ReservationNotFoundException;
 import com.ecommerce.inventoryservice.repository.InventoryRepository;
 import com.ecommerce.inventoryservice.repository.InventoryReservationRepository;
+import com.ecommerce.inventoryservice.repository.InventoryRestorationRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,7 @@ public class InventoryService {
 
     private final InventoryRepository inventoryRepository;
     private final InventoryReservationRepository reservationRepository;
+    private final InventoryRestorationRepository restorationRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @Value("${inventory.reservation.default-expiration-minutes:15}")
@@ -274,6 +277,61 @@ public class InventoryService {
         }
 
         return saved;
+    }
+
+    /**
+     * Restore stock for refunded items. Idempotent on {@code restorationId}:
+     * if the same id has been processed before, this returns {@code false}
+     * without touching inventory or publishing events.
+     *
+     * @return {@code true} if stock was actually restored, {@code false} on
+     *         a deduplicated replay.
+     */
+    @Transactional
+    public boolean restoreStock(String restorationId,
+                                String orderId,
+                                String reason,
+                                Map<String, Integer> productQuantities) {
+        if (restorationId == null || restorationId.isBlank()) {
+            throw new IllegalArgumentException("restorationId is required");
+        }
+        if (productQuantities == null || productQuantities.isEmpty()) {
+            throw new IllegalArgumentException("productQuantities must contain at least one entry");
+        }
+
+        if (restorationRepository.existsById(restorationId)) {
+            log.warn("RestoreStock replay detected for restorationId={} — skipping", restorationId);
+            return false;
+        }
+
+        for (Map.Entry<String, Integer> entry : productQuantities.entrySet()) {
+            String productId = entry.getKey();
+            Integer qty = entry.getValue();
+            if (qty == null || qty <= 0) {
+                throw new IllegalArgumentException(
+                        "Quantity for product " + productId + " must be positive");
+            }
+
+            Inventory inventory = inventoryRepository.findByProductIdForUpdate(productId)
+                    .orElseThrow(() -> new InventoryNotFoundException(
+                            "Inventory not found for product: " + productId));
+
+            inventory.restock(qty);
+            inventoryRepository.save(inventory);
+            publishInventoryUpdatedEvent(inventory, "RESTOCK",
+                    "Refund restoration: " + (reason == null ? "Customer refund" : reason));
+        }
+
+        restorationRepository.save(InventoryRestoration.builder()
+                .restorationId(restorationId)
+                .orderId(orderId)
+                .reason(reason)
+                .itemsCount(productQuantities.size())
+                .build());
+
+        log.info("RestoreStock applied: restorationId={} order={} items={}",
+                restorationId, orderId, productQuantities.size());
+        return true;
     }
 
     /**

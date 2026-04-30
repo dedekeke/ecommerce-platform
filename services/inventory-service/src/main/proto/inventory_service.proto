@@ -28,6 +28,10 @@ service InventoryService {
 
   // Bulk check availability
   rpc BulkCheckAvailability(BulkCheckAvailabilityRequest) returns (BulkAvailabilityResponse);
+
+  // Restore stock for refunded items. Used by the refund-saga to put returned
+  // units back into available inventory. Idempotent on `restoration_id`.
+  rpc RestoreStock(RestoreStockRequest) returns (RestoreStockResponse);
 }
 
 // Messages
@@ -136,4 +140,27 @@ enum StockUpdateType {
   RETURN = 3;
   ADJUSTMENT = 4;
   DAMAGE = 5;
+}
+
+// RestoreStock — returns refunded units to availability.
+// Wire-compatible with the client-side definition in order-service:
+// `RestoreStockLineItem` matches the {product_id=1, quantity=2} layout the
+// caller serialises. `restoration_id` is the saga-generated idempotency key;
+// the server short-circuits on replay.
+message RestoreStockRequest {
+  string restoration_id = 1;
+  string order_id = 2;
+  repeated RestoreStockLineItem items = 3;
+  string reason = 4;
+}
+
+message RestoreStockResponse {
+  bool success = 1;
+  string message = 2;
+  string restoration_id = 3;
+}
+
+message RestoreStockLineItem {
+  string product_id = 1;
+  int32 quantity = 2;
 }
