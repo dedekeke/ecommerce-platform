@@ -71,4 +71,12 @@ public class ProductDocument {
      */
     @Field(type = FieldType.Double)
     private Double searchScore;
+
+    /**
+     * Set by the replenishment saga when a product runs low. The relevance
+     * query multiplies the base score by ~0.5 for documents flagged true so
+     * unfulfillable items rank lower until stock returns.
+     */
+    @Field(type = FieldType.Boolean)
+    private Boolean lowStockPenalty;
 }

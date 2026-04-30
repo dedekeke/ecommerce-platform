@@ -16,17 +16,9 @@ import java.util.UUID;
 /**
  * Choreography participant — the search side.
  *
- * <p>On {@code stock.low.detected} the product's relevance is reduced so it
- * stops climbing search results while it cannot be fulfilled. On
- * {@code stock.replenished} the boost is restored. Each path emits its own
- * outcome event.
- *
- * <p><strong>Stub note:</strong> the live wiring would set a
- * {@code lowStockPenalty} flag on the {@link ProductDocument} and rebuild
- * the score query in {@code ProductSearchService} to subtract that penalty
- * from the relevance. For this learning example we re-save the document
- * unchanged after fetching it — the call shape is honest, the search-side
- * scoring change is intentionally out of scope.
+ * <p>On {@code stock.low.detected} the product's {@code lowStockPenalty} flag
+ * is set so the relevance query down-weights it. On {@code stock.replenished}
+ * the flag is cleared. Each path emits its own outcome event.
  */
 @Component
 @RequiredArgsConstructor
@@ -81,13 +73,11 @@ public class SearchStockListener {
         }
     }
 
-    /**
-     * Stub: in production this would set a boolean flag on the document and
-     * the relevance query would subtract a penalty when the flag is true.
-     * Today we just re-save the doc to demonstrate the action ran.
-     */
     private void applyLowStockPenalty(Long productId, boolean penalize) {
         Optional<ProductDocument> doc = productSearchRepository.findById(String.valueOf(productId));
-        doc.ifPresent(productSearchRepository::save);
+        doc.ifPresent(d -> {
+            d.setLowStockPenalty(penalize ? Boolean.TRUE : Boolean.FALSE);
+            productSearchRepository.save(d);
+        });
     }
 }

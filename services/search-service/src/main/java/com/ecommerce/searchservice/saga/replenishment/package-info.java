@@ -13,16 +13,16 @@
  *   <li>{@code search.reboosted.due-to-stock}</li>
  * </ul>
  *
- * <p><strong>Local action</strong> (stubbed): apply / clear a low-stock
- * penalty on the {@link com.ecommerce.searchservice.document.ProductDocument}
- * so the item ranks lower while inventory cannot fulfil it. The full ranking
- * change is left as a follow-up — the listener itself is wired correctly.
+ * <p><strong>Local action</strong>: set / clear the {@code lowStockPenalty}
+ * flag on the {@link com.ecommerce.searchservice.document.ProductDocument}.
+ * The relevance query in
+ * {@link com.ecommerce.searchservice.service.ProductSearchService} multiplies
+ * the score of flagged documents by 0.5 so out-of-stock items rank lower
+ * without being filtered out entirely.
  *
- * <p><strong>Idempotency</strong>: in-memory dedup via
- * {@link com.ecommerce.searchservice.saga.replenishment.ConsumedEventStore}.
- * In production this would move to Redis or a tiny ES dedup index with TTL.
- *
- * <p>For the master javadoc on choreography saga theory, read
- * {@link com.ecommerce.inventoryservice.saga.replenishment}.
+ * <p><strong>Idempotency</strong>: Redis-backed
+ * {@link com.ecommerce.searchservice.saga.replenishment.ConsumedEventStore}
+ * (SETNX with TTL) survives JVM restarts and is safe across multiple
+ * search-service instances.
  */
 package com.ecommerce.searchservice.saga.replenishment;

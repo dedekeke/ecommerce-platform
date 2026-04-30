@@ -6,10 +6,14 @@ import com.ecommerce.searchservice.dto.ProductSearchRequest;
 import com.ecommerce.searchservice.dto.ProductSearchResponse;
 import com.ecommerce.searchservice.repository.ProductSearchRepository;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScore;
+import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.json.JsonData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -36,24 +40,27 @@ public class ProductSearchService {
     private final ElasticsearchOperations elasticsearchOperations;
 
     /**
-     * Search products with filters and facets
+     * Multiplier applied to documents flagged with {@code lowStockPenalty=true}
+     * by the replenishment saga.
+     */
+    private static final double LOW_STOCK_PENALTY_FACTOR = 0.5;
+
+    /**
+     * Search products with filters and facets.
+     *
+     * <p>Applies a function-score query that multiplies the relevance of
+     * documents with {@code lowStockPenalty=true} by {@link #LOW_STOCK_PENALTY_FACTOR}
+     * so out-of-stock products rank lower without being excluded outright.
      */
     public ProductSearchResponse searchProducts(ProductSearchRequest request) {
         log.info("Searching products with request: {}", request);
 
         int page = request.getPage() != null ? request.getPage() : 0;
         int size = request.getSize() != null ? request.getSize() : 20;
-        
+
         Pageable pageable = PageRequest.of(page, size, getSort(request));
-        
-        Page<ProductDocument> results;
-        
-        if (request.getQuery() != null && !request.getQuery().isEmpty()) {
-            results = repository.findByNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
-                    request.getQuery(), request.getQuery(), pageable);
-        } else {
-            results = repository.findByActiveTrue(pageable);
-        }
+
+        Page<ProductDocument> results = searchWithLowStockPenalty(request, pageable);
 
         // Get facets (aggregations)
         Map<String, Long> categoryFacets = getCategoryFacets();
@@ -109,6 +116,48 @@ public class ProductSearchService {
      */
     public Optional<ProductDocument> getProduct(String id) {
         return repository.findById(id);
+    }
+
+    /**
+     * Build the inner relevance query (matches text against name/description
+     * or active=true when no query) and wrap it in a function_score that
+     * de-boosts documents with {@code lowStockPenalty=true}.
+     */
+    Page<ProductDocument> searchWithLowStockPenalty(ProductSearchRequest request, Pageable pageable) {
+        Query innerQuery;
+        if (request.getQuery() != null && !request.getQuery().isEmpty()) {
+            String text = request.getQuery();
+            innerQuery = Query.of(q -> q.bool(BoolQuery.of(b -> b
+                    .should(s -> s.match(m -> m.field("name").query(text)))
+                    .should(s -> s.match(m -> m.field("description").query(text)))
+                    .minimumShouldMatch("1"))));
+        } else {
+            innerQuery = Query.of(q -> q.term(t -> t.field("active").value(true)));
+        }
+
+        FunctionScore penalty = FunctionScore.of(fs -> fs
+                .filter(f -> f.term(t -> t.field("lowStockPenalty").value(true)))
+                .weight(LOW_STOCK_PENALTY_FACTOR));
+
+        Query scored = Query.of(q -> q.functionScore(FunctionScoreQuery.of(fsq -> fsq
+                .query(innerQuery)
+                .functions(penalty)
+                .scoreMode(co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreMode.Multiply)
+                .boostMode(co.elastic.clients.elasticsearch._types.query_dsl.FunctionBoostMode.Multiply))));
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                .withQuery(scored)
+                .withPageable(pageable)
+                .build();
+
+        SearchHits<ProductDocument> hits = elasticsearchOperations.search(
+                nativeQuery, ProductDocument.class, IndexCoordinates.of("products"));
+
+        List<ProductDocument> content = hits.stream()
+                .map(SearchHit::getContent)
+                .collect(Collectors.toList());
+
+        return new PageImpl<>(content, pageable, hits.getTotalHits());
     }
 
     private Sort getSort(ProductSearchRequest request) {
