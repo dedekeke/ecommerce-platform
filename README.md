@@ -245,6 +245,48 @@ mvn jacoco:report
 ./scripts/check-services.sh
 ```
 
+## Deployment
+
+Production-readiness artifacts live alongside the source for the same workflow used in dev.
+
+### Production Docker Compose
+```bash
+cp production.env.example production.env   # then fill in real values
+docker compose -f docker-compose.prod.yml --env-file production.env up -d
+```
+- Resource limits, restart policies, json-file log rotation, no debug ports.
+- Image tags pin immutable SemVer (`ecommerce/<svc>:1.0.0`); see file header for tagging strategy.
+
+### Kubernetes (Kustomize)
+```bash
+kubectl apply -k k8s/overlays/staging
+kubectl apply -k k8s/overlays/production
+```
+- Manifests for 11 backends + 6 frontends.
+- HPA on `product-service`, `order-service`, `payment-service`.
+- Default-deny `NetworkPolicy` plus explicit allow rules.
+- See [k8s/README.md](k8s/README.md) for secret-management (sealed-secrets recommended).
+
+### Helm umbrella chart
+```bash
+helm upgrade --install ecommerce ./helm/ecommerce \
+  -f helm/ecommerce/values-prod.yaml \
+  -n ecommerce-prod --create-namespace
+```
+- 11 backend subcharts in `helm/ecommerce/charts/`.
+- `values.yaml`, `values-staging.yaml`, `values-prod.yaml`.
+
+### CI/CD
+- `.github/workflows/ci.yml` — PR build + test + lint + dependency scan.
+- `.github/workflows/cd-staging.yml` — push to `develop` → build/push images → helm-upgrade staging.
+- `.github/workflows/cd-production.yml` — `v*.*.*` tag → build/push → helm-upgrade prod (manual approval).
+
+### Centralized logging
+Loki + Promtail + Grafana — see [monitoring/README.md](monitoring/README.md) for install instructions and the bundled `services-logs` dashboard.
+
+### Backup & DR
+[docs/BACKUP_AND_DR.md](docs/BACKUP_AND_DR.md) — RTO 4h / RPO 1h, restore runbooks for every datastore, DR table-top template.
+
 ## Upcoming
 - Frontend Shell and React Micro-Frontends
 - Angular Micro-Frontends
