@@ -4,6 +4,20 @@
 .env
 .env.local
 .env.*.local
+production.env
+*.production.env
+
+# ============================================
+# Helm
+# ============================================
+*.tgz
+helm/**/charts/*.tgz
+
+# ============================================
+# Monitoring local overrides
+# ============================================
+monitoring/*/*.local.yaml
+monitoring/*/*.local.yml
 
 # Local-only Spring profile with developer credentials
 **/application-personal.yml
