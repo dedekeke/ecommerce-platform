@@ -23,7 +23,12 @@ import java.time.LocalDateTime;
     @Index(name = "idx_reservation_product_id", columnList = "productId"),
     @Index(name = "idx_reservation_order_id", columnList = "orderId"),
     @Index(name = "idx_reservation_status", columnList = "status"),
-    @Index(name = "idx_reservation_expires_at", columnList = "expiresAt")
+    @Index(name = "idx_reservation_expires_at", columnList = "expiresAt"),
+    // V2__Add_perf_indexes — see docs/DB_INDEX_AUDIT.md.
+    // The partial-index variant (WHERE status = 'RESERVED') is created in V2 SQL —
+    // JPA cannot express partial indexes, so the @Index here is a non-partial
+    // composite that still helps when the V2 SQL has not yet been applied.
+    @Index(name = "idx_reservation_status_expires", columnList = "status, expiresAt")
 })
 public class InventoryReservation {
 

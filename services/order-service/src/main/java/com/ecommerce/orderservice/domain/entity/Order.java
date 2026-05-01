@@ -29,7 +29,10 @@ import java.util.List;
     @Index(name = "idx_status", columnList = "status"),
     @Index(name = "idx_created_at", columnList = "createdAt"),
     @Index(name = "idx_promotion_code", columnList = "promotionCode"),
-    @Index(name = "idx_user_status_date", columnList = "userId, status, createdAt")
+    @Index(name = "idx_user_status_date", columnList = "userId, status, createdAt"),
+    // V2__Add_perf_indexes — see docs/DB_INDEX_AUDIT.md
+    @Index(name = "idx_order_payment_intent", columnList = "paymentIntentId"),
+    @Index(name = "idx_order_status_created", columnList = "status, createdAt")
 })
 public class Order {
 

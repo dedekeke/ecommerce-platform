@@ -31,7 +31,9 @@ import java.util.List;
 @Table(name = "carts", indexes = {
     @Index(name = "idx_user_id", columnList = "user_id"),
     @Index(name = "idx_status", columnList = "status"),
-    @Index(name = "idx_expires_at", columnList = "expires_at")
+    @Index(name = "idx_expires_at", columnList = "expires_at"),
+    // V2__Add_perf_indexes — see docs/DB_INDEX_AUDIT.md
+    @Index(name = "idx_cart_status_updated", columnList = "status, updated_at")
 })
 @EntityListeners(AuditingEntityListener.class)
 @Data

@@ -1,23 +1,12 @@
 package com.ecommerce.productservice.service;
 
-import com.ecommerce.productservice.config.LayeredCacheManager;
-import com.ecommerce.productservice.event.ProductEventPublisher;
+import cachetestsupport.CacheStampedeTestConfig;
 import com.ecommerce.productservice.model.Product;
-import com.ecommerce.productservice.repository.CategoryRepository;
 import com.ecommerce.productservice.repository.ProductRepository;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.EnableCaching;
-import org.springframework.cache.caffeine.CaffeineCacheManager;
-import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
 import java.math.BigDecimal;
@@ -29,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,62 +32,27 @@ import static org.mockito.Mockito.when;
  * concurrent loads, so {@code productRepository.findById(1L)} is invoked exactly
  * ONCE.
  *
- * Uses a tiny Spring test slice so the @Cacheable proxy is real (the cache
- * interceptor is wired by Spring's @EnableCaching).
+ * The Spring config lives in the {@code cachetestsupport} package so the
+ * @SpringBootApplication's component scan (rooted at
+ * {@code com.ecommerce.productservice}) does NOT pick it up — other test
+ * slices in this module load the production CacheConfig untouched.
  */
-@SpringJUnitConfig(ProductServiceCacheStampedeTest.TestConfig.class)
+@SpringJUnitConfig(CacheStampedeTestConfig.class)
 class ProductServiceCacheStampedeTest {
 
-    @TestConfiguration
-    @EnableCaching
-    static class TestConfig {
-
-        @Bean
-        public CaffeineCacheManager caffeineCacheManager() {
-            CaffeineCacheManager mgr = new CaffeineCacheManager("products");
-            mgr.setCaffeine(Caffeine.newBuilder().maximumSize(1_000));
-            return mgr;
-        }
-
-        @Bean
-        public CacheManager redisStandIn() {
-            // In-memory L2 stand-in so the test stays hermetic. The single-flight
-            // property under test is provided by L1 (Caffeine), not L2.
-            return new ConcurrentMapCacheManager("products");
-        }
-
-        @Bean
-        @Primary
-        public CacheManager cacheManager(CaffeineCacheManager caffeineCacheManager,
-                                         CacheManager redisStandIn) {
-            return new LayeredCacheManager(caffeineCacheManager, redisStandIn);
-        }
-
-        @Bean
-        public ProductService productService(ProductRepository productRepository,
-                                             CategoryRepository categoryRepository,
-                                             ProductEventPublisher eventPublisher) {
-            return new ProductService(productRepository, categoryRepository, eventPublisher);
-        }
-    }
-
-    @MockBean private ProductRepository productRepository;
-    @MockBean private CategoryRepository categoryRepository;
-    @MockBean private ProductEventPublisher eventPublisher;
-
     @Autowired private ProductService productService;
+    @Autowired private ProductRepository productRepository;
     @Autowired private CacheManager cacheManager;
 
     @BeforeEach
-    void clearCache() {
-        // Clear any state leftover from previous tests.
+    void clearCacheAndMocks() {
         var cache = cacheManager.getCache("products");
         if (cache != null) cache.clear();
+        reset(productRepository);
     }
 
     @Test
     void should_callRepositoryExactlyOnce_when_100ThreadsConcurrentlyMissCacheForSameKey() throws Exception {
-        // Arrange: a single product, slow DB to maximise the chance threads contend on the loader.
         Long productId = 1L;
         Product product = Product.builder()
             .id(productId)
@@ -124,7 +79,6 @@ class ProductServiceCacheStampedeTest {
         CountDownLatch done = new CountDownLatch(threadCount);
         AtomicInteger successCount = new AtomicInteger(0);
 
-        // Act
         for (int i = 0; i < threadCount; i++) {
             pool.submit(() -> {
                 try {
@@ -146,7 +100,6 @@ class ProductServiceCacheStampedeTest {
         boolean allFinished = done.await(15, TimeUnit.SECONDS);
         pool.shutdown();
 
-        // Assert
         assertThat(allFinished).as("all 100 threads completed").isTrue();
         assertThat(successCount.get()).as("all threads got the product").isEqualTo(threadCount);
         assertThat(repoCalls.get())
@@ -157,7 +110,6 @@ class ProductServiceCacheStampedeTest {
 
     @Test
     void should_serveSubsequentReadsFromL1_when_keyAlreadyCached() {
-        // Arrange
         Long productId = 2L;
         Product product = Product.builder()
             .id(productId)
@@ -170,12 +122,10 @@ class ProductServiceCacheStampedeTest {
             .build();
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
 
-        // Act
         Product first = productService.getProductById(productId);
         Product second = productService.getProductById(productId);
         Product third = productService.getProductById(productId);
 
-        // Assert
         assertThat(first.getId()).isEqualTo(productId);
         assertThat(second.getId()).isEqualTo(productId);
         assertThat(third.getId()).isEqualTo(productId);
