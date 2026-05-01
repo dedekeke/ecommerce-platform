@@ -24,6 +24,24 @@ public interface CartRepository extends JpaRepository<Cart, Long> {
     @Query("SELECT c FROM Cart c WHERE c.updatedAt < :threshold AND c.status = :status")
     List<Cart> findAbandonedCarts(@Param("threshold") Instant threshold, @Param("status") CartStatus status);
 
+    /**
+     * Find ACTIVE carts that look abandoned and are eligible for a recovery
+     * email: idle longer than {@code idleThreshold}, contain at least one
+     * line item, and either never reminded or last reminded before
+     * {@code reminderCutoff} (7-day cool-off).
+     */
+    @Query("""
+            SELECT c FROM Cart c
+             WHERE c.status = :status
+               AND c.updatedAt < :idleThreshold
+               AND SIZE(c.items) > 0
+               AND (c.lastAbandonmentReminderAt IS NULL OR c.lastAbandonmentReminderAt < :reminderCutoff)
+            """)
+    List<Cart> findCartsEligibleForAbandonmentReminder(
+            @Param("status") CartStatus status,
+            @Param("idleThreshold") Instant idleThreshold,
+            @Param("reminderCutoff") Instant reminderCutoff);
+
     void deleteByUserIdAndStatus(String userId, CartStatus status);
 
     boolean existsByUserIdAndStatus(String userId, CartStatus status);

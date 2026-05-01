@@ -86,6 +86,26 @@ public class NotificationTemplateInitializer implements CommandLineRunner {
             log.info("Created SHIPPING_NOTIFICATION template");
         }
 
+        // Cart Abandonment Recovery Template (§3.10)
+        if (!templateRepository.existsByCode("CART_ABANDONED")) {
+            Map<String, Object> defaultVars = new HashMap<>();
+            defaultVars.put("companyName", "E-Commerce Platform");
+
+            NotificationTemplate cartAbandoned = NotificationTemplate.builder()
+                    .code("CART_ABANDONED")
+                    .name("Cart Abandonment Reminder")
+                    .description("Email sent when a user leaves items in their cart for more than 24h")
+                    .type(NotificationType.EMAIL)
+                    .subject("You left ${totalItems} item(s) in your cart — come back!")
+                    .body("cart-abandoned")
+                    .defaultVariables(defaultVars)
+                    .active(true)
+                    .build();
+
+            templateRepository.save(cartAbandoned);
+            log.info("Created CART_ABANDONED template");
+        }
+
         if (!templateRepository.existsByCode("PROMOTION_ANNOUNCEMENT")) {
             Map<String, Object> defaultVars = new HashMap<>();
             defaultVars.put("companyName", "E-Commerce Platform");

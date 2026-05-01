@@ -90,6 +90,14 @@ public class Cart {
     @Column(name = "expires_at")
     private Instant expiresAt;
 
+    /**
+     * Last time an abandonment reminder email was queued for this cart.
+     * Used by {@code AbandonedCartScanner} to enforce a 7-day cool-off so
+     * the same shopper isn't pestered every night.
+     */
+    @Column(name = "last_abandonment_reminder_at")
+    private Instant lastAbandonmentReminderAt;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
