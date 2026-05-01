@@ -200,6 +200,18 @@ spring:
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
 
+        # Recommendation Service
+        - id: recommendation-service
+          uri: lb://recommendation-service
+          predicates:
+            - Path=/api/recommendations/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
+
         # ------------------------------------------------------------------
         # OpenAPI aggregation routes — proxy /aggregate/<svc>/v3/api-docs to
         # the corresponding service's /v3/api-docs endpoint. Used by Swagger
@@ -264,6 +276,12 @@ spring:
           uri: lb://promotion-service
           predicates:
             - Path=/aggregate/promotion-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-recommendation-service
+          uri: lb://recommendation-service
+          predicates:
+            - Path=/aggregate/recommendation-service/v3/api-docs/**
           filters:
             - StripPrefix=2
 
@@ -400,3 +418,5 @@ springdoc:
         url: /aggregate/media-service/v3/api-docs
       - name: promotion-service
         url: /aggregate/promotion-service/v3/api-docs
+      - name: recommendation-service
+        url: /aggregate/recommendation-service/v3/api-docs

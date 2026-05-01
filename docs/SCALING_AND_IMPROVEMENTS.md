@@ -442,6 +442,8 @@ spring:
 
 ### 3.1 Personalised Recommendations
 
+**Status:** Applied 2026-04-30 (Phase 1 — streaming co-occurrence). Implemented as a standalone `recommendation-service` (port 8092) consuming `order.created` from Kafka and exposing `GET /api/recommendations/product/{productId}` and `GET /api/recommendations/user/{userId}`. Algorithm and operational notes in [docs/RECOMMENDATIONS.md](RECOMMENDATIONS.md). Phase 2 (pgvector) remains open — trigger when unique-product count exceeds ~1M or when business asks for content-aware recs.
+
 **What.** Phase 1 (batch, low effort): Consume `order.completed` and `product.viewed` Kafka events into a MongoDB collection. Run a nightly co-occurrence job that computes "users who bought X also bought Y". Expose as a `/recommendations/{productId}` endpoint on `product-service`.
 
 Phase 2 (ML, high effort): Generate product and user embeddings using a lightweight model (e.g., matrix factorisation or sentence-transformer on description text). Store vectors in pgvector on PostgreSQL. Query with `SELECT id, name FROM products ORDER BY embedding <=> $1 LIMIT 10`.

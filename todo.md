@@ -13,6 +13,18 @@ Product Catalog MFE initialized with core components implemented.
 
 ## Completed Tasks
 
+### 2026-04-30 — Recommendation Service (Phase 1, streaming co-occurrence)
+- [x] New `services/recommendation-service` Maven module (Spring Boot 3.2, Java 21, port 8092)
+- [x] Mongo-backed co-occurrence matrix + per-user purchase set + idempotency ledger
+- [x] `@KafkaListener("order.created")` ingest path with orderId-keyed dedup
+- [x] `GET /api/recommendations/product/{productId}` (anonymous) and `/user/{userId}` (auth)
+- [x] Caffeine cache, 60s TTL, on both endpoints
+- [x] Auth0 + SECURITY_ENABLED toggle mirroring product-service / notification-service
+- [x] Compound index `{productId: 1, count: -1}` on `co_occurrence` for top-N reads
+- [x] Gateway routes for `/api/recommendations/**` and `/aggregate/recommendation-service/...`
+- [x] 32 tests (5 classes), all green; business-class line coverage ≥90%
+- [x] Docs: `docs/RECOMMENDATIONS.md` + SCALING_AND_IMPROVEMENTS.md updated
+
 ### Completed Days 38-45 — MFEs + Production Readiness + Documentation
 - [x] **Day 38** — Shopping Cart MFE (React) implemented and federated
 - [x] **Day 39** — Checkout MFE (React) implemented with multi-step flow
