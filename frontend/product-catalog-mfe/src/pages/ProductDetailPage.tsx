@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
@@ -21,6 +21,9 @@ import {
   ArrowBack as BackIcon,
 } from '@mui/icons-material'
 import { useProduct } from '../hooks'
+import { useFeatureFlag } from '../featureFlags'
+import { recommendationService } from '../api'
+import type { Product } from '../types'
 
 interface ProductDetailPageProps {
   onAddToCart?: (productId: string, quantity: number) => void
@@ -43,6 +46,33 @@ export default function ProductDetailPage({
   const { product, isLoading, isError } = useProduct(productId)
   const [quantity, setQuantity] = useState(1)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
+
+  // §4.6 — Recommendations are gated behind a feature flag while we polish
+  // the cold-start experience. When the flag is off we don't render the
+  // section AND we don't fire the network request — the latter avoids
+  // the discarded-response noise on every product detail page view.
+  const recommendationsEnabled = useFeatureFlag('RECOMMENDATIONS')
+  const [recommendations, setRecommendations] = useState<Product[]>([])
+
+  useEffect(() => {
+    if (!recommendationsEnabled || !productId) {
+      return
+    }
+    let cancelled = false
+    recommendationService
+      .getForProduct(productId, 4)
+      .then((items) => {
+        if (!cancelled) setRecommendations(items)
+      })
+      .catch(() => {
+        // Recommendations are a non-critical enhancement — swallow errors so
+        // a recommendation-service outage never breaks the product page.
+        if (!cancelled) setRecommendations([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [recommendationsEnabled, productId])
 
   const handleQuantityChange = (delta: number) => {
     setQuantity((prev) => Math.max(1, Math.min(prev + delta, product?.stockQuantity || 10)))
@@ -283,6 +313,24 @@ export default function ProductDetailPage({
           </Box>
         </Grid>
       </Grid>
+
+      {recommendationsEnabled && recommendations.length > 0 && (
+        <Box data-testid="product-recommendations" sx={{ mt: 6 }}>
+          <Typography variant="h5" fontWeight={600} gutterBottom>
+            You might also like
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 1 }}>
+            {recommendations.map((rec) => (
+              <Box key={rec.id} sx={{ minWidth: 200 }}>
+                <Typography variant="body2" fontWeight={500}>{rec.name}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {formatPrice(rec.price, displayCurrency)}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      )}
     </Box>
   )
 }

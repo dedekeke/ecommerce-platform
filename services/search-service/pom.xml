@@ -17,6 +17,13 @@
     <description>Search Service - Elasticsearch-based product search</description>
 
     <dependencies>
+        <!-- Common Library (FeatureFlags, etc.) -->
+        <dependency>
+            <groupId>com.ecommerce</groupId>
+            <artifactId>common-library</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Spring Boot Starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -3,6 +3,7 @@ package com.ecommerce.searchservice.service;
 import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType;
+import com.ecommerce.common.featureflag.FeatureFlags;
 import com.ecommerce.searchservice.document.ProductDocument;
 import com.ecommerce.searchservice.dto.SuggestResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -47,19 +48,29 @@ public class SuggestService {
     static final String FIELD_3GRAM = "nameSuggest._3gram";
     static final String CACHE_KEY_PREFIX = "search-service:suggest:";
 
+    /**
+     * Feature-flag name (§4.6) gating the suggest endpoint. Default is
+     * {@code false} so callers don't get typeahead unless the flag is on
+     * for their environment.
+     */
+    static final String FLAG_SEARCH_TYPEAHEAD = "SEARCH_TYPEAHEAD";
+
     private final ElasticsearchOperations elasticsearchOperations;
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
     private final Duration cacheTtl;
+    private final FeatureFlags featureFlags;
 
     public SuggestService(
             ElasticsearchOperations elasticsearchOperations,
             StringRedisTemplate redis,
             ObjectMapper objectMapper,
+            FeatureFlags featureFlags,
             @Value("${search.suggest.cache-ttl-seconds:30}") long cacheTtlSeconds) {
         this.elasticsearchOperations = elasticsearchOperations;
         this.redis = redis;
         this.objectMapper = objectMapper;
+        this.featureFlags = featureFlags;
         this.cacheTtl = Duration.ofSeconds(cacheTtlSeconds);
     }
 
@@ -81,6 +92,14 @@ public class SuggestService {
      * @return suggestions ranked by ES score
      */
     public List<SuggestResponse> suggest(String query, int limit) {
+        // Feature-flagged (§4.6). When the flag is off (the default), the
+        // endpoint behaves as if no products matched — the controller still
+        // returns 200 with an empty list, so clients don't need to handle a
+        // separate disabled state. Flip FEATURE_FLAG_SEARCH_TYPEAHEAD=true
+        // (or feature.flag.search-typeahead=true in YAML) to enable.
+        if (!featureFlags.isEnabled(FLAG_SEARCH_TYPEAHEAD)) {
+            return List.of();
+        }
         if (query == null || query.isBlank()) {
             return List.of();
         }

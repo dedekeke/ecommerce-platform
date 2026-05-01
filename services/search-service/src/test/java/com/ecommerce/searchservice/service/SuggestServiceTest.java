@@ -2,6 +2,7 @@ package com.ecommerce.searchservice.service;
 
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType;
+import com.ecommerce.common.featureflag.FeatureFlags;
 import com.ecommerce.searchservice.document.ProductDocument;
 import com.ecommerce.searchservice.dto.SuggestResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,10 +54,19 @@ class SuggestServiceTest {
     private ValueOperations<String, String> valueOps;
 
     private SuggestService service;
+    /**
+     * The feature-flag tests below verify {@code SEARCH_TYPEAHEAD} gating end-to-end.
+     * The remaining tests assume the flag is on (the typical local-dev / staging
+     * configuration) — that's what this stub gives them.
+     */
+    private final FeatureFlags allFlagsOn = new FeatureFlags() {
+        @Override public boolean isEnabled(String name) { return true; }
+        @Override public boolean isEnabled(String name, String userId) { return true; }
+    };
 
     @BeforeEach
     void setUp() {
-        service = new SuggestService(elasticsearchOperations, redis, new ObjectMapper(), 30L);
+        service = new SuggestService(elasticsearchOperations, redis, new ObjectMapper(), allFlagsOn, 30L);
     }
 
     @Test
@@ -177,5 +187,23 @@ class SuggestServiceTest {
     @DisplayName("buildHighlight_should_returnOriginal_when_queryNotFound")
     void buildHighlight_should_returnOriginal_when_queryNotFound() {
         assertThat(SuggestService.buildHighlight("Laptop", "xyz")).isEqualTo("Laptop");
+    }
+
+    @Test
+    @DisplayName("should_returnEmptyList_andNotHitElasticsearch_when_searchTypeaheadFlagDisabled")
+    void should_returnEmptyList_andNotHitElasticsearch_when_searchTypeaheadFlagDisabled() {
+        FeatureFlags allOff = new FeatureFlags() {
+            @Override public boolean isEnabled(String name) { return false; }
+            @Override public boolean isEnabled(String name, String userId) { return false; }
+        };
+        SuggestService offService = new SuggestService(
+                elasticsearchOperations, redis, new ObjectMapper(), allOff, 30L);
+
+        List<SuggestResponse> result = offService.suggest("laptop", 8);
+
+        assertThat(result).isEmpty();
+        verify(elasticsearchOperations, never())
+                .search(any(NativeQuery.class), any(), any(IndexCoordinates.class));
+        verify(redis, never()).opsForValue();
     }
 }
