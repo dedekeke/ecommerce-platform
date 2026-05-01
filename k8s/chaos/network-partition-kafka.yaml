@@ -1,0 +1,23 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-partition-notification-kafka
+  namespace: ecommerce-staging
+spec:
+  action: partition
+  mode: all
+  duration: "2m"
+  selector:
+    namespaces:
+      - ecommerce-staging
+    labelSelectors:
+      app: notification-service
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - ecommerce-staging
+      labelSelectors:
+        app: kafka
+    mode: all
+  dryRun: true

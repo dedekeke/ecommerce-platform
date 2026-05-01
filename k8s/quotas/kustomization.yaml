@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apply manually:
+#   kubectl apply -k k8s/quotas
+# Quotas reject new pods that exceed namespace ceilings; coordinate with HPA
+# maxReplicas before applying in a busy environment.
+
+resources:
+  - ecommerce-quota.yaml
+  - ecommerce-staging-quota.yaml
+  - chaos-testing-quota.yaml

@@ -1,0 +1,27 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay-payment-postgres
+  namespace: ecommerce-staging
+spec:
+  action: delay
+  mode: all
+  duration: "5m"
+  selector:
+    namespaces:
+      - ecommerce-staging
+    labelSelectors:
+      app: payment-service
+  delay:
+    latency: "200ms"
+    jitter: "50ms"
+    correlation: "25"
+  direction: to
+  target:
+    selector:
+      namespaces:
+        - ecommerce-staging
+      labelSelectors:
+        app: postgres-payment
+    mode: all
+  dryRun: true
