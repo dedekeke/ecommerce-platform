@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { WishlistService } from './wishlist.service';
 
 const STORAGE_KEY = 'user-wishlist-storage';
@@ -8,7 +10,9 @@ describe('WishlistService', () => {
 
   beforeEach(() => {
     localStorage.clear();
-    TestBed.configureTestingModule({ providers: [WishlistService] });
+    TestBed.configureTestingModule({
+      providers: [WishlistService, provideHttpClient(), provideHttpClientTesting()],
+    });
     service = TestBed.inject(WishlistService);
   });
 
@@ -87,11 +91,96 @@ describe('WishlistService', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
 
     TestBed.resetTestingModule();
-    TestBed.configureTestingModule({ providers: [WishlistService] });
+    TestBed.configureTestingModule({
+      providers: [WishlistService, provideHttpClient(), provideHttpClientTesting()],
+    });
     const freshService = TestBed.inject(WishlistService);
 
     let loadedItems: unknown[] = [];
     freshService.getItems().subscribe((items) => (loadedItems = items));
     expect(loadedItems.length).toBe(1);
+  });
+
+  describe('backend-enabled HTTP path (VITE_WISHLIST_BACKEND_ENABLED=true)', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(() => {
+      httpMock = TestBed.inject(HttpTestingController);
+      service.setBackendEnabled(true);
+      service.setCurrentUserId('42');
+    });
+
+    afterEach(() => {
+      httpMock.verify();
+    });
+
+    it('should POST to /api/wishlist/{userId}/items when adding a product and update the stream', () => {
+      service.addItem({
+        productId: 'prod-77',
+        productName: 'HTTP Item',
+        price: 10,
+        currency: 'USD',
+        inStock: true,
+      });
+
+      const req = httpMock.expectOne('/api/wishlist/42/items');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ productId: 'prod-77' });
+      req.flush({ id: 99, productId: 'prod-77', addedAt: '2026-04-29T00:00:00Z' });
+
+      let captured: unknown[] = [];
+      service.getItems().subscribe((items) => (captured = items));
+      expect(captured.length).toBe(1);
+      expect((captured[0] as { productId: string }).productId).toBe('prod-77');
+    });
+
+    it('should DELETE to /api/wishlist/{userId}/items/{productId} when removing a backed item', () => {
+      // seed via backend first
+      service.addItem({
+        productId: 'prod-rm',
+        productName: 'X',
+        price: 1,
+        currency: 'USD',
+        inStock: true,
+      });
+      const post = httpMock.expectOne('/api/wishlist/42/items');
+      post.flush({ id: 7, productId: 'prod-rm', addedAt: '2026-04-29T00:00:00Z' });
+
+      // grab the local id assigned by the server response
+      const items = (service as unknown as {
+        items$: { getValue: () => Array<{ id: string }> };
+      }).items$.getValue();
+      const localId = items[0].id;
+
+      service.removeItem(localId);
+
+      const del = httpMock.expectOne('/api/wishlist/42/items/prod-rm');
+      expect(del.request.method).toBe('DELETE');
+      del.flush(null);
+
+      let after: unknown[] = [];
+      service.getItems().subscribe((list) => (after = list));
+      expect(after.length).toBe(0);
+    });
+
+    it('should GET /api/wishlist/{userId} when loadFromBackend is invoked', () => {
+      let received: unknown = null;
+      service.loadFromBackend('42').subscribe((rows) => (received = rows));
+
+      const req = httpMock.expectOne('/api/wishlist/42');
+      expect(req.request.method).toBe('GET');
+      const payload = [
+        { id: 1, productId: 'p-a', addedAt: '2026-04-28T10:00:00Z' },
+        { id: 2, productId: 'p-b', addedAt: '2026-04-28T11:00:00Z' },
+      ];
+      req.flush(payload);
+
+      expect(Array.isArray(received)).toBeTrue();
+      expect((received as unknown[]).length).toBe(2);
+
+      let pushed: unknown[] = [];
+      service.getItems().subscribe((list) => (pushed = list));
+      expect(pushed.length).toBe(2);
+    });
   });
 });

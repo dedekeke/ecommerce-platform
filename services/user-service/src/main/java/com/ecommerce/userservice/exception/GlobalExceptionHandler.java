@@ -71,6 +71,27 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle WishlistItemNotFoundException
+     */
+    @ExceptionHandler(WishlistItemNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleWishlistItemNotFoundException(
+            WishlistItemNotFoundException ex,
+            HttpServletRequest request) {
+
+        log.warn("Wishlist item not found: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .status(HttpStatus.NOT_FOUND.value())
+                .error("WISHLIST_ITEM_NOT_FOUND")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .traceId(getTraceId())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+    }
+
+    /**
      * Handle UnauthorizedAccessException
      */
     @ExceptionHandler(UnauthorizedAccessException.class)
