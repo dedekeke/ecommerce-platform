@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Return Rejected</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #F44336; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+        .details { background-color: white; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #F44336; }
+        .footer { text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #777; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Return Could Not Be Approved</h1>
+    </div>
+    <div class="content">
+        <p>Hi there,</p>
+        <p>We've inspected the item from your return and unfortunately we're unable to approve a refund. We'll be shipping the item back to you at no cost.</p>
+        <div class="details">
+            <h3>Return Details</h3>
+            <p><strong>RMA Number:</strong> <span th:text="${rmaNumber}">RMA-XYZ</span></p>
+            <p><strong>Order Number:</strong> <span th:text="${orderNumber}">ORD-12345</span></p>
+            <p th:if="${notes != null}"><strong>Inspector Notes:</strong> <span th:text="${notes}">Item was used.</span></p>
+        </div>
+        <p>If you believe this was a mistake, please reply to your original order confirmation email or contact customer support.</p>
+    </div>
+    <div class="footer">
+        <p>&copy; 2026 E-Commerce Platform. All rights reserved.</p>
+        <p>This is an automated message; please do not reply.</p>
+    </div>
+</body>
+</html>

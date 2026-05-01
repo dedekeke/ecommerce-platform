@@ -14,6 +14,20 @@ endpoint at `/graphql` ready for MFEs to consume on the next iteration.
 
 ## Completed Tasks
 
+### 2026-04-29 — Returns / RMA Orchestration Saga §3.8 (feature/returns-rma-saga)
+- [x] `services/order-service/.../saga/rma/` — Return entity, ReturnStatus,
+  Repository, RmaOrchestrator, RmaRecoveryScheduler, RmaController,
+  RmaEvent, RmaEventPublisher, MockShippingClient, RmaException
+- [x] Flyway `V6__Create_returns_table.sql`
+- [x] notification-service `RmaEventConsumer` listening on
+  `rma.requested` / `rma.completed` / `rma.rejected` with dedup
+- [x] 3 Thymeleaf email templates
+- [x] On `inspect(APPROVED)` delegates to existing `RefundOrchestrator`
+  (reason `RMA-${rmaNumber}`) — refund + inventory restore reused
+- [x] `MockShippingClient` returns `https://shipping.mock/labels/${UUID}`
+- [x] 48 new tests across both services, all green
+- [x] Summary doc `docs/day-37-rma-saga-summary.md`
+
 ### 2026-04-29 — GraphQL BFF on API Gateway (feature/graphql-bff)
 - [x] Embedded Spring for GraphQL inside `infrastructure/api-gateway`
   (no new pod; Option A from the brief)
