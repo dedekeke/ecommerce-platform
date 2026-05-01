@@ -18,6 +18,30 @@
 x-restart: &default-restart
   restart: always
 
+# ============================================
+# JVM GC tuning (applied 2026-04-30, see docs/SCALING_AND_IMPROVEMENTS.md §2.4)
+# ============================================
+# G1GC for throughput-oriented services with moderate latency targets.
+# Region-size 16m + IHOP 70 keep mixed GCs short and predictable; string
+# deduplication trims heap on JSON-heavy workloads; parallel ref processing
+# avoids reference-queue stalls.
+x-g1gc-jvm: &g1gc-jvm
+  JAVA_TOOL_OPTIONS: >-
+    -XX:+UseG1GC
+    -XX:MaxGCPauseMillis=200
+    -XX:G1HeapRegionSize=16m
+    -XX:InitiatingHeapOccupancyPercent=70
+    -XX:+UseStringDeduplication
+    -XX:+ParallelRefProcEnabled
+
+# ZGC for latency-critical services (gateway / order / payment) where p99 GC
+# pauses must stay sub-millisecond. ZGenerational is a JDK 21 default but is
+# pinned explicitly so behaviour does not drift if the base image upgrades.
+x-zgc-jvm: &zgc-jvm
+  JAVA_TOOL_OPTIONS: >-
+    -XX:+UseZGC
+    -XX:+ZGenerational
+
 x-logging: &default-logging
   logging:
     driver: json-file
@@ -318,6 +342,7 @@ services:
     ports:
       - "443:8080" # only the gateway is exposed; TLS terminated at LB in real prod
     environment:
+      <<: *zgc-jvm
       SPRING_PROFILES_ACTIVE: prod
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       REDIS_HOST: redis
@@ -353,6 +378,7 @@ services:
       eureka-server: { condition: service_healthy }
       kafka: { condition: service_healthy }
     environment:
+      <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/userdb
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
@@ -389,6 +415,7 @@ services:
       kafka: { condition: service_healthy }
       redis: { condition: service_healthy }
     environment:
+      <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/productdb
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
@@ -424,6 +451,7 @@ services:
       eureka-server: { condition: service_healthy }
       redis: { condition: service_healthy }
     environment:
+      <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cartdb
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
@@ -457,6 +485,7 @@ services:
       eureka-server: { condition: service_healthy }
       kafka: { condition: service_healthy }
     environment:
+      <<: *zgc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderdb
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
@@ -493,6 +522,7 @@ services:
       eureka-server: { condition: service_healthy }
       kafka: { condition: service_healthy }
     environment:
+      <<: *zgc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paymentdb
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
@@ -527,6 +557,7 @@ services:
       eureka-server: { condition: service_healthy }
       kafka: { condition: service_healthy }
     environment:
+      <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/inventorydb
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
@@ -558,6 +589,7 @@ services:
       eureka-server: { condition: service_healthy }
       kafka: { condition: service_healthy }
     environment:
+      <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATA_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/notificationdb?authSource=admin
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
@@ -590,6 +622,7 @@ services:
       eureka-server: { condition: service_healthy }
       kafka: { condition: service_healthy }
     environment:
+      <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
       SPRING_ELASTICSEARCH_USERNAME: elastic
@@ -619,6 +652,7 @@ services:
       mongodb: { condition: service_healthy }
       eureka-server: { condition: service_healthy }
     environment:
+      <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATA_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/mediadb?authSource=admin
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
@@ -654,6 +688,7 @@ services:
       eureka-server: { condition: service_healthy }
       redis: { condition: service_healthy }
     environment:
+      <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/promotiondb
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}

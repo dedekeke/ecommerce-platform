@@ -45,6 +45,11 @@ spec:
                 name: order-service-config
             - secretRef:
                 name: ecommerce-secrets
+          # GC tuning (applied 2026-04-30, see docs/SCALING_AND_IMPROVEMENTS.md §2.4):
+          # ZGC for order-service — p99 GC pause sensitivity is high on the saga path.
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:+UseZGC -XX:+ZGenerational"
           resources:
             requests:
               memory: "512Mi"

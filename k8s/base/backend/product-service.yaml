@@ -45,6 +45,11 @@ spec:
                 name: product-service-config
             - secretRef:
                 name: ecommerce-secrets
+          # GC tuning (applied 2026-04-30, see docs/SCALING_AND_IMPROVEMENTS.md §2.4):
+          # G1GC for product-service — read-heavy, throughput-oriented; 200ms pause target.
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16m -XX:InitiatingHeapOccupancyPercent=70 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled"
           resources:
             requests:
               memory: "512Mi"

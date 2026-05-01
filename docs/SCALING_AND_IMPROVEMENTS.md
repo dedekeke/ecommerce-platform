@@ -367,6 +367,26 @@ Explicitly set heap bounds: `-Xms256m -Xmx512m` for lightweight services, `-Xms5
 
 **Risk if skipped.** ParallelGC is throughput-optimised but causes stop-the-world pauses that can exceed 500 ms on large heaps, directly violating API latency SLOs.
 
+**Applied 2026-04-30** — `JAVA_TOOL_OPTIONS` set on every JVM container in
+`docker-compose.prod.yml` (via `x-g1gc-jvm` / `x-zgc-jvm` YAML anchors) and on
+each `k8s/base/backend/*.yaml` and `k8s/base/infra/api-gateway.yaml` Deployment.
+
+**G1GC** (`-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16m
+-XX:InitiatingHeapOccupancyPercent=70 -XX:+UseStringDeduplication
+-XX:+ParallelRefProcEnabled`) for: product-service, cart-service,
+inventory-service, notification-service, search-service, recommendation-service
+(Compose: not yet present in prod; k8s: manifest not yet created), user-service,
+media-service, promotion-service.
+
+**ZGC** (`-XX:+UseZGC -XX:+ZGenerational`) for: api-gateway, order-service,
+payment-service — the latency-critical surfaces where p99 GC pauses must stay
+sub-millisecond. ZGenerational is the JDK 21 default but is pinned explicitly so
+behaviour does not drift on base-image upgrades.
+
+Trade-off: ZGC has slightly higher CPU overhead than G1GC (typically 5–15%
+more young-gen work) in exchange for ~10× shorter worst-case pauses. Apply ZGC
+only where pause SLOs justify the cost — applying it everywhere wastes CPU.
+
 **References.**
 - OpenJDK ZGC documentation: `https://wiki.openjdk.org/display/zgc`.
 

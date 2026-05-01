@@ -41,6 +41,11 @@ spec:
                 name: api-gateway-config
             - secretRef:
                 name: ecommerce-secrets
+          # GC tuning (applied 2026-04-30, see docs/SCALING_AND_IMPROVEMENTS.md §2.4):
+          # ZGC for the gateway — sub-millisecond GC pauses for the latency-critical path.
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:+UseZGC -XX:+ZGenerational"
           resources:
             requests:
               memory: "512Mi"
