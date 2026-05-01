@@ -124,6 +124,9 @@ inventory:
     cleanup-old-reservations-cron: "0 0 2 * * *"  # Daily at 2 AM
     cleanup-days-threshold: 90  # Delete reservations older than 90 days
     restock-alert-cron: "0 0 6 * * ?"  # Daily at 6 AM
+  sse:
+    timeout-ms: ${INVENTORY_SSE_TIMEOUT_MS:30000}
+    heartbeat-interval-ms: ${INVENTORY_SSE_HEARTBEAT_MS:15000}
 
 # Transactional Outbox (polling-based relay)
 # - enabled: master switch for the @Scheduled relay; disabled in tests

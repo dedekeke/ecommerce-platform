@@ -459,6 +459,8 @@ Phase 2 (ML, high effort): Generate product and user embeddings using a lightwei
 
 ### 3.2 Real-Time Inventory Sync via SSE
 
+**Status:** Applied 2026-04-30. Endpoint live at `/api/inventory/stream`; details in [docs/REALTIME_INVENTORY.md](REALTIME_INVENTORY.md). Migration trigger to WebSocket: >5k concurrent connections per pod.
+
 **What.** Add a `GET /inventory/stream` endpoint in `inventory-service` (or expose via API gateway) that emits `SseEmitter` events whenever stock levels change for watched product IDs. The product detail MFE subscribes on mount and updates the "In Stock" indicator without polling.
 
 Publish stock-change events to Kafka on every `InventoryRepository.save()`. An `@KafkaListener` in a thin SSE fan-out service pushes to all open emitters for the affected `productId`.

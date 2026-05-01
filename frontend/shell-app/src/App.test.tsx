@@ -53,6 +53,7 @@ vi.mock('./stores', () => ({
 
 vi.mock('./hooks', () => ({
   useExposeAuthToken: vi.fn(),
+  useInventoryStream: vi.fn(),
 }))
 
 import { useAuth0 } from '@auth0/auth0-react'

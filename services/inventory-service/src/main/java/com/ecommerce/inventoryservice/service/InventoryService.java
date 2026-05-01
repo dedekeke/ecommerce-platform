@@ -5,6 +5,7 @@ import com.ecommerce.inventoryservice.domain.entity.InventoryReservation;
 import com.ecommerce.inventoryservice.domain.entity.InventoryRestoration;
 import com.ecommerce.inventoryservice.domain.enums.InventoryStatus;
 import com.ecommerce.inventoryservice.domain.enums.ReservationStatus;
+import com.ecommerce.inventoryservice.event.InventoryStockChangedEvent;
 import com.ecommerce.inventoryservice.event.InventoryUpdatedEvent;
 import com.ecommerce.inventoryservice.event.StockLowEvent;
 import com.ecommerce.inventoryservice.exception.InsufficientStockException;
@@ -18,6 +19,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +37,7 @@ public class InventoryService {
     private final InventoryReservationRepository reservationRepository;
     private final InventoryRestorationRepository restorationRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Value("${inventory.reservation.default-expiration-minutes:15}")
     private int defaultExpirationMinutes;
@@ -410,6 +413,36 @@ public class InventoryService {
             log.debug("Published InventoryUpdatedEvent for product: {}", inventory.getProductId());
         } catch (Exception e) {
             log.error("Failed to publish InventoryUpdatedEvent: {}", e.getMessage(), e);
+        }
+
+        publishStockChangedSpringEvent(inventory, /*previousAvailable*/ null);
+    }
+
+    /**
+     * In-process broadcast for the SSE fan-out. Independent of Kafka so a
+     * temporarily down broker does not block real-time UI updates.
+     *
+     * @param previousAvailable previous available quantity if known; otherwise
+     *                          the current value is reused so the payload
+     *                          stays well-formed.
+     */
+    private void publishStockChangedSpringEvent(Inventory inventory, Integer previousAvailable) {
+        if (applicationEventPublisher == null) {
+            return; // Defensive: in unit tests built without the publisher.
+        }
+        try {
+            int current = inventory.getAvailableQuantity();
+            int previous = previousAvailable != null ? previousAvailable : current;
+            applicationEventPublisher.publishEvent(InventoryStockChangedEvent.builder()
+                    .productId(inventory.getProductId())
+                    .sku(inventory.getSku())
+                    .availableQty(current)
+                    .previousQty(previous)
+                    .timestamp(LocalDateTime.now())
+                    .build());
+        } catch (Exception ex) {
+            log.warn("Failed to publish InventoryStockChangedEvent for product {}: {}",
+                    inventory.getProductId(), ex.getMessage());
         }
     }
 

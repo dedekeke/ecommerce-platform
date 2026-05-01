@@ -7,7 +7,7 @@ import { RoleGuard } from './components/auth/RoleGuard'
 import { PageSkeleton, NotFound, RouteProgressBar, PageTransition } from './components/common'
 import { useCartStore, selectCartItemCount } from './stores'
 import { MicroFrontendLoader, MFEErrorBoundary, useMFEPreload, type MFEName } from './mfe'
-import { useExposeAuthToken } from './hooks'
+import { useExposeAuthToken, useInventoryStream } from './hooks'
 import { designTokens } from './theme'
 
 interface MFERouteProps {
@@ -123,6 +123,7 @@ function App() {
   const { isLoading } = useAuth0()
   const cartItemCount = useCartStore(selectCartItemCount)
   useExposeAuthToken()
+  useInventoryStream()
 
   return (
     <MainLayout cartItemCount={cartItemCount}>

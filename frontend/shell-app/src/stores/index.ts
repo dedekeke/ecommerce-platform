@@ -2,6 +2,8 @@ export { useAuthStore } from './authStore'
 export { useCartStore } from './cartStore'
 export { useNotificationStore } from './notificationStore'
 export { useUserPreferencesStore } from './userPreferencesStore'
+export { useInventoryStore, selectInventoryFor } from './inventoryStore'
+export type { InventoryUpdate } from './inventoryStore'
 
 export {
   selectToken,

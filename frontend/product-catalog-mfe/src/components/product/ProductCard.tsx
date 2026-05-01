@@ -14,6 +14,7 @@ import {
   ImageNotSupported as NoImageIcon,
 } from '@mui/icons-material'
 import type { Product } from '../../types'
+import { useInventoryStore, selectInventoryFor } from '../../stores/inventoryStore'
 
 interface ProductCardProps {
   product: Product
@@ -109,10 +110,15 @@ export function ProductCard({ product, onAddToCart, currency = 'USD' }: ProductC
   const { id, name, price, images, category, inStock } = product
   const displayCurrency = currency || product.currency
 
+  const live = useInventoryStore(selectInventoryFor(String(id)))
+  const liveQty = live?.availableQty
+  const liveInStock = liveQty == null ? inStock : liveQty > 0
+  const lowStock = liveQty != null && liveQty > 0 && liveQty <= 5
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (onAddToCart && inStock) {
+    if (onAddToCart && liveInStock) {
       onAddToCart(id, 1)
     }
   }
@@ -132,9 +138,16 @@ export function ProductCard({ product, onAddToCart, currency = 'USD' }: ProductC
             </ImagePlaceholder>
           )}
           <StockChip
-            label={inStock ? 'In Stock' : 'Out of Stock'}
+            data-testid="stock-chip"
+            label={
+              !liveInStock
+                ? 'Out of Stock'
+                : lowStock
+                  ? `Only ${liveQty} left`
+                  : 'In Stock'
+            }
             size="small"
-            instock={inStock.toString()}
+            instock={liveInStock.toString()}
           />
         </ImageContainer>
 
@@ -163,7 +176,7 @@ export function ProductCard({ product, onAddToCart, currency = 'USD' }: ProductC
           fullWidth
           startIcon={<CartIcon />}
           onClick={handleAddToCart}
-          disabled={!inStock}
+          disabled={!liveInStock}
           sx={{
             borderRadius: 2,
             py: 1,
