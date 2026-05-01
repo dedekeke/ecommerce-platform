@@ -49,6 +49,26 @@ public class GatewayRoutesConfig {
                 .uri("lb://user-service")
             )
 
+            // ---------------- Wishlist (under user-service) ----------------
+            .route("wishlist-service-prog", r -> r
+                .path("/api/wishlist/**")
+                .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://user-service")
+            )
+            .route("wishlist-service-v1-prog", r -> r
+                .path("/api/v1/wishlist/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
+                    .tokenRelay()
+                )
+                .uri("lb://user-service")
+            )
+
             // ---------------- Product Service ----------------
             .route("product-service-prog", r -> r
                 .path("/api/products/**")

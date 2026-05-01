@@ -3,17 +3,23 @@ package com.ecommerce.gateway.config;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.cloud.gateway.config.GatewayProperties;
 import org.springframework.cloud.gateway.filter.factory.AddRequestHeaderGatewayFilterFactory;
 import org.springframework.cloud.gateway.filter.factory.AddResponseHeaderGatewayFilterFactory;
 import org.springframework.cloud.gateway.filter.factory.RewritePathGatewayFilterFactory;
+import org.springframework.cloud.gateway.filter.factory.TokenRelayGatewayFilterFactory;
+import org.springframework.cloud.gateway.handler.predicate.MethodRoutePredicateFactory;
 import org.springframework.cloud.gateway.handler.predicate.PathRoutePredicateFactory;
 import org.springframework.cloud.gateway.route.Route;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.support.GenericApplicationContext;
+import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientManager;
 import org.springframework.test.util.ReflectionTestUtils;
 import reactor.core.publisher.Flux;
+
+import java.util.stream.Stream;
 
 import java.util.List;
 
@@ -38,6 +44,7 @@ class GatewayRoutesConfigTest {
 
     private static final List<String> EXPECTED_PROG_ROUTE_IDS = List.of(
             "user-service-prog", "user-service-v1-prog",
+            "wishlist-service-prog", "wishlist-service-v1-prog",
             "product-service-prog", "product-service-v1-prog",
             "cart-service-prog", "cart-service-v1-prog",
             "order-service-prog", "order-service-v1-prog",
@@ -69,6 +76,7 @@ class GatewayRoutesConfigTest {
     @ParameterizedTest
     @CsvSource({
             "user-service-v1-prog,         lb://user-service",
+            "wishlist-service-v1-prog,     lb://user-service",
             "product-service-v1-prog,      lb://product-service",
             "cart-service-v1-prog,         lb://cart-service",
             "order-service-v1-prog,        lb://order-service",
@@ -92,8 +100,65 @@ class GatewayRoutesConfigTest {
 
     @Test
     void should_have_at_least_24_v1_or_unversioned_routes_total() {
-        // 12 backend services × 2 (unversioned + v1) = 24, plus 4 admin routes.
+        // 12 backend services × 2 (unversioned + v1) = 24, plus wishlist (×2)
+        // and 4 admin routes.
         assertThat(buildRoutes()).hasSizeGreaterThanOrEqualTo(24);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            // every unversioned route is sunset-stamped
+            "user-service-prog",
+            "wishlist-service-prog",
+            "product-service-prog",
+            "cart-service-prog",
+            "order-service-prog",
+            "payment-service-prog",
+            "inventory-service-prog",
+            "notification-service-prog",
+            "search-service-prog",
+            "media-service-prog",
+            "promotion-service-prog",
+            "recommendation-service-prog",
+            "review-service-prog"
+    })
+    void should_attachDeprecationFilters_only_on_unversioned_routes(String routeId) {
+        // We assert by string-matching the registered filter list — Spring Cloud
+        // Gateway doesn't expose strongly-typed accessors for the AddResponseHeader
+        // factory's args. Filter#toString() is stable enough for this.
+        Route route = buildRoutes().stream()
+                .filter(r -> routeId.equals(r.getId()))
+                .findFirst()
+                .orElseThrow();
+        String filters = route.getFilters().toString();
+        assertThat(filters).contains("Deprecation");
+        assertThat(filters).contains("Sunset");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "user-service-v1-prog",
+            "wishlist-service-v1-prog",
+            "product-service-v1-prog",
+            "cart-service-v1-prog",
+            "order-service-v1-prog",
+            "payment-service-v1-prog",
+            "inventory-service-v1-prog",
+            "notification-service-v1-prog",
+            "search-service-v1-prog",
+            "media-service-v1-prog",
+            "promotion-service-v1-prog",
+            "recommendation-service-v1-prog",
+            "review-service-v1-prog"
+    })
+    void should_NOT_attachDeprecationFilters_on_v1_routes(String routeId) {
+        Route route = buildRoutes().stream()
+                .filter(r -> routeId.equals(r.getId()))
+                .findFirst()
+                .orElseThrow();
+        String filters = route.getFilters().toString();
+        assertThat(filters).doesNotContain("Deprecation");
+        assertThat(filters).doesNotContain("Sunset");
     }
 
     private static List<Route> buildRoutes() {
@@ -102,26 +167,43 @@ class GatewayRoutesConfigTest {
 
         // RouteLocatorBuilder requires a ConfigurableApplicationContext to
         // resolve filter/predicate factories. We provide a minimal context with
-        // the factories the routes actually use.
+        // the factories the routes actually use, including a TokenRelay factory
+        // wired against an empty ObjectProvider — we don't actually authenticate
+        // anything in this test, we only assert the route table topology.
         GenericApplicationContext ctx = new GenericApplicationContext();
         ctx.registerBean(AddResponseHeaderGatewayFilterFactory.class);
         ctx.registerBean(AddRequestHeaderGatewayFilterFactory.class);
         ctx.registerBean(RewritePathGatewayFilterFactory.class);
         ctx.registerBean(PathRoutePredicateFactory.class);
+        ctx.registerBean(MethodRoutePredicateFactory.class);
         ctx.registerBean(GatewayProperties.class);
+        ctx.registerBean(TokenRelayGatewayFilterFactory.class,
+                () -> new TokenRelayGatewayFilterFactory(emptyClientManagerProvider()));
         ctx.refresh();
 
         RouteLocatorBuilder builder = new RouteLocatorBuilder(ctx);
-        // Some filters (TokenRelay) need OAuth2 client beans we don't have here;
-        // we filter out the prog-routes' tokenRelay() invocation by reflectively
-        // calling customRouteLocator on a subclass that shorts out tokenRelay().
-        // Simpler: catch the exception and skip the assertion in CI by relying
-        // on the class to have produced its route list.
         try {
             RouteLocator locator = config.customRouteLocator(builder);
             return Flux.from(locator.getRoutes()).collectList().block();
         } finally {
             ctx.close();
         }
+    }
+
+    /**
+     * Empty {@link ObjectProvider} stand-in for the
+     * {@link ReactiveOAuth2AuthorizedClientManager} dependency of the
+     * TokenRelay filter. The actual TokenRelay filter is never invoked in
+     * these tests — we only need it to satisfy the bean dependency so the
+     * route registration succeeds.
+     */
+    private static ObjectProvider<ReactiveOAuth2AuthorizedClientManager> emptyClientManagerProvider() {
+        return new ObjectProvider<>() {
+            @Override public ReactiveOAuth2AuthorizedClientManager getObject(Object... args) { return null; }
+            @Override public ReactiveOAuth2AuthorizedClientManager getObject() { return null; }
+            @Override public ReactiveOAuth2AuthorizedClientManager getIfAvailable() { return null; }
+            @Override public ReactiveOAuth2AuthorizedClientManager getIfUnique() { return null; }
+            @Override public Stream<ReactiveOAuth2AuthorizedClientManager> stream() { return Stream.empty(); }
+        };
     }
 }

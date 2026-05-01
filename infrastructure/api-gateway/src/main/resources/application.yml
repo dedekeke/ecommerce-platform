@@ -118,6 +118,33 @@ spring:
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
 
+        # ---------- Wishlist (under user-service) ----------
+        - id: wishlist-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/wishlist/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/wishlist>; rel="successor-version"
+        - id: wishlist-service-v1
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/wishlist/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+
         # ---------- Product Service ----------
         - id: product-service
           uri: lb://product-service
