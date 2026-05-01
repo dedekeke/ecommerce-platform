@@ -28,6 +28,8 @@ public class ElasticsearchIndexInitializer implements CommandLineRunner {
     private static final String INDEX_NAME = "products";
     private static final String MAPPING_FILE = "elasticsearch/product-mapping.json";
     private static final String SETTINGS_FILE = "elasticsearch/product-settings.json";
+    private static final String ILM_POLICY_NAME = "products-policy";
+    private static final String ILM_POLICY_FILE = "elasticsearch/ilm/products-policy.json";
 
     private final ElasticsearchClient elasticsearchClient;
     private final ObjectMapper objectMapper;
@@ -39,7 +41,26 @@ public class ElasticsearchIndexInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        ensureIlmPolicy();
         initializeIndex();
+    }
+
+    /**
+     * Idempotently registers the products-policy ILM definition. Hot 7d →
+     * warm 30d → cold → delete at 90d. PUT _ilm/policy is upsert, so this
+     * is safe to run on every startup. Failure is logged and swallowed —
+     * search service must still come up if Elasticsearch is unhappy.
+     */
+    void ensureIlmPolicy() {
+        try {
+            String body = loadResourceAsString(ILM_POLICY_FILE);
+            elasticsearchClient.ilm().putLifecycle(p -> p
+                    .name(ILM_POLICY_NAME)
+                    .withJson(new StringReader(body)));
+            logger.info("ILM policy '{}' applied", ILM_POLICY_NAME);
+        } catch (Exception ex) {
+            logger.warn("Could not apply ILM policy '{}': {}", ILM_POLICY_NAME, ex.getMessage());
+        }
     }
 
     /**
