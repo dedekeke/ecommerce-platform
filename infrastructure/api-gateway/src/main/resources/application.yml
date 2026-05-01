@@ -78,9 +78,20 @@ spring:
               factor: 2
               basedOnPreviousValue: false
 
-      # Explicit route configurations for fine-grained control
+      # ------------------------------------------------------------------
+      # Route configuration policy (see docs/API_VERSIONING.md):
+      #   - Unversioned routes (`/api/<resource>/**`) remain active for legacy
+      #     clients. They are stamped with a `Deprecation: true` and a
+      #     `Sunset:` response header so callers can migrate at their own pace.
+      #   - Versioned routes (`/api/v1/<resource>/**`) carry no deprecation
+      #     header and are the canonical entry-point for new integrations.
+      #     They strip the `/v1` prefix before forwarding so each backend
+      #     service stays unaware of the gateway's versioning policy.
+      #   - Deprecation date is centrally controlled by ${API_DEPRECATION_SUNSET}
+      #     so the platform can roll the date forward in one place.
+      # ------------------------------------------------------------------
       routes:
-        # User Service
+        # ---------- User Service ----------
         - id: user-service
           uri: lb://user-service
           predicates:
@@ -91,8 +102,23 @@ spring:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/users>; rel="successor-version"
+        - id: user-service-v1
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
 
-        # Product Service
+        # ---------- Product Service ----------
         - id: product-service
           uri: lb://product-service
           predicates:
@@ -103,8 +129,23 @@ spring:
                 redis-rate-limiter.replenishRate: 200
                 redis-rate-limiter.burstCapacity: 400
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/products>; rel="successor-version"
+        - id: product-service-v1
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/**,/api/v1/categories/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
 
-        # Cart Service
+        # ---------- Cart Service ----------
         - id: cart-service
           uri: lb://cart-service
           predicates:
@@ -115,8 +156,23 @@ spring:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/cart>; rel="successor-version"
+        - id: cart-service-v1
+          uri: lb://cart-service
+          predicates:
+            - Path=/api/v1/cart/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
 
-        # Order Service
+        # ---------- Order Service ----------
         - id: order-service
           uri: lb://order-service
           predicates:
@@ -127,8 +183,23 @@ spring:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/orders>; rel="successor-version"
+        - id: order-service-v1
+          uri: lb://order-service
+          predicates:
+            - Path=/api/v1/orders/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
 
-        # Payment Service
+        # ---------- Payment Service ----------
         - id: payment-service
           uri: lb://payment-service
           predicates:
@@ -139,8 +210,23 @@ spring:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/payments>; rel="successor-version"
+        - id: payment-service-v1
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
 
-        # Inventory Service
+        # ---------- Inventory Service ----------
         - id: inventory-service
           uri: lb://inventory-service
           predicates:
@@ -151,8 +237,23 @@ spring:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/inventory>; rel="successor-version"
+        - id: inventory-service-v1
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/v1/inventory/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
 
-        # Notification Service
+        # ---------- Notification Service ----------
         - id: notification-service
           uri: lb://notification-service
           predicates:
@@ -163,8 +264,23 @@ spring:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/notifications>; rel="successor-version"
+        - id: notification-service-v1
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
 
-        # Search Service
+        # ---------- Search Service ----------
         - id: search-service
           uri: lb://search-service
           predicates:
@@ -175,8 +291,23 @@ spring:
                 redis-rate-limiter.replenishRate: 200
                 redis-rate-limiter.burstCapacity: 400
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/search>; rel="successor-version"
+        - id: search-service-v1
+          uri: lb://search-service
+          predicates:
+            - Path=/api/v1/search/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
 
-        # Media Service
+        # ---------- Media Service ----------
         - id: media-service
           uri: lb://media-service
           predicates:
@@ -187,8 +318,23 @@ spring:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/media>; rel="successor-version"
+        - id: media-service-v1
+          uri: lb://media-service
+          predicates:
+            - Path=/api/v1/media/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
 
-        # Promotion Service
+        # ---------- Promotion Service ----------
         - id: promotion-service
           uri: lb://promotion-service
           predicates:
@@ -199,8 +345,23 @@ spring:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/promotions>; rel="successor-version"
+        - id: promotion-service-v1
+          uri: lb://promotion-service
+          predicates:
+            - Path=/api/v1/promotions/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
 
-        # Recommendation Service
+        # ---------- Recommendation Service ----------
         - id: recommendation-service
           uri: lb://recommendation-service
           predicates:
@@ -210,6 +371,48 @@ spring:
               args:
                 redis-rate-limiter.replenishRate: 200
                 redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/recommendations>; rel="successor-version"
+        - id: recommendation-service-v1
+          uri: lb://recommendation-service
+          predicates:
+            - Path=/api/v1/recommendations/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
+
+        # ---------- Review Service (NEW: §3.4) ----------
+        - id: review-service
+          uri: lb://review-service
+          predicates:
+            - Path=/api/reviews/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/reviews>; rel="successor-version"
+        - id: review-service-v1
+          uri: lb://review-service
+          predicates:
+            - Path=/api/v1/reviews/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
 
         # ------------------------------------------------------------------
@@ -282,6 +485,12 @@ spring:
           uri: lb://recommendation-service
           predicates:
             - Path=/aggregate/recommendation-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-review-service
+          uri: lb://review-service
+          predicates:
+            - Path=/aggregate/review-service/v3/api-docs/**
           filters:
             - StripPrefix=2
 
@@ -440,3 +649,5 @@ springdoc:
         url: /aggregate/promotion-service/v3/api-docs
       - name: recommendation-service
         url: /aggregate/recommendation-service/v3/api-docs
+      - name: review-service
+        url: /aggregate/review-service/v3/api-docs

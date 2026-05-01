@@ -1,6 +1,7 @@
 package com.ecommerce.gateway.config;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
@@ -8,113 +9,267 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 
 /**
- * Gateway Routes Configuration
+ * Programmatic gateway routes (complements the declarative routes in
+ * {@code application.yml}).
  *
- * Defines routes to all microservices with:
- * - Service discovery via Eureka (lb://<service-name>)
- * - Token relay filter for JWT propagation
- * - Path rewriting
- * - Circuit breaker patterns (to be added)
+ * <p>The unversioned routes here are kept for backwards compatibility and
+ * stamped with {@code Deprecation: true} + a {@code Sunset:} header per
+ * {@code docs/API_VERSIONING.md}. Versioned (`/api/v1/...`) routes are
+ * defined alongside and strip the {@code /v1} prefix so backend services do
+ * not need to know about the gateway's versioning scheme.
  */
 @Slf4j
 @Configuration
 public class GatewayRoutesConfig {
 
+    /** Default sunset timestamp for unversioned routes. Override per-env. */
+    @Value("${api.deprecation.sunset:Fri, 30 Apr 2027 23:59:59 GMT}")
+    private String sunset;
+
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         return builder.routes()
-            // User Service Routes
-            .route("user-service", r -> r
+            // ---------------- User Service ----------------
+            .route("user-service-prog", r -> r
                 .path("/api/users/**")
                 .filters(f -> f
-                    .tokenRelay()    // Propagate JWT token
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://user-service")
+            )
+            .route("user-service-v1-prog", r -> r
+                .path("/api/v1/users/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
+                    .tokenRelay()
                 )
                 .uri("lb://user-service")
             )
 
-            // Product Service Routes
-            .route("product-service", r -> r
+            // ---------------- Product Service ----------------
+            .route("product-service-prog", r -> r
                 .path("/api/products/**")
                 .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://product-service")
+            )
+            .route("product-service-v1-prog", r -> r
+                .path("/api/v1/products/**", "/api/v1/categories/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
                 .uri("lb://product-service")
             )
 
-            // Cart Service Routes
-            .route("cart-service", r -> r
+            // ---------------- Cart Service ----------------
+            .route("cart-service-prog", r -> r
                 .path("/api/cart/**", "/api/carts/**")
                 .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://cart-service")
+            )
+            .route("cart-service-v1-prog", r -> r
+                .path("/api/v1/cart/**", "/api/v1/carts/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
                 .uri("lb://cart-service")
             )
 
-            // Order Service Routes
-            .route("order-service", r -> r
+            // ---------------- Order Service ----------------
+            .route("order-service-prog", r -> r
                 .path("/api/orders/**")
                 .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://order-service")
+            )
+            .route("order-service-v1-prog", r -> r
+                .path("/api/v1/orders/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
                 .uri("lb://order-service")
             )
 
-            // Payment Service Routes
-            .route("payment-service", r -> r
+            // ---------------- Payment Service ----------------
+            .route("payment-service-prog", r -> r
                 .path("/api/payments/**")
                 .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://payment-service")
+            )
+            .route("payment-service-v1-prog", r -> r
+                .path("/api/v1/payments/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
                 .uri("lb://payment-service")
             )
 
-            // Inventory Service Routes
-            .route("inventory-service", r -> r
+            // ---------------- Inventory Service ----------------
+            .route("inventory-service-prog", r -> r
                 .path("/api/inventory/**")
                 .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://inventory-service")
+            )
+            .route("inventory-service-v1-prog", r -> r
+                .path("/api/v1/inventory/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
                 .uri("lb://inventory-service")
             )
 
-            // Notification Service Routes
-            .route("notification-service", r -> r
+            // ---------------- Notification Service ----------------
+            .route("notification-service-prog", r -> r
                 .path("/api/notifications/**")
                 .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://notification-service")
+            )
+            .route("notification-service-v1-prog", r -> r
+                .path("/api/v1/notifications/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
                 .uri("lb://notification-service")
             )
 
-            // Search Service Routes
-            .route("search-service", r -> r
+            // ---------------- Search Service ----------------
+            .route("search-service-prog", r -> r
                 .path("/api/search/**")
                 .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://search-service")
+            )
+            .route("search-service-v1-prog", r -> r
+                .path("/api/v1/search/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
                 .uri("lb://search-service")
             )
 
-            // Media Service Routes
-            .route("media-service", r -> r
+            // ---------------- Media Service ----------------
+            .route("media-service-prog", r -> r
                 .path("/api/media/**")
                 .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://media-service")
+            )
+            .route("media-service-v1-prog", r -> r
+                .path("/api/v1/media/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
                 .uri("lb://media-service")
             )
 
-            // Promotion Service Routes
-            .route("promotion-service", r -> r
+            // ---------------- Promotion Service ----------------
+            .route("promotion-service-prog", r -> r
                 .path("/api/promotions/**")
                 .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://promotion-service")
+            )
+            .route("promotion-service-v1-prog", r -> r
+                .path("/api/v1/promotions/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
                 .uri("lb://promotion-service")
             )
 
-            // Admin routes - separate for better security control
-            // These rewrite /api/admin/* to /api/* for the downstream services
+            // ---------------- Recommendation Service ----------------
+            .route("recommendation-service-prog", r -> r
+                .path("/api/recommendations/**")
+                .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://recommendation-service")
+            )
+            .route("recommendation-service-v1-prog", r -> r
+                .path("/api/v1/recommendations/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
+                    .tokenRelay()
+                )
+                .uri("lb://recommendation-service")
+            )
+
+            // ---------------- Review Service (NEW: §3.4) ----------------
+            .route("review-service-prog", r -> r
+                .path("/api/reviews/**")
+                .filters(f -> f
+                    .tokenRelay()
+                    .addResponseHeader("Deprecation", "true")
+                    .addResponseHeader("Sunset", sunset)
+                )
+                .uri("lb://review-service")
+            )
+            .route("review-service-v1-prog", r -> r
+                .path("/api/v1/reviews/**")
+                .filters(f -> f
+                    .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
+                    .addRequestHeader("X-API-Version", "v1")
+                    .tokenRelay()
+                )
+                .uri("lb://review-service")
+            )
+
+            // ---------------- Admin routes (kept as-is) ----------------
             .route("admin-products", r -> r
                 .path("/api/admin/products/**")
                 .and()
@@ -125,7 +280,6 @@ public class GatewayRoutesConfig {
                 )
                 .uri("lb://product-service")
             )
-
             .route("admin-inventory", r -> r
                 .path("/api/admin/inventory/**")
                 .filters(f -> f
@@ -134,7 +288,6 @@ public class GatewayRoutesConfig {
                 )
                 .uri("lb://inventory-service")
             )
-
             .route("admin-orders", r -> r
                 .path("/api/admin/orders/**")
                 .filters(f -> f
@@ -143,7 +296,6 @@ public class GatewayRoutesConfig {
                 )
                 .uri("lb://order-service")
             )
-
             .route("admin-users", r -> r
                 .path("/api/admin/users/**")
                 .filters(f -> f

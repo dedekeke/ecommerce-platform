@@ -20,6 +20,7 @@ resources:
   - backend/search-service.yaml
   - backend/media-service.yaml
   - backend/promotion-service.yaml
+  - backend/review-service.yaml
   # frontends
   - frontend/shell-app.yaml
   - frontend/admin-dashboard-mfe.yaml

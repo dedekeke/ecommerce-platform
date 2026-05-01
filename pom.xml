@@ -78,6 +78,7 @@
         <module>services/media-service</module>
         <module>services/promotion-service</module>
         <module>services/recommendation-service</module>
+        <module>services/review-service</module>
 
         <!-- Integration Tests -->
         <!-- <module>integration-tests</module> -->
