@@ -95,11 +95,14 @@ public class ProductSearchService {
     }
 
     /**
-     * Index a product
+     * Index a product. Populates both {@code nameAutocomplete} (legacy
+     * edge-ngram autocomplete) and {@code nameSuggest} (search_as_you_type
+     * field used by the new {@code /api/search/suggest} endpoint, §3.11).
      */
     public ProductDocument indexProduct(ProductDocument product) {
         log.info("Indexing product: {}", product.getId());
         product.setNameAutocomplete(product.getName());
+        product.setNameSuggest(product.getName());
         return repository.save(product);
     }
 

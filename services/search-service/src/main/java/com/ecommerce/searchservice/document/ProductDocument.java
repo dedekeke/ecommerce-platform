@@ -60,6 +60,14 @@ public class ProductDocument {
     @Field(type = FieldType.Text, analyzer = "autocomplete_analyzer", searchAnalyzer = "standard")
     private String nameAutocomplete;
 
+    /**
+     * Search-as-you-type field used by {@code GET /api/search/suggest}. ES
+     * automatically generates the {@code _2gram}, {@code _3gram} and
+     * {@code _index_prefix} sub-fields used by the multi_match query.
+     */
+    @Field(type = FieldType.Search_As_You_Type, maxShingleSize = 3)
+    private String nameSuggest;
+
     @Field(type = FieldType.Date, format = DateFormat.date_time)
     private Instant createdAt;
 

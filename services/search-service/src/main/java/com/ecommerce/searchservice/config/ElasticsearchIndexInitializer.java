@@ -43,7 +43,9 @@ public class ElasticsearchIndexInitializer implements CommandLineRunner {
     }
 
     /**
-     * Initialize the products index if it doesn't exist.
+     * Initialize the products index if it doesn't exist; otherwise attempt
+     * an additive mapping update so a re-deployed service picks up the new
+     * {@code nameSuggest} field used by the search-as-you-type endpoint.
      */
     public void initializeIndex() {
         try {
@@ -56,12 +58,42 @@ public class ElasticsearchIndexInitializer implements CommandLineRunner {
                 createIndex();
                 logger.info("Index '{}' created successfully", INDEX_NAME);
             } else {
-                logger.info("Index '{}' already exists. Skipping creation.", INDEX_NAME);
+                logger.info("Index '{}' already exists. Attempting additive mapping update for nameSuggest.",
+                        INDEX_NAME);
+                ensureNameSuggestField();
             }
         } catch (Exception e) {
             logger.error("Error initializing Elasticsearch index '{}': {}", INDEX_NAME, e.getMessage(), e);
             // Don't throw exception - allow application to start even if index creation fails
             // The index can be created manually or through a separate process
+        }
+    }
+
+    /**
+     * Issues an {@code _update_mapping} to add the {@code nameSuggest}
+     * search_as_you_type field. Adding a brand-new field is always allowed by
+     * Elasticsearch — type/field changes on existing fields are not, but here
+     * we are strictly additive. Failure is logged and swallowed.
+     */
+    private void ensureNameSuggestField() {
+        String body = """
+                {
+                  "properties": {
+                    "nameSuggest": {
+                      "type": "search_as_you_type",
+                      "max_shingle_size": 3
+                    }
+                  }
+                }
+                """;
+        try {
+            elasticsearchClient.indices().putMapping(p -> p
+                    .index(INDEX_NAME)
+                    .withJson(new StringReader(body)));
+            logger.info("Mapping update applied: nameSuggest field present on '{}'", INDEX_NAME);
+        } catch (Exception ex) {
+            logger.warn("Could not apply additive mapping update for nameSuggest on '{}': {}",
+                    INDEX_NAME, ex.getMessage());
         }
     }
 

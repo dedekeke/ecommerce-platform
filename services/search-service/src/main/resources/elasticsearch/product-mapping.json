@@ -45,6 +45,10 @@
       "analyzer": "autocomplete_analyzer",
       "search_analyzer": "standard"
     },
+    "nameSuggest": {
+      "type": "search_as_you_type",
+      "max_shingle_size": 3
+    },
     "createdAt": {
       "type": "date",
       "format": "date_time"
