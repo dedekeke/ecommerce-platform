@@ -1,0 +1,95 @@
+# =============================================================================
+#  E-commerce BFF GraphQL Schema
+# -----------------------------------------------------------------------------
+#  Single-schema BFF (no Apollo Federation) deployed inside the API gateway.
+#  Each Query field maps to one or more REST calls fan-out behind the scenes.
+#  Nested resolvers (Product.recommendations, CartItem.product, OrderItem.product)
+#  are batched via DataLoaders to collapse N requests into one backend call.
+# =============================================================================
+
+type Query {
+  product(id: ID!): Product
+  products(category: String, page: Int = 0, size: Int = 20, search: String): ProductPage!
+  recommendations(productId: ID!, limit: Int = 10): [Product!]!
+  cart(userId: ID!): Cart
+  order(id: ID!): Order
+  myOrders(userId: ID!, page: Int = 0, size: Int = 20): OrderPage!
+}
+
+type Product {
+  id: ID!
+  name: String!
+  description: String
+  price: Float!
+  currency: String!
+  images: [String!]!
+  category: Category
+  inStock: Boolean!
+  # liveStockQty is null until the SSE stream from inventory-service has
+  # populated it. UI should fall back to inStock when null.
+  liveStockQty: Int
+  # Nested resolver: fan-out to recommendation-service. Limited per call.
+  recommendations(limit: Int = 5): [Product!]!
+}
+
+type Category {
+  id: ID!
+  name: String!
+  slug: String!
+}
+
+type ProductPage {
+  content: [Product!]!
+  totalElements: Int!
+  totalPages: Int!
+  pageNumber: Int!
+}
+
+type Cart {
+  userId: ID!
+  items: [CartItem!]!
+  subtotal: Float!
+  itemCount: Int!
+  appliedPromotions: [Promotion!]!
+}
+
+type CartItem {
+  productId: ID!
+  # Nested resolver: batch-fetched via DataLoader to avoid N round trips
+  # to product-service for a cart with N items.
+  product: Product
+  quantity: Int!
+  unitPrice: Float!
+  subtotal: Float!
+}
+
+type Promotion {
+  code: String!
+  description: String
+  discountAmount: Float!
+}
+
+type Order {
+  id: ID!
+  orderNumber: String!
+  userId: ID!
+  status: String!
+  totalAmount: Float!
+  items: [OrderItem!]!
+  createdAt: String!
+}
+
+type OrderItem {
+  productId: ID!
+  # Nested resolver: batch-fetched via DataLoader.
+  product: Product
+  quantity: Int!
+  unitPrice: Float!
+}
+
+type OrderPage {
+  content: [Order!]!
+  totalElements: Int!
+  totalPages: Int!
+  pageNumber: Int!
+}

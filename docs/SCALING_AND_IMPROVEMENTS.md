@@ -656,6 +656,10 @@ For i18n: externalise all frontend strings to JSON locale files (`en.json`, `nl.
 
 ### 4.2 GraphQL Gateway / BFF
 
+> **Status: APPLIED 2026-04-29 (feature/graphql-bff).** Embedded inside the
+> existing `infrastructure/api-gateway` module. Schema, DataLoader rationale,
+> auth surface and follow-ups documented in [`GRAPHQL_BFF.md`](./GRAPHQL_BFF.md).
+
 **What.** Add a GraphQL layer on top of the Spring Cloud Gateway (or as a separate `bff-service`) using Spring for GraphQL. The React MFEs query for exactly the fields they need in a single round-trip, eliminating the current pattern where the frontend makes 3–5 REST calls to assemble a page.
 
 **Example:** The order detail page currently requires: `GET /orders/{id}` + `GET /products/{id}` (for each item) + `GET /users/{id}` + `GET /inventory/{id}`. With GraphQL BFF, this collapses to one query with DataLoaders batching the N product lookups.

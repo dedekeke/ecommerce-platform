@@ -68,6 +68,12 @@ public class SecurityConfig {
                     .pathMatchers(HttpMethod.GET, "/api/search/**").permitAll()
                     .pathMatchers(HttpMethod.GET, "/api/promotions/public/**").permitAll()
 
+                    // GraphQL BFF endpoint — per-query auth is enforced inside the
+                    // resolvers via @PreAuthorize. The HTTP layer must permit the
+                    // POST so GraphQL field-level errors carry through to clients
+                    // rather than being short-circuited by the filter chain.
+                    .pathMatchers("/graphql", "/graphiql", "/graphiql/**").permitAll()
+
                     // Admin endpoints require admin role
                     .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
                     .pathMatchers(HttpMethod.POST, "/api/products/**").hasAuthority("SCOPE_admin")

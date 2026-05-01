@@ -1,17 +1,35 @@
 # E-Commerce Platform - TODO & Progress Tracker
 
-> Last updated: 2026-04-30 — Days 38-45 + production readiness shipped.
-> Previous update: 2026-01-11 (Day 36 - Product Catalog MFE)
+> Last updated: 2026-04-29 — GraphQL BFF embedded in API gateway.
+> Previous update: 2026-04-30 — Recommendation service Phase 1.
 
 ---
 
 ## Current Status: Week 8 - Product Catalog MFE Development
 
-Product Catalog MFE initialized with core components implemented.
+Product Catalog MFE initialized with core components implemented. BFF
+endpoint at `/graphql` ready for MFEs to consume on the next iteration.
 
 ---
 
 ## Completed Tasks
+
+### 2026-04-29 — GraphQL BFF on API Gateway (feature/graphql-bff)
+- [x] Embedded Spring for GraphQL inside `infrastructure/api-gateway`
+  (no new pod; Option A from the brief)
+- [x] Schema `infrastructure/api-gateway/src/main/resources/graphql/schema.graphqls`
+  — `product`, `products`, `recommendations`, `cart`, `order`, `myOrders`
+- [x] `BatchLoaderRegistry` `productByIdLoader` collapses N product
+  fetches to a single `findByIds(...)` per execution
+- [x] Reactive `WebClient` per backend service, all routed through
+  `lb://service-id`
+- [x] Resolver-level auth via `@PreAuthorize("isAuthenticated()")` on
+  `cart`, `order`, `myOrders`; public reads otherwise
+- [x] 39 tests, 0 failures; coverage on graphql package: 93.4 %
+  instructions / 93.1 % lines
+- [x] Schema-validation integration test boots full gateway context
+- [x] Docs: `docs/GRAPHQL_BFF.md`, SCALING_AND_IMPROVEMENTS stamp,
+  API_DOCUMENTATION cross-reference
 
 ### 2026-04-30 — Recommendation Service (Phase 1, streaming co-occurrence)
 - [x] New `services/recommendation-service` Maven module (Spring Boot 3.2, Java 21, port 8092)

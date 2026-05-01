@@ -23,6 +23,28 @@
             <artifactId>spring-cloud-starter-gateway</artifactId>
         </dependency>
 
+        <!--
+          Spring for GraphQL — adds the BFF endpoint at /graphql.
+          Works alongside Spring Cloud Gateway because both ride on the same
+          WebFlux/Netty stack. The starter pulls in graphql-java + the
+          AnnotatedControllerConfigurer that wires @QueryMapping / @SchemaMapping
+          / @BatchMapping handlers and a /graphql HandlerMapping/HandlerFunction.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-graphql</artifactId>
+        </dependency>
+
+        <!--
+          WebFlux is already transitively pulled in via spring-cloud-starter-gateway
+          (the gateway IS a WebFlux app). Declaring it explicitly here documents the
+          dependency the GraphQL controllers rely on for WebClient + Mono/Flux.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+
         <!-- Eureka Client for Service Discovery -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
@@ -108,6 +130,28 @@
             <artifactId>reactor-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!--
+          spring-graphql-test gives us GraphQlTester (HTTP and ExecutionInput
+          variants) plus @GraphQlTest slice support for testing controllers
+          without bringing up the entire gateway context.
+        -->
+        <dependency>
+            <groupId>org.springframework.graphql</groupId>
+            <artifactId>spring-graphql-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          MockWebServer drives the WebClient backend tests against a real
+          HTTP socket so URI templating, header propagation, and Jackson
+          deserialization to the BFF DTOs are all exercised.
+        -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -115,6 +159,16 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!--
+              JaCoCo for coverage reporting on the new graphql/ package.
+              Inherits configuration from the parent's pluginManagement entry;
+              we only need to declare it here so the executions are bound.
+            -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
             </plugin>
         </plugins>
     </build>

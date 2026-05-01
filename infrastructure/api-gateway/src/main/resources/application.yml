@@ -285,6 +285,26 @@ spring:
           filters:
             - StripPrefix=2
 
+  # GraphQL BFF — exposes /graphql aggregating product / cart / order /
+  # recommendation traffic. GraphiQL is enabled for non-prod profiles to
+  # ease frontend development. Per-query auth is handled by @PreAuthorize
+  # in the resolvers.
+  graphql:
+    schema:
+      locations: classpath:/graphql/
+      printer:
+        enabled: true
+    graphiql:
+      enabled: ${GRAPHIQL_ENABLED:true}
+      path: /graphiql
+    cors:
+      allowed-origins:
+        - "http://localhost:3000"
+        - "http://localhost:5173"
+        - "http://localhost:5000"
+      allowed-methods: GET,POST,OPTIONS
+      allow-credentials: true
+
   # Redis configuration for rate limiting
   data:
     redis:

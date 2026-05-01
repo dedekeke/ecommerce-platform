@@ -11,6 +11,10 @@ This document provides comprehensive documentation for all API endpoints across 
 ### Base URL
 - **Gateway**: `http://localhost:8080`
 - **Swagger UI**: `http://localhost:8080/swagger-ui.html`
+- **GraphQL BFF**: `POST http://localhost:8080/graphql` — single-round-trip
+  aggregation for the MFEs. See [`GRAPHQL_BFF.md`](./GRAPHQL_BFF.md) for the
+  schema, sample queries, DataLoader behaviour and auth surface. GraphiQL
+  is exposed at `http://localhost:8080/graphiql` outside production.
 
 ### Authentication
 All endpoints (except public ones) require JWT authentication via Auth0.
