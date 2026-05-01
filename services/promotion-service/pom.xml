@@ -55,6 +55,15 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!--
+            Caffeine — L1 in-process cache layer in front of Redis (L2).
+            Version is managed by Spring Boot's BOM (caffeine.version property).
+        -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Kafka producer for promotion announcement events -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>

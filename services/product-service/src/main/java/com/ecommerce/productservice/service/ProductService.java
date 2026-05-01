@@ -31,9 +31,14 @@ public class ProductService {
 
     /**
      * Get product by ID.
-     * Note: Caching temporarily disabled due to serialization issues with Hibernate proxies.
+     *
+     * sync = true uses Caffeine's get(key, loader) under the hood (via the
+     * LayeredCacheManager) so that 100 concurrent threads missing the same id
+     * inside one pod collapse to a SINGLE database fetch. This is the
+     * application-layer single-flight protection against cache stampede on
+     * hot product keys.
      */
-    // @Cacheable(value = "products", key = "#id") // TODO: Re-enable after fixing DTO caching
+    @Cacheable(value = "products", key = "'id:' + #id", sync = true)
     public Product getProductById(Long id) {
         log.debug("Fetching product by ID: {}", id);
         return productRepository.findById(id)
@@ -42,9 +47,10 @@ public class ProductService {
 
     /**
      * Get product by SKU.
-     * Note: Caching temporarily disabled due to serialization issues with Hibernate proxies.
+     *
+     * Same single-flight rationale as {@link #getProductById}.
      */
-    // @Cacheable(value = "products", key = "#sku") // TODO: Re-enable after fixing DTO caching
+    @Cacheable(value = "products", key = "'sku:' + #sku", sync = true)
     public Product getProductBySku(String sku) {
         log.debug("Fetching product by SKU: {}", sku);
         return productRepository.findBySku(sku)
@@ -169,7 +175,7 @@ public class ProductService {
      * Update an existing product.
      */
     @Transactional
-    @CacheEvict(value = "products", key = "#id")
+    @CacheEvict(value = "products", key = "'id:' + #id")
     public Product updateProduct(Long id, Product productDetails) {
         log.info("Updating product with ID: {}", id);
 
@@ -203,7 +209,7 @@ public class ProductService {
      * Update product stock quantity.
      */
     @Transactional
-    @CacheEvict(value = "products", key = "#id")
+    @CacheEvict(value = "products", key = "'id:' + #id")
     public Product updateStockQuantity(Long id, int quantity) {
         log.info("Updating stock quantity for product ID: {} to {}", id, quantity);
 
@@ -217,7 +223,7 @@ public class ProductService {
      * Delete a product (soft delete by marking as inactive).
      */
     @Transactional
-    @CacheEvict(value = "products", key = "#id")
+    @CacheEvict(value = "products", key = "'id:' + #id")
     public void deleteProduct(Long id) {
         log.info("Deleting product with ID: {}", id);
 
@@ -230,7 +236,7 @@ public class ProductService {
      * Hard delete a product (permanent deletion).
      */
     @Transactional
-    @CacheEvict(value = "products", key = "#id")
+    @CacheEvict(value = "products", key = "'id:' + #id")
     public void hardDeleteProduct(Long id) {
         log.warn("Hard deleting product with ID: {}", id);
         productRepository.deleteById(id);

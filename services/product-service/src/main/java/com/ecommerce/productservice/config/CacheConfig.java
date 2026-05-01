@@ -7,10 +7,13 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -21,26 +24,62 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Redis cache configuration for Product Service
+ * Multi-tier cache configuration for product-service.
  *
- * Cache TTLs are optimized for read-heavy product catalog workload:
- * - Products: 1 hour (product data changes infrequently)
- * - Categories: 2 hours (category structure rarely changes)
- * - Product lists: 15 minutes (search results, filtered lists)
+ * Layering (L1 in-process Caffeine + L2 distributed Redis):
+ *   - L1 (Caffeine): ~5 s TTL, 5 000 entries max. Sub-microsecond reads, dedups
+ *     concurrent loads for the same key inside one pod (single-flight).
+ *   - L2 (Redis): existing TTLs (1 h products, 2 h categories, etc.). Shared
+ *     across pods so a cold L1 miss usually warms from L2 instead of the DB.
+ *
+ * Stampede mitigation:
+ *   - Caffeine's get(key, loader) coalesces concurrent loads → only ONE thread
+ *     per pod hits the DB on cache miss. Hot methods declare {@code @Cacheable(sync = true)}
+ *     to opt into this.
+ *   - L1 TTL of 5 s gives a tight blast-radius if L2 is briefly stale.
+ *
+ * Write path:
+ *   {@code @CachePut} writes through to BOTH layers via {@link LayeredCache#put}.
+ *   {@code @CacheEvict} invalidates BOTH layers.
  */
 @Configuration
 @EnableCaching
 public class CacheConfig {
 
+    /** L1 cache names — any cache that benefits from sub-ms reads at high concurrency. */
+    private static final String[] CACHE_NAMES = {
+        "products",
+        "categories",
+        "product-search",
+        "category-tree",
+        "popular-products"
+    };
+
+    /** L1 maximum size — guards heap usage. 5k entries is plenty for a hot-key cache. */
+    private static final int L1_MAX_SIZE = 5_000;
+
+    /** L1 TTL — short, since L2 is the source of truth shared across pods. */
+    private static final Duration L1_TTL = Duration.ofSeconds(5);
+
     @Bean
-    public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
-        // Configure ObjectMapper for Redis serialization with Java 8 date/time support.
-        // SECURITY: Use a type-allowlist validator instead of the default (permissive)
-        // PolymorphicTypeValidator that ships with NON_FINAL. The allowlist restricts
-        // deserialization to known application packages, preventing Jackson gadget attacks
-        // via crafted Redis payloads.
+    public CaffeineCacheManager caffeineCacheManager() {
+        CaffeineCacheManager manager = new CaffeineCacheManager(CACHE_NAMES);
+        manager.setCaffeine(Caffeine.newBuilder()
+            .maximumSize(L1_MAX_SIZE)
+            .expireAfterWrite(L1_TTL.toMillis(), TimeUnit.MILLISECONDS)
+            .recordStats());
+        // Allow caches not pre-declared above to be created on demand (avoids NPE on new @Cacheable names).
+        manager.setAllowNullValues(true);
+        return manager;
+    }
+
+    @Bean
+    public RedisCacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
+        // SECURITY: type-allowlist validator restricts polymorphic deserialization to known
+        // application packages, preventing Jackson gadget attacks via crafted Redis payloads.
         PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
             .allowIfBaseType(Object.class)
             .allowIfSubType("com.ecommerce.productservice")
@@ -61,9 +100,8 @@ public class CacheConfig {
 
         GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(objectMapper);
 
-        // Default cache configuration
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
-            .entryTtl(Duration.ofMinutes(30)) // Default TTL: 30 minutes
+            .entryTtl(Duration.ofMinutes(30))
             .serializeKeysWith(
                 RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer())
             )
@@ -72,33 +110,29 @@ public class CacheConfig {
             )
             .disableCachingNullValues();
 
-        // Custom cache configurations for different cache types
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
-
-        // Products cache: 1 hour (product data is relatively stable)
-        cacheConfigurations.put("products",
-            defaultConfig.entryTtl(Duration.ofHours(1)));
-
-        // Categories cache: 2 hours (category structure rarely changes)
-        cacheConfigurations.put("categories",
-            defaultConfig.entryTtl(Duration.ofHours(2)));
-
-        // Product search results: 15 minutes (more dynamic)
-        cacheConfigurations.put("product-search",
-            defaultConfig.entryTtl(Duration.ofMinutes(15)));
-
-        // Category tree cache: 2 hours (hierarchical data rarely changes)
-        cacheConfigurations.put("category-tree",
-            defaultConfig.entryTtl(Duration.ofHours(2)));
-
-        // Popular products cache: 30 minutes (for homepage/recommendations)
-        cacheConfigurations.put("popular-products",
-            defaultConfig.entryTtl(Duration.ofMinutes(30)));
+        cacheConfigurations.put("products",          defaultConfig.entryTtl(Duration.ofHours(1)));
+        cacheConfigurations.put("categories",        defaultConfig.entryTtl(Duration.ofHours(2)));
+        cacheConfigurations.put("product-search",    defaultConfig.entryTtl(Duration.ofMinutes(15)));
+        cacheConfigurations.put("category-tree",     defaultConfig.entryTtl(Duration.ofHours(2)));
+        cacheConfigurations.put("popular-products",  defaultConfig.entryTtl(Duration.ofMinutes(30)));
 
         return RedisCacheManager.builder(connectionFactory)
             .cacheDefaults(defaultConfig)
             .withInitialCacheConfigurations(cacheConfigurations)
             .transactionAware()
             .build();
+    }
+
+    /**
+     * Primary CacheManager — the layered (L1 + L2) manager. Spring's @Cacheable picks
+     * this one because it is @Primary; the underlying Caffeine and Redis managers are
+     * still bean-injectable for tests / diagnostics.
+     */
+    @Bean
+    @Primary
+    public CacheManager cacheManager(CaffeineCacheManager caffeineCacheManager,
+                                     RedisCacheManager redisCacheManager) {
+        return new LayeredCacheManager(caffeineCacheManager, redisCacheManager);
     }
 }

@@ -50,6 +50,16 @@
             <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
 
+        <!--
+            Caffeine — used as the L1 in-process cache layer in front of Redis (L2).
+            Version is managed by Spring Boot's BOM; Caffeine is curated by Spring Boot
+            (see spring-boot-dependencies caffeine.version), not a new third-party lib.
+        -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Spring Cloud -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

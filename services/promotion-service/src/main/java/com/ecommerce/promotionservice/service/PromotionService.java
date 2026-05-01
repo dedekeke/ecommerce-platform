@@ -60,7 +60,7 @@ public class PromotionService {
     }
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "promotions", key = "#id")
+    @Cacheable(value = "promotions", key = "#id", sync = true)
     public PromotionResponse getPromotionById(Long id) {
         log.debug("Fetching promotion with id: {}", id);
 
@@ -71,7 +71,7 @@ public class PromotionService {
     }
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "promotions", key = "'code:' + #code")
+    @Cacheable(value = "promotions", key = "'code:' + #code", sync = true)
     public PromotionResponse getPromotionByCode(String code) {
         log.debug("Fetching promotion with code: {}", code);
 
@@ -82,7 +82,7 @@ public class PromotionService {
     }
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "activePromotions")
+    @Cacheable(value = "activePromotions", sync = true)
     public List<PromotionResponse> getAllActivePromotions() {
         log.debug("Fetching all active promotions");
 
