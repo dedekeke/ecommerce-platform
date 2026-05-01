@@ -15,6 +15,8 @@ import {
 } from '@mui/icons-material'
 import type { Product } from '../../types'
 import { useInventoryStore, selectInventoryFor } from '../../stores/inventoryStore'
+import { useUserPreferencesStore, selectCurrency } from '../../stores/userPreferencesStore'
+import { useCurrencyRates } from '../../hooks/useCurrencyRates'
 
 interface ProductCardProps {
   product: Product
@@ -106,9 +108,31 @@ function formatPrice(price: number, currency: string): string {
   }).format(price)
 }
 
-export function ProductCard({ product, onAddToCart, currency = 'USD' }: ProductCardProps) {
+/**
+ * Convert a price expressed in {@code sourceCurrency} into {@code targetCurrency}
+ * using the static {@code rates} map (USD pivot). Falls back to the source
+ * value when either rate is missing.
+ */
+function convertPrice(
+  price: number,
+  sourceCurrency: string,
+  targetCurrency: string,
+  rates: Record<string, number>
+): number {
+  if (!price || sourceCurrency === targetCurrency) return price
+  const fromRate = rates[sourceCurrency]
+  const toRate = rates[targetCurrency]
+  if (!fromRate || !toRate) return price
+  return (price / fromRate) * toRate
+}
+
+export function ProductCard({ product, onAddToCart, currency }: ProductCardProps) {
   const { id, name, price, images, category, inStock } = product
-  const displayCurrency = currency || product.currency
+  const storeCurrency = useUserPreferencesStore(selectCurrency)
+  const { rates } = useCurrencyRates()
+  const displayCurrency = currency || storeCurrency || product.currency || 'USD'
+  const sourceCurrency = product.currency || 'USD'
+  const displayPrice = convertPrice(price, sourceCurrency, displayCurrency, rates)
 
   const live = useInventoryStore(selectInventoryFor(String(id)))
   const liveQty = live?.availableQty
@@ -164,8 +188,8 @@ export function ProductCard({ product, onAddToCart, currency = 'USD' }: ProductC
           <ProductName variant="body1" gutterBottom>
             {name}
           </ProductName>
-          <PriceTypography>
-            {formatPrice(price, displayCurrency)}
+          <PriceTypography data-testid="product-price">
+            {formatPrice(displayPrice, displayCurrency)}
           </PriceTypography>
         </CardContent>
       </CardLink>

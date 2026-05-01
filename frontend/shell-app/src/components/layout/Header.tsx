@@ -28,6 +28,7 @@ import {
 import { alpha, styled } from '@mui/material/styles'
 import { useColorMode } from '../../hooks/useColorMode'
 import { designTokens } from '../../theme'
+import { CurrencyPicker } from '../common/CurrencyPicker'
 
 interface HeaderProps {
   cartItemCount: number
@@ -226,6 +227,8 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
               <ShoppingCartIcon />
             </Badge>
           </IconButton>
+
+          {!isMobile && <CurrencyPicker />}
 
           {isAuthenticated && user ? (
             <>

@@ -9,3 +9,4 @@ export {
 export { NotFound } from './NotFound'
 export { RouteProgressBar } from './RouteProgressBar'
 export { PageTransition } from './PageTransition'
+export { CurrencyPicker } from './CurrencyPicker'

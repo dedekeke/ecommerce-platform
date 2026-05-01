@@ -52,7 +52,7 @@ export interface NotificationState {
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type Language = 'en' | 'es' | 'fr' | 'de'
-export type Currency = 'USD' | 'EUR' | 'GBP'
+export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'VND' | 'CAD'
 
 export interface UserPreferencesState {
   theme: ThemeMode
