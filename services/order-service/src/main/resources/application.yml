@@ -194,6 +194,11 @@ order:
     cutoff-days: ${ORDER_ARCHIVAL_CUTOFF_DAYS:365}
     batch-size: ${ORDER_ARCHIVAL_BATCH_SIZE:1000}
 
+# §3.6 Subscription / recurring orders
+subscription:
+  scheduler-enabled: ${SUBSCRIPTION_SCHEDULER_ENABLED:true}
+  scheduler-poll-ms: ${SUBSCRIPTION_SCHEDULER_POLL_MS:60000}
+
 # Promotion Service URL
 promotion:
   service:
