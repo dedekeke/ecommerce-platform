@@ -23,6 +23,27 @@ export default defineConfig({
     target: 'esnext',
     minify: false,
     cssCodeSplit: false,
+    // §1.6 Asset hashing for long-lived CDN caching. Vite hashes by default;
+    // explicit `[name].[hash]` patterns document the contract that nginx
+    // (see infrastructure/cdn/nginx-static.conf) relies on for the
+    // immutable Cache-Control header on /assets/*.
+    assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        // manualChunks split heavy vendor libs out of the main entry so
+        // unrelated app changes don't bust the vendor cache. We do NOT
+        // chunk react/react-dom/react-router-dom because they are declared
+        // as `shared` in the federation plugin and must stay in the shell.
+        manualChunks: {
+          'mui-vendor': ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+          'auth-vendor': ['@auth0/auth0-react'],
+          'motion-vendor': ['framer-motion'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

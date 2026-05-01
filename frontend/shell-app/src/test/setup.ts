@@ -1,5 +1,8 @@
 import '@testing-library/jest-dom'
 import { vi } from 'vitest'
+// Initialize i18n singleton up-front so components rendered in tests get
+// real translated strings instead of bare key paths from the fallback.
+import '../i18n/i18n'
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

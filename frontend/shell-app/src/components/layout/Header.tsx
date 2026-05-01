@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
+import { useTranslation } from 'react-i18next'
 import {
   Toolbar,
   Typography,
@@ -29,6 +30,7 @@ import { alpha, styled } from '@mui/material/styles'
 import { useColorMode } from '../../hooks/useColorMode'
 import { designTokens } from '../../theme'
 import { CurrencyPicker } from '../common/CurrencyPicker'
+import { LanguagePicker } from '../common/LanguagePicker'
 
 interface HeaderProps {
   cartItemCount: number
@@ -98,6 +100,7 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const { isAuthenticated, isLoading, user, loginWithRedirect, logout } = useAuth0()
   const { resolvedMode, toggle } = useColorMode()
+  const { t } = useTranslation()
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [scrolled, setScrolled] = useState(false)
@@ -178,9 +181,9 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
 
         {!isMobile && (
           <Box sx={{ display: 'flex', alignItems: 'center', ml: 4 }}>
-            <NavLink to="/">Home</NavLink>
-            <NavLink to="/products">Products</NavLink>
-            <NavLink to="/categories">Categories</NavLink>
+            <NavLink to="/">{t('nav.home')}</NavLink>
+            <NavLink to="/products">{t('nav.products')}</NavLink>
+            <NavLink to="/categories">{t('nav.categories')}</NavLink>
           </Box>
         )}
 
@@ -190,7 +193,7 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
               <SearchIcon sx={{ color: 'text.secondary' }} />
             </SearchIconWrapper>
             <StyledInputBase
-              placeholder="Search products..."
+              placeholder={t('header.search')}
               inputProps={{ 'aria-label': 'search' }}
             />
           </Search>
@@ -228,6 +231,7 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
             </Badge>
           </IconButton>
 
+          {!isMobile && <LanguagePicker />}
           {!isMobile && <CurrencyPicker />}
 
           {isAuthenticated && user ? (
@@ -272,7 +276,7 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
                   onClick={handleUserMenuClose}
                 >
                   <PersonIcon fontSize="small" sx={{ mr: 1 }} />
-                  Profile
+                  {t('nav.profile')}
                 </MenuItem>
                 <MenuItem
                   component={RouterLink}
@@ -280,12 +284,12 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
                   onClick={handleUserMenuClose}
                 >
                   <ShoppingCartIcon fontSize="small" sx={{ mr: 1 }} />
-                  My Orders
+                  {t('nav.myOrders')}
                 </MenuItem>
                 <Divider />
                 <MenuItem onClick={handleLogout}>
                   <LogoutIcon fontSize="small" sx={{ mr: 1 }} />
-                  Log Out
+                  {t('nav.logOut')}
                 </MenuItem>
               </Menu>
             </>
@@ -300,7 +304,7 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
                 px: 3,
               }}
             >
-              Log In
+              {t('nav.logIn')}
             </Button>
           )}
         </Box>

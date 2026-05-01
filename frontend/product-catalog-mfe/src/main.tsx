@@ -4,6 +4,7 @@ import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { BrowserRouter } from 'react-router-dom'
 import { theme } from './theme/theme'
+import './i18n/i18n'
 import App from './App'
 
 createRoot(document.getElementById('root')!).render(

@@ -24,9 +24,12 @@
     "@originjs/vite-plugin-federation": "^1.4.1",
     "axios": "^1.13.2",
     "axios-retry": "^4.5.0",
+    "i18next": "^26.0.8",
+    "i18next-browser-languagedetector": "^8.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-error-boundary": "^6.0.3",
+    "react-i18next": "^17.0.6",
     "react-router-dom": "^7.11.0",
     "zustand": "^5.0.9"
   },

@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/common'
 import { useColorMode } from './hooks/useColorMode'
 import App from './App.tsx'
 import './index.css'
+import './i18n/i18n'
 import { initNativeFederation } from './mfe/nativeFederation'
 
 // One-time localStorage key migration: cart-mfe-storage → cart-storage.

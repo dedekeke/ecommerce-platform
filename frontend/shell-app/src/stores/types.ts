@@ -51,7 +51,7 @@ export interface NotificationState {
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
-export type Language = 'en' | 'es' | 'fr' | 'de'
+export type Language = 'en' | 'es' | 'fr' | 'de' | 'vi'
 export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'VND' | 'CAD'
 
 export interface UserPreferencesState {

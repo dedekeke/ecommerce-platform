@@ -173,4 +173,34 @@
         </plugins>
     </build>
 
+    <!--
+      §2.5 Spring Boot AOT + GraalVM Native Image (proof-of-concept).
+      Activate with:  mvn -Pnative -DskipTests native:compile
+      Requires GraalVM 21+ on PATH (native-image binary). The JVM build
+      remains unchanged when this profile is not active, so existing CI is
+      unaffected. See docs/NATIVE_IMAGE.md.
+    -->
+    <profiles>
+        <profile>
+            <id>native</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <configuration>
+                            <imageName>api-gateway</imageName>
+                            <mainClass>com.ecommerce.gateway.ApiGatewayApplication</mainClass>
+                            <buildArgs>
+                                <buildArg>--no-fallback</buildArg>
+                                <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                                <buildArg>--initialize-at-build-time=org.slf4j</buildArg>
+                            </buildArgs>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 </project>

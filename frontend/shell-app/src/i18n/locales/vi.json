@@ -1,0 +1,46 @@
+{
+  "home": {
+    "title": "Chào mừng đến với E-Commerce",
+    "subtitle": "Khám phá những sản phẩm tuyệt vời với giá hấp dẫn",
+    "categoryElectronics": "Điện tử",
+    "categoryFashion": "Thời trang",
+    "categoryHomeGarden": "Nhà cửa & Vườn"
+  },
+  "nav": {
+    "home": "Trang chủ",
+    "products": "Sản phẩm",
+    "categories": "Danh mục",
+    "cart": "Giỏ hàng",
+    "profile": "Hồ sơ",
+    "myOrders": "Đơn hàng của tôi",
+    "logIn": "Đăng nhập",
+    "logOut": "Đăng xuất"
+  },
+  "header": {
+    "brand": "E-Commerce",
+    "search": "Tìm kiếm sản phẩm...",
+    "currency": "Tiền tệ",
+    "language": "Ngôn ngữ",
+    "shoppingCart": "giỏ hàng",
+    "menu": "menu"
+  },
+  "cart": {
+    "title": "Giỏ hàng của bạn",
+    "empty": "Giỏ hàng của bạn đang trống",
+    "checkout": "Thanh toán",
+    "remove": "Xóa",
+    "quantity": "Số lượng"
+  },
+  "checkout": {
+    "title": "Thanh toán",
+    "placeOrder": "Đặt hàng",
+    "shippingAddress": "Địa chỉ giao hàng",
+    "paymentMethod": "Phương thức thanh toán"
+  },
+  "common": {
+    "loading": "Đang tải...",
+    "error": "Đã xảy ra lỗi",
+    "retry": "Thử lại",
+    "cancel": "Hủy"
+  }
+}

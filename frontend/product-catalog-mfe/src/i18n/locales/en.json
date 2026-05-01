@@ -1,0 +1,46 @@
+{
+  "home": {
+    "title": "Welcome to E-Commerce",
+    "subtitle": "Discover amazing products at great prices",
+    "categoryElectronics": "Electronics",
+    "categoryFashion": "Fashion",
+    "categoryHomeGarden": "Home & Garden"
+  },
+  "nav": {
+    "home": "Home",
+    "products": "Products",
+    "categories": "Categories",
+    "cart": "Cart",
+    "profile": "Profile",
+    "myOrders": "My Orders",
+    "logIn": "Log In",
+    "logOut": "Log Out"
+  },
+  "header": {
+    "brand": "E-Commerce",
+    "search": "Search products...",
+    "currency": "Currency",
+    "language": "Language",
+    "shoppingCart": "shopping cart",
+    "menu": "menu"
+  },
+  "cart": {
+    "title": "Your Cart",
+    "empty": "Your cart is empty",
+    "checkout": "Checkout",
+    "remove": "Remove",
+    "quantity": "Quantity"
+  },
+  "checkout": {
+    "title": "Checkout",
+    "placeOrder": "Place Order",
+    "shippingAddress": "Shipping Address",
+    "paymentMethod": "Payment Method"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Try again",
+    "cancel": "Cancel"
+  }
+}

@@ -1,5 +1,6 @@
 import { Routes, Route, Link } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
+import { useTranslation } from 'react-i18next'
 import { Typography, Box, Paper, Grid } from '@mui/material'
 import { MainLayout } from './components/layout'
 import { ProtectedRoute } from './components/auth'
@@ -55,11 +56,12 @@ function PreloadLink({ to, mfeName, children }: PreloadLinkProps) {
 }
 
 function Home() {
+  const { t } = useTranslation()
   const categories = [
-    { name: 'Electronics', path: '/products?category=electronics', emoji: '💻' },
-    { name: 'Fashion', path: '/products?category=fashion', emoji: '👗' },
-    { name: 'Home & Garden', path: '/products?category=home-garden', emoji: '🏡' },
-  ]
+    { key: 'categoryElectronics', path: '/products?category=electronics', emoji: '💻' },
+    { key: 'categoryFashion', path: '/products?category=fashion', emoji: '👗' },
+    { key: 'categoryHomeGarden', path: '/products?category=home-garden', emoji: '🏡' },
+  ] as const
 
   return (
     <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
@@ -77,14 +79,14 @@ function Home() {
             backgroundClip: 'text',
           }}
         >
-          Welcome to E-Commerce
+          {t('home.title')}
         </Typography>
         <Typography variant="h5" color="text.secondary" sx={{ mb: 6 }}>
-          Discover amazing products at great prices
+          {t('home.subtitle')}
         </Typography>
         <Grid container spacing={3} sx={{ mt: 2 }}>
           {categories.map((category) => (
-            <Grid size={{ xs: 12, md: 4 }} key={category.name}>
+            <Grid size={{ xs: 12, md: 4 }} key={category.key}>
               <PreloadLink to={category.path} mfeName="productCatalog">
                 <Paper
                   elevation={0}
@@ -108,7 +110,7 @@ function Home() {
                   <Typography variant="h2" component="span" sx={{ display: 'block', mb: 1 }}>
                     {category.emoji}
                   </Typography>
-                  <Typography variant="h6" fontWeight={600}>{category.name}</Typography>
+                  <Typography variant="h6" fontWeight={600}>{t(`home.${category.key}`)}</Typography>
                 </Paper>
               </PreloadLink>
             </Grid>
