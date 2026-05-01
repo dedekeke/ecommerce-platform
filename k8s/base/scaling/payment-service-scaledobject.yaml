@@ -1,0 +1,33 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: payment-postgres-auth
+  namespace: ecommerce
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: payment-postgres-secret
+      key: connection
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: payment-service-outbox-lag
+  namespace: ecommerce
+spec:
+  scaleTargetRef:
+    name: payment-service
+  pollingInterval: 30
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  fallback:
+    failureThreshold: 3
+    replicas: 1
+  triggers:
+    - type: postgresql
+      metadata:
+        query: "SELECT COUNT(*) FROM outbox_event WHERE published_at IS NULL"
+        targetQueryValue: "100"
+      authenticationRef:
+        name: payment-postgres-auth

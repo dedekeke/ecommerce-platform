@@ -5,3 +5,7 @@ resources:
   - notification-service-scaledobject.yaml
   - search-service-scaledobject.yaml
   - order-service-scaledobject.yaml
+  - payment-service-scaledobject.yaml
+  - inventory-service-scaledobject.yaml
+  - recommendation-service-scaledobject.yaml
+  - vpa
