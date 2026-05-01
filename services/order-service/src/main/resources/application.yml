@@ -186,6 +186,13 @@ order:
     cleanup-old-orders-cron: "0 0 3 * * ?"
     daily-sales-report-cron: "0 0 1 * * ?"
     abandoned-hours-threshold: 24
+  # See docs/PARTITIONING.md — archival is the §1.2 hot-table-trim mechanism
+  # until row count crosses the 50M partitioning trigger.
+  archival:
+    enabled: ${ORDER_ARCHIVAL_ENABLED:true}
+    cron: ${ORDER_ARCHIVAL_CRON:0 0 4 * * ?}
+    cutoff-days: ${ORDER_ARCHIVAL_CUTOFF_DAYS:365}
+    batch-size: ${ORDER_ARCHIVAL_BATCH_SIZE:1000}
 
 # Promotion Service URL
 promotion:
