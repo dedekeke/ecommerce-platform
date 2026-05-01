@@ -46,11 +46,24 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # Producer tuning rationale (applied 2026-04-30, see SCALING_AND_IMPROVEMENTS.md §2.6):
+    #   - acks=all + enable.idempotence=true: exactly-once delivery semantics.
+    #   - compression-type=zstd: ~60–70% size reduction on JSON payloads.
+    #   - batch-size=64KB + linger-ms=5: improves throughput under burst load.
+    #   - buffer-memory=64MB: absorbs short broker stalls without back-pressure.
+    #   - max.in.flight.requests.per.connection=5: max allowed with idempotence on.
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
       retries: 3
+      compression-type: zstd
+      batch-size: 65536
+      linger-ms: 5
+      buffer-memory: 67108864
+      properties:
+        max.in.flight.requests.per.connection: 5
+        enable.idempotence: true
     consumer:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer

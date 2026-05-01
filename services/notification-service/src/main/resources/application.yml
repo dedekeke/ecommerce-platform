@@ -12,6 +12,22 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    # Producer tuning rationale (applied 2026-04-30, see SCALING_AND_IMPROVEMENTS.md §2.6):
+    #   notification-service publishes admin-notified / stock-back saga events from
+    #   StockAlertListener. Throughput is modest but the same batching + compression
+    #   benefits apply: smaller broker footprint and idempotent retries.
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      compression-type: zstd
+      batch-size: 65536
+      linger-ms: 5
+      buffer-memory: 67108864
+      properties:
+        max.in.flight.requests.per.connection: 5
+        enable.idempotence: true
     consumer:
       group-id: notification-service
       auto-offset-reset: earliest
