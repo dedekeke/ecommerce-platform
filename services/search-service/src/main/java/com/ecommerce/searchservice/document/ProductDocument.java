@@ -39,8 +39,22 @@ public class ProductDocument {
     @Field(type = FieldType.Keyword)
     private String category;
 
+    /**
+     * Brand keyword, used by the faceted-search aggregation (§3.12).
+     */
+    @Field(type = FieldType.Keyword)
+    private String brand;
+
     @Field(type = FieldType.Double)
     private BigDecimal price;
+
+    /**
+     * Average review rating (0.0–5.0). Drives the {@code rating} facet's
+     * range buckets. Optional — products without ratings are excluded from
+     * the {@code 4+} / {@code 3+} buckets.
+     */
+    @Field(type = FieldType.Double)
+    private Double rating;
 
     @Field(type = FieldType.Keyword)
     private String currency;

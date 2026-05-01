@@ -22,7 +22,13 @@
     "category": {
       "type": "keyword"
     },
+    "brand": {
+      "type": "keyword"
+    },
     "price": {
+      "type": "double"
+    },
+    "rating": {
       "type": "double"
     },
     "currency": {
