@@ -4,7 +4,7 @@ import com.ecommerce.paymentservice.domain.Payment;
 import com.ecommerce.paymentservice.domain.PaymentMethod;
 import com.ecommerce.paymentservice.domain.PaymentStatus;
 import com.ecommerce.paymentservice.gateway.PaymentGatewayResponse;
-import com.ecommerce.paymentservice.gateway.PaymentGatewayService;
+import com.ecommerce.paymentservice.gateway.PaymentIntentProvider;
 import com.ecommerce.paymentservice.kafka.PaymentEvent;
 import com.ecommerce.paymentservice.kafka.PaymentEventPublisher;
 import com.ecommerce.paymentservice.repository.PaymentRepository;
@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
-    private final PaymentGatewayService paymentGatewayService;
+    private final PaymentIntentProvider paymentProvider;
     private final PaymentEventPublisher eventPublisher;
 
     @Transactional
@@ -30,7 +30,7 @@ public class PaymentService {
         log.info("Creating payment intent for order: {}", orderId);
 
         // Call payment gateway to create payment intent
-        PaymentGatewayResponse gatewayResponse = paymentGatewayService.createPaymentIntent(
+        PaymentGatewayResponse gatewayResponse = paymentProvider.createPaymentIntent(
                 orderId, userId, amount, currency);
 
         // Create payment record
@@ -61,7 +61,7 @@ public class PaymentService {
         paymentRepository.save(payment);
 
         // Call payment gateway to confirm payment
-        PaymentGatewayResponse gatewayResponse = paymentGatewayService.confirmPayment(
+        PaymentGatewayResponse gatewayResponse = paymentProvider.confirmPayment(
                 paymentIntentId, paymentMethodId);
 
         // Update payment based on gateway response
@@ -96,7 +96,7 @@ public class PaymentService {
         }
 
         // Call payment gateway to process refund
-        PaymentGatewayResponse gatewayResponse = paymentGatewayService.refundPayment(
+        PaymentGatewayResponse gatewayResponse = paymentProvider.refundPayment(
                 paymentIntentId, amount, reason);
 
         if (gatewayResponse.isSuccess()) {

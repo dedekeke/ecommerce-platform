@@ -72,6 +72,16 @@ spring:
     virtual:
       enabled: true
 
+# Payment provider selection: 'mock' (default) or 'stripe'
+payment:
+  provider: ${PAYMENT_PROVIDER:mock}
+
+# Stripe configuration (only used when payment.provider=stripe).
+# The secret key MUST be supplied via the STRIPE_SECRET_KEY env var; never hardcode or commit it.
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
+  api-base: ${STRIPE_API_BASE:}
+
 # Server Configuration
 server:
   port: 8085
