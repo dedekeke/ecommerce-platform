@@ -1,0 +1,53 @@
+# Test profile for user-service integration tests.
+# The datasource is supplied per-test via @DynamicPropertySource (Testcontainers
+# PostgreSQL). This file satisfies the remaining env placeholders from the main
+# application.yml and disables infra (Redis, Kafka, tracing, Eureka) so the
+# SpringBootTest context can stand up without external services.
+spring:
+  cloud:
+    config:
+      enabled: false
+  flyway:
+    enabled: false
+  cache:
+    type: none
+  # Jedis connects lazily, so literal host/port let the connection factory bean
+  # wire (CachedM2MAuthenticationService depends on it) without a live Redis.
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ""
+  # No broker in tests: don't auto-create topics or block startup, and fail the
+  # admin client fast instead of waiting out the default 60s timeout.
+  kafka:
+    bootstrap-servers: localhost:9092
+    admin:
+      fail-fast: false
+      properties:
+        request.timeout.ms: 1000
+        default.api.timeout.ms: 1000
+    listener:
+      auto-startup: false
+
+management:
+  tracing:
+    enabled: false
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+security:
+  enabled: false
+
+auth0:
+  domain: test-tenant.auth0.com
+  audience: test-audience
+
+app:
+  auth0:
+    domain: test-tenant.auth0.com
+    audience: test-audience

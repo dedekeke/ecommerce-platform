@@ -4,7 +4,6 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.concurrent.TimeUnit;
@@ -12,8 +11,12 @@ import java.util.concurrent.TimeUnit;
 /**
  * Business metrics for tracking KPIs across microservices.
  * Provides convenient methods for common business operations.
+ *
+ * <p>Registered as a bean by {@link MetricsAutoConfiguration}, gated on the
+ * presence of a {@link MeterRegistry}. It is intentionally NOT a
+ * {@code @Component}: that previously broke sliced tests (e.g. {@code @DataJpaTest})
+ * that component-scan {@code com.ecommerce.common} but provide no MeterRegistry.
  */
-@Component
 public class BusinessMetrics {
 
     private final MeterRegistry registry;

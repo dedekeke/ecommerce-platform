@@ -1,1 +1,5 @@
 com.ecommerce.common.featureflag.FeatureFlagAutoConfiguration
+com.ecommerce.common.metrics.MetricsAutoConfiguration
+com.ecommerce.common.tracing.config.TracingComponentsAutoConfiguration
+com.ecommerce.common.event.config.EventPublisherAutoConfiguration
+com.ecommerce.common.security.config.M2MServiceAutoConfiguration

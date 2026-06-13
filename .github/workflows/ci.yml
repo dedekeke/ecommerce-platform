@@ -102,8 +102,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
-      - run: npm ci
+          cache-dependency-path: frontend/${{ matrix.app }}/package.json
+      # Lockfiles are gitignored repo-wide, so use `npm install` (not `npm ci`,
+      # which requires a committed package-lock.json). Mirrors quality.yml.
+      - run: npm install
       - run: npm run lint --if-present
       - run: npm test --if-present -- --run
 
@@ -127,8 +129,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
-      - run: npm ci
+          cache-dependency-path: frontend/${{ matrix.app }}/package.json
+      # Lockfiles are gitignored repo-wide, so use `npm install` (not `npm ci`).
+      - run: npm install
       - run: npx ng test --watch=false --browsers=ChromeHeadless --no-progress
 
   lint-infra:

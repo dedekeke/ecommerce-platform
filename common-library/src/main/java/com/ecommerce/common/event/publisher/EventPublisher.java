@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
-import org.springframework.stereotype.Component;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -18,7 +17,6 @@ import java.util.concurrent.CompletableFuture;
  * Central event publisher for all domain events.
  * Handles event serialization, Kafka publishing, tracing, and error handling.
  */
-@Component
 public class EventPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(EventPublisher.class);

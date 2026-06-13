@@ -4,7 +4,6 @@ import brave.Span;
 import brave.Tracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import java.util.function.Supplier;
 
@@ -12,7 +11,6 @@ import java.util.function.Supplier;
  * Utility class for creating custom spans for business operations.
  * Provides convenient methods to trace specific operations with proper error handling.
  */
-@Component
 public class TracingUtil {
 
     private static final Logger log = LoggerFactory.getLogger(TracingUtil.class);

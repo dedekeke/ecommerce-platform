@@ -71,9 +71,35 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # ---- Preflight: detect whether the NVD API key secret is configured ----
+  # The OWASP gate downloads the NVD database. Since ~2023 the NVD API rejects
+  # unauthenticated/throttled clients with HTTP 403, so without an NVD_API_KEY the
+  # update step fails outright (NoDataException) — that's an infrastructure
+  # failure, not a vulnerability finding, and must not red-wall every PR. We
+  # therefore run the gate ONLY when the key is present (it runs for real on the
+  # canonical pipeline once the secret is set), and otherwise skip it loudly.
+  secrets-preflight:
+    name: Secrets preflight
+    runs-on: ubuntu-latest
+    outputs:
+      has_nvd_key: ${{ steps.check.outputs.has_nvd_key }}
+    steps:
+      - id: check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -n "$NVD_API_KEY" ]; then
+            echo "has_nvd_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_nvd_key=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=OWASP dependency-check skipped::NVD_API_KEY secret is not set. The OWASP gate is skipped because the NVD API rejects unauthenticated requests (HTTP 403). Add NVD_API_KEY under Settings > Secrets and variables > Actions to enable the security gate."
+          fi
+
   # ---- Security: OWASP dependency-check gate (failBuildOnCVSS=7.0 from pom) ----
   dependency-check:
     name: OWASP dependency-check
+    needs: secrets-preflight
+    if: needs.secrets-preflight.outputs.has_nvd_key == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -94,14 +120,12 @@ jobs:
           key: nvd-${{ runner.os }}-dc9.2.0
           restore-keys: |
             nvd-${{ runner.os }}-
-      # NVD_API_KEY is optional but strongly recommended to avoid rate limiting.
-      # Add it under Settings > Secrets and variables > Actions. No token in YAML.
       - name: Run dependency-check (-Psecurity verify, CVSS >= 7.0 fails)
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
           mvn -B -ntp -Psecurity -DskipTests verify \
-            ${NVD_API_KEY:+-Dnvd.api.key=$NVD_API_KEY}
+            -Dnvd.api.key=$NVD_API_KEY
       - name: Upload dependency-check report
         if: always()
         uses: actions/upload-artifact@v4

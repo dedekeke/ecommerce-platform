@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -36,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 @Testcontainers
 class UserControllerIntegrationTest {
 
@@ -98,7 +100,9 @@ class UserControllerIntegrationTest {
                                 .authorities(new SimpleGrantedAuthority("SCOPE_read:profile"))))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.auth0Id", is(auth0Id)))
+                // UserProfileResponse exposes the public id (auth0Id is internal
+                // and intentionally not serialized).
+                .andExpect(jsonPath("$.id", is(testUser.getId().toString())))
                 .andExpect(jsonPath("$.email", is("test@example.com")))
                 .andExpect(jsonPath("$.firstName", is("John")))
                 .andExpect(jsonPath("$.lastName", is("Doe")))
@@ -120,7 +124,8 @@ class UserControllerIntegrationTest {
                                 .authorities(new SimpleGrantedAuthority("SCOPE_read:profile"))))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.auth0Id", is(newAuth0Id)))
+                // auth0Id is internal and not serialized; assert returned fields.
+                .andExpect(jsonPath("$.id", notNullValue()))
                 .andExpect(jsonPath("$.email", is("newuser@example.com")))
                 .andExpect(jsonPath("$.firstName", is("Jane")))
                 .andExpect(jsonPath("$.lastName", is("Smith")));
@@ -204,7 +209,8 @@ class UserControllerIntegrationTest {
                                 .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.id", is(testUser.getId().intValue())))
+                // id is serialized as a String in UserProfileResponse.
+                .andExpect(jsonPath("$.id", is(testUser.getId().toString())))
                 .andExpect(jsonPath("$.email", is("test@example.com")));
     }
 
