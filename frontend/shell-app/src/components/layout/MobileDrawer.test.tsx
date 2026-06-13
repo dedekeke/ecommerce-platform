@@ -27,7 +27,7 @@ const renderMobileDrawer = (open = true, onClose = vi.fn()) => {
 describe('MobileDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockedUseAuth0.mockReturnValue(createAuth0Mock() as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(createAuth0Mock() as unknown as ReturnType<typeof useAuth0>)
   })
 
   it('should render when open is true', () => {
@@ -58,7 +58,7 @@ describe('MobileDrawer', () => {
   })
 
   it('should render user info when authenticated', () => {
-    mockedUseAuth0.mockReturnValue(authenticatedAuth0Mock as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(authenticatedAuth0Mock as unknown as ReturnType<typeof useAuth0>)
     renderMobileDrawer(true)
     expect(screen.getByText(/test user/i)).toBeInTheDocument()
   })

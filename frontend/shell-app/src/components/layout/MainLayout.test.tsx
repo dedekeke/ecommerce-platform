@@ -29,7 +29,7 @@ const renderMainLayout = () => {
 describe('MainLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockedUseAuth0.mockReturnValue(createAuth0Mock() as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(createAuth0Mock() as unknown as ReturnType<typeof useAuth0>)
   })
 
   it('should render header', () => {

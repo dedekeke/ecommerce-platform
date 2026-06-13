@@ -37,7 +37,7 @@ const renderHeader = (cartItemCount = 0) =>
 describe('Header', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockedUseAuth0.mockReturnValue(createAuth0Mock() as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(createAuth0Mock() as unknown as ReturnType<typeof useAuth0>)
     useUserPreferencesStore.getState().resetPreferences()
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -82,7 +82,7 @@ describe('Header', () => {
   })
 
   it('should render user menu when authenticated', () => {
-    mockedUseAuth0.mockReturnValue(authenticatedAuth0Mock as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(authenticatedAuth0Mock as unknown as ReturnType<typeof useAuth0>)
     renderHeader()
     expect(screen.getByTestId('user-menu-button')).toBeInTheDocument()
   })
