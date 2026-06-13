@@ -1,5 +1,6 @@
 package com.ecommerce.orderservice.subscription;
 
+import com.ecommerce.orderservice.client.ProductPriceClient;
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
@@ -13,15 +14,19 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -49,17 +54,23 @@ class SubscriptionSchedulerTest {
     @Mock
     private OrderService orderService;
 
+    @Mock
+    private ProductPriceClient productPriceClient;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Clock fixedClock = Clock.fixed(
         Instant.parse("2026-04-29T10:00:00Z"), ZoneOffset.UTC);
     private final LocalDateTime now = LocalDateTime.ofInstant(fixedClock.instant(), ZoneOffset.UTC);
+    private static final BigDecimal FALLBACK_PRICE = new BigDecimal("0.01");
 
     private SubscriptionScheduler scheduler;
 
     @BeforeEach
     void setUp() {
         scheduler = new SubscriptionScheduler(subscriptionRepository, orderService,
-            objectMapper, fixedClock, true);
+            productPriceClient, objectMapper, fixedClock, true, FALLBACK_PRICE);
+        lenient().when(productPriceClient.getCurrentPrice(anyString()))
+            .thenReturn(Optional.of(new BigDecimal("19.99")));
     }
 
     @Test
@@ -85,6 +96,40 @@ class SubscriptionSchedulerTest {
         assertThat(due.getLastRunAt()).isEqualTo(now);
         assertThat(due.getNextRunAt()).isEqualTo(now.minusHours(1).plusDays(7));
         verify(subscriptionRepository).save(due);
+    }
+
+    @Test
+    @DisplayName("should_priceOrderItemFromProductService_when_lookupSucceeds")
+    void should_priceOrderItemFromProductService_when_lookupSucceeds() {
+        Subscription due = dueSubscription(1L, 7, null);
+        when(subscriptionRepository.findByStatusAndNextRunAtBefore(SubscriptionStatus.ACTIVE, now))
+            .thenReturn(List.of(due));
+        when(productPriceClient.getCurrentPrice("prod-1"))
+            .thenReturn(Optional.of(new BigDecimal("42.50")));
+        when(orderService.createOrder(any(), any(), any(), any())).thenReturn(new Order());
+
+        scheduler.processDueSubscriptions();
+
+        ArgumentCaptor<List<OrderItem>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(orderService).createOrder(eq("user-1"), itemsCaptor.capture(), any(Address.class), eq(null));
+        assertThat(itemsCaptor.getValue().get(0).getPrice())
+            .isEqualByComparingTo(new BigDecimal("42.50"));
+    }
+
+    @Test
+    @DisplayName("should_useFallbackPrice_when_productLookupReturnsEmpty")
+    void should_useFallbackPrice_when_productLookupReturnsEmpty() {
+        Subscription due = dueSubscription(1L, 7, null);
+        when(subscriptionRepository.findByStatusAndNextRunAtBefore(SubscriptionStatus.ACTIVE, now))
+            .thenReturn(List.of(due));
+        when(productPriceClient.getCurrentPrice("prod-1")).thenReturn(Optional.empty());
+        when(orderService.createOrder(any(), any(), any(), any())).thenReturn(new Order());
+
+        scheduler.processDueSubscriptions();
+
+        ArgumentCaptor<List<OrderItem>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(orderService).createOrder(eq("user-1"), itemsCaptor.capture(), any(Address.class), eq(null));
+        assertThat(itemsCaptor.getValue().get(0).getPrice()).isEqualByComparingTo(FALLBACK_PRICE);
     }
 
     @Test
@@ -137,7 +182,8 @@ class SubscriptionSchedulerTest {
     @DisplayName("poll_should_beNoOp_when_disabled")
     void poll_should_beNoOp_when_disabled() {
         SubscriptionScheduler disabled = new SubscriptionScheduler(
-            subscriptionRepository, orderService, objectMapper, fixedClock, false);
+            subscriptionRepository, orderService, productPriceClient, objectMapper,
+            fixedClock, false, FALLBACK_PRICE);
 
         disabled.poll();
 

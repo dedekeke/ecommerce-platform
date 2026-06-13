@@ -88,6 +88,14 @@ public class Order {
     @Column(precision = 10, scale = 2)
     private BigDecimal discountAmount;
 
+    /**
+     * Loyalty tier discount applied on top of any promotion-code discount.
+     * Computed at checkout from the customer's promotion-service tier and
+     * surfaced here so the pricing breakdown is auditable.
+     */
+    @Column(name = "loyalty_discount", precision = 10, scale = 2)
+    private BigDecimal loyaltyDiscount;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -121,13 +129,18 @@ public class Order {
                 .map(item -> item.getSubtotal() != null ? item.getSubtotal() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Apply discount if any
+        // Apply promotion-code discount, then loyalty-tier discount. Both are
+        // stored as absolute amounts; loyalty is computed from the
+        // post-promotion subtotal upstream (see OrderService.createOrder).
         BigDecimal discountedSubtotal = subtotal;
         if (discountAmount != null && discountAmount.compareTo(BigDecimal.ZERO) > 0) {
-            discountedSubtotal = subtotal.subtract(discountAmount);
-            if (discountedSubtotal.compareTo(BigDecimal.ZERO) < 0) {
-                discountedSubtotal = BigDecimal.ZERO;
-            }
+            discountedSubtotal = discountedSubtotal.subtract(discountAmount);
+        }
+        if (loyaltyDiscount != null && loyaltyDiscount.compareTo(BigDecimal.ZERO) > 0) {
+            discountedSubtotal = discountedSubtotal.subtract(loyaltyDiscount);
+        }
+        if (discountedSubtotal.compareTo(BigDecimal.ZERO) < 0) {
+            discountedSubtotal = BigDecimal.ZERO;
         }
 
         // Calculate total (ensure tax and shippingCost are not null)

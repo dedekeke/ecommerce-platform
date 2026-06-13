@@ -1,6 +1,7 @@
 package com.ecommerce.orderservice.client;
 
 import com.ecommerce.orderservice.client.dto.DiscountResult;
+import com.ecommerce.orderservice.client.dto.LoyaltyResult;
 import com.ecommerce.orderservice.client.dto.PromotionValidationRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -36,6 +37,12 @@ class PromotionServiceClientTest {
 
     @Mock
     private RestClient.ResponseSpec responseSpec;
+
+    @Mock
+    private RestClient.RequestHeadersUriSpec requestHeadersUriSpec;
+
+    @Mock
+    private RestClient.RequestHeadersSpec requestHeadersSpec;
 
     private PromotionServiceClient promotionServiceClient;
 
@@ -202,5 +209,67 @@ class PromotionServiceClientTest {
         assertNotNull(result);
         assertTrue(result.isValid());
         assertEquals(promotionCode, result.getPromotionCode());
+    }
+
+    @Test
+    @DisplayName("should_returnTierDiscountPercent_when_loyaltyLookupSucceeds")
+    void should_returnTierDiscountPercent_when_loyaltyLookupSucceeds() {
+        stubLoyaltyGet();
+        when(responseSpec.body(LoyaltyResult.class)).thenReturn(
+            LoyaltyResult.builder().tier("GOLD").discountPercent(BigDecimal.valueOf(10)).build());
+
+        BigDecimal percent = promotionServiceClient.getLoyaltyDiscountPercent("user-1");
+
+        assertEquals(0, BigDecimal.valueOf(10).compareTo(percent));
+    }
+
+    @Test
+    @DisplayName("should_returnZero_when_loyaltyResponseHasNullPercent")
+    void should_returnZero_when_loyaltyResponseHasNullPercent() {
+        stubLoyaltyGet();
+        when(responseSpec.body(LoyaltyResult.class)).thenReturn(
+            LoyaltyResult.builder().tier("BRONZE").discountPercent(null).build());
+
+        BigDecimal percent = promotionServiceClient.getLoyaltyDiscountPercent("user-1");
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(percent));
+    }
+
+    @Test
+    @DisplayName("should_returnZero_when_loyaltyResponseBodyNull")
+    void should_returnZero_when_loyaltyResponseBodyNull() {
+        stubLoyaltyGet();
+        when(responseSpec.body(LoyaltyResult.class)).thenReturn(null);
+
+        BigDecimal percent = promotionServiceClient.getLoyaltyDiscountPercent("user-1");
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(percent));
+    }
+
+    @Test
+    @DisplayName("should_returnZero_when_userIdBlank")
+    void should_returnZero_when_userIdBlank() {
+        BigDecimal percent = promotionServiceClient.getLoyaltyDiscountPercent("  ");
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(percent));
+        verify(restClient, never()).get();
+    }
+
+    @Test
+    @DisplayName("should_returnZero_when_loyaltyServiceUnavailable")
+    void should_returnZero_when_loyaltyServiceUnavailable() {
+        stubLoyaltyGet();
+        when(responseSpec.body(LoyaltyResult.class))
+            .thenThrow(new RestClientException("Service unavailable"));
+
+        BigDecimal percent = promotionServiceClient.getLoyaltyDiscountPercent("user-1");
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(percent));
+    }
+
+    private void stubLoyaltyGet() {
+        when(restClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString(), any(Object[].class))).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
     }
 }

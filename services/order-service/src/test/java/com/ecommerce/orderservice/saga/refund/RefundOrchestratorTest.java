@@ -153,6 +153,35 @@ class RefundOrchestratorTest {
     }
 
     @Test
+    void startRefund_should_persistOverrideAndFee_onState() {
+        when(validateStep.execute(any())).thenReturn(StepResult.ok());
+        when(reversePaymentStep.execute(any())).thenReturn(StepResult.ok());
+        when(restoreInventoryStep.execute(any())).thenReturn(StepResult.ok());
+        when(updateOrderStep.execute(any())).thenReturn(StepResult.ok());
+        when(notifyRefundStep.execute(any())).thenReturn(StepResult.ok());
+
+        RefundSagaState state = orchestrator.startRefund("order-1", "RMA-1", "u@x.com",
+            new java.math.BigDecimal("60.00"), new java.math.BigDecimal("10"));
+
+        assertThat(state.getRefundAmountOverride()).isEqualByComparingTo("60.00");
+        assertThat(state.getRestockingFeePercent()).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void startRefund_should_rejectFeeAbove100() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> orchestrator.startRefund("order-1", "RMA-1", "u@x.com",
+                null, new java.math.BigDecimal("101")));
+    }
+
+    @Test
+    void startRefund_should_rejectNegativeFee() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> orchestrator.startRefund("order-1", "RMA-1", "u@x.com",
+                null, new java.math.BigDecimal("-5")));
+    }
+
+    @Test
     void run_should_throw_whenStateMissing() {
         RefundSagaContext ctx = RefundSagaContext.builder().orderId("o1").build();
         try {

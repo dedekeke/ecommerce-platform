@@ -115,6 +115,59 @@ class ValidateRefundStepTest {
     }
 
     @Test
+    void should_useOverrideAmount_when_refundAmountOverrideSet() {
+        Order order = baseOrder();
+        order.setStatus(OrderStatus.DELIVERED);
+        order.setCreatedAt(LocalDateTime.now(fixedClock).minusDays(5));
+        when(orderRepository.findById("o1")).thenReturn(Optional.of(order));
+
+        RefundSagaContext ctx = RefundSagaContext.builder()
+            .orderId("o1")
+            .refundAmountOverride(new BigDecimal("40.00"))
+            .build();
+        StepResult result = step.execute(ctx);
+
+        assertThat(result.successful()).isTrue();
+        assertThat(ctx.getRefundAmount()).isEqualByComparingTo("40.00");
+    }
+
+    @Test
+    void should_deductRestockingFee_when_feePercentSet() {
+        Order order = baseOrder();
+        order.setStatus(OrderStatus.DELIVERED);
+        order.setCreatedAt(LocalDateTime.now(fixedClock).minusDays(5));
+        when(orderRepository.findById("o1")).thenReturn(Optional.of(order));
+
+        // 20% fee on the full 100.00 total -> 80.00 refunded.
+        RefundSagaContext ctx = RefundSagaContext.builder()
+            .orderId("o1")
+            .restockingFeePercent(new BigDecimal("20"))
+            .build();
+        StepResult result = step.execute(ctx);
+
+        assertThat(result.successful()).isTrue();
+        assertThat(ctx.getRefundAmount()).isEqualByComparingTo("80.00");
+    }
+
+    @Test
+    void should_applyFeeToOverrideBase_when_bothSet() {
+        Order order = baseOrder();
+        order.setStatus(OrderStatus.DELIVERED);
+        order.setCreatedAt(LocalDateTime.now(fixedClock).minusDays(5));
+        when(orderRepository.findById("o1")).thenReturn(Optional.of(order));
+
+        // 10% fee on a 60.00 partial base -> 54.00.
+        RefundSagaContext ctx = RefundSagaContext.builder()
+            .orderId("o1")
+            .refundAmountOverride(new BigDecimal("60.00"))
+            .restockingFeePercent(new BigDecimal("10"))
+            .build();
+        StepResult result = step.execute(ctx);
+
+        assertThat(ctx.getRefundAmount()).isEqualByComparingTo("54.00");
+    }
+
+    @Test
     void compensate_isNoOp() {
         // No-op compensation must not throw even with a half-built context.
         step.compensate(RefundSagaContext.builder().build());

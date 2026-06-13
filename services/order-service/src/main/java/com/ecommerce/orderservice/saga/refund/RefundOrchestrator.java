@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -84,15 +85,45 @@ public class RefundOrchestrator {
      * sagaId to poll, then dispatches the actual run on a background thread.
      */
     public RefundSagaState startRefund(String orderId, String reason, String userEmail) {
+        return startRefund(orderId, reason, userEmail, null, null);
+    }
+
+    /**
+     * Public entry variant for partial / fee-adjusted refunds (RMA path).
+     *
+     * @param refundAmountOverride pre-computed refund base (e.g. sum of
+     *        approved return lines), or {@code null} to refund the full total
+     * @param restockingFeePercent fee 0..100 to deduct, or {@code null}
+     * @throws IllegalArgumentException if the fee is outside 0..100
+     */
+    public RefundSagaState startRefund(String orderId, String reason, String userEmail,
+                                       BigDecimal refundAmountOverride,
+                                       BigDecimal restockingFeePercent) {
+        validateRestockingFee(restockingFeePercent);
         RefundSagaState state = newSagaState(orderId, reason);
+        state.setRefundAmountOverride(refundAmountOverride);
+        state.setRestockingFeePercent(restockingFeePercent);
+        sagaRepository.save(state);
         RefundSagaContext ctx = RefundSagaContext.builder()
             .state(state)
             .orderId(orderId)
             .reason(reason)
             .userEmail(userEmail)
+            .refundAmountOverride(refundAmountOverride)
+            .restockingFeePercent(restockingFeePercent)
             .build();
         runAsync(ctx);
         return state;
+    }
+
+    private void validateRestockingFee(BigDecimal feePercent) {
+        if (feePercent == null) {
+            return;
+        }
+        if (feePercent.signum() < 0 || feePercent.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new IllegalArgumentException(
+                "restockingFeePercent must be between 0 and 100, got " + feePercent);
+        }
     }
 
     @Async
@@ -152,6 +183,9 @@ public class RefundOrchestrator {
             .reason(state.getReason())
             .restorationId(state.getRestorationId())
             .refundTransactionId(state.getRefundTransactionId())
+            .refundAmount(state.getRefundAmount())
+            .refundAmountOverride(state.getRefundAmountOverride())
+            .restockingFeePercent(state.getRestockingFeePercent())
             .build();
         return run(ctx);
     }

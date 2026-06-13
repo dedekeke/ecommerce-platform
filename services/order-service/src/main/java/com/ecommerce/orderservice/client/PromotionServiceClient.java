@@ -1,6 +1,7 @@
 package com.ecommerce.orderservice.client;
 
 import com.ecommerce.orderservice.client.dto.DiscountResult;
+import com.ecommerce.orderservice.client.dto.LoyaltyResult;
 import com.ecommerce.orderservice.client.dto.PromotionValidationRequest;
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -90,6 +91,39 @@ public class PromotionServiceClient {
         return result;
     }
 
+    /**
+     * Fetch the loyalty tier discount percentage (0..100) for a user. Used by
+     * the checkout pricing path to apply a tier discount on top of any
+     * promotion code. Degrades gracefully to {@link BigDecimal#ZERO} when the
+     * user is unknown or promotion-service is unavailable, so checkout never
+     * fails on a loyalty lookup.
+     *
+     * @param userId the customer id (Auth0 sub)
+     * @return the tier discount percent, never null; {@code ZERO} on any miss
+     */
+    @CircuitBreaker(name = "promotion-service", fallbackMethod = "loyaltyDiscountFallback")
+    @Retry(name = "promotion-service")
+    @Bulkhead(name = "promotion-service")
+    public BigDecimal getLoyaltyDiscountPercent(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            LoyaltyResult result = restClient.get()
+                .uri("/api/promotions/loyalty/{userId}", userId)
+                .retrieve()
+                .body(LoyaltyResult.class);
+
+            BigDecimal percent = result == null ? null : result.getDiscountPercent();
+            log.debug("Loyalty discount for user {}: {}%", userId, percent);
+            return percent == null ? BigDecimal.ZERO : percent;
+        } catch (RestClientException e) {
+            log.warn("Promotion service unavailable during loyalty lookup for {}: {}",
+                userId, e.getMessage());
+            return loyaltyDiscountFallback(userId, e);
+        }
+    }
+
     // ==================== Fallback Methods ====================
 
     /**
@@ -112,6 +146,16 @@ public class PromotionServiceClient {
      * Fallback for applyPromotion when Promotion Service is unavailable.
      * Returns invalid result; the promotion usage will not be incremented.
      */
+    /**
+     * Fallback for getLoyaltyDiscountPercent — no discount when the breaker is
+     * open or the call fails. Checkout proceeds at the undiscounted price.
+     */
+    private BigDecimal loyaltyDiscountFallback(String userId, Throwable t) {
+        log.error("Promotion Service unavailable for loyalty lookup. User: {}, Error: {}",
+            userId, t.getMessage());
+        return BigDecimal.ZERO;
+    }
+
     private DiscountResult applyPromotionFallback(String promotionCode, Throwable t) {
         log.error("Promotion Service unavailable for applying promotion. Code: {}, Error: {}",
             promotionCode, t.getMessage());

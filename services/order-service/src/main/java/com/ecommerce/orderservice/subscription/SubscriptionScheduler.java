@@ -1,5 +1,6 @@
 package com.ecommerce.orderservice.subscription;
 
+import com.ecommerce.orderservice.client.ProductPriceClient;
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
 import com.ecommerce.orderservice.service.OrderService;
@@ -45,22 +46,35 @@ public class SubscriptionScheduler {
 
     private final SubscriptionRepository subscriptionRepository;
     private final OrderService orderService;
+    private final ProductPriceClient productPriceClient;
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final boolean enabled;
 
+    /**
+     * Last-resort price used only when product-service cannot be reached AND
+     * no per-subscription price is stored. Keeps the order non-zero so the
+     * Order entity's "total &gt; 0" invariant holds and the customer is billed
+     * at a known floor rather than skipped.
+     */
+    private final BigDecimal fallbackPrice;
+
     public SubscriptionScheduler(
         SubscriptionRepository subscriptionRepository,
         OrderService orderService,
+        ProductPriceClient productPriceClient,
         ObjectMapper objectMapper,
         Clock clock,
-        @Value("${subscription.scheduler-enabled:true}") boolean enabled
+        @Value("${subscription.scheduler-enabled:true}") boolean enabled,
+        @Value("${subscription.fallback-price:0.01}") BigDecimal fallbackPrice
     ) {
         this.subscriptionRepository = subscriptionRepository;
         this.orderService = orderService;
+        this.productPriceClient = productPriceClient;
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.enabled = enabled;
+        this.fallbackPrice = fallbackPrice;
     }
 
     @Scheduled(fixedDelayString = "${subscription.scheduler-poll-ms:60000}")
@@ -121,10 +135,16 @@ public class SubscriptionScheduler {
 
     private void fireOrder(Subscription sub) {
         Address address = parseAddress(sub.getShippingAddressJson());
+        BigDecimal price = productPriceClient.getCurrentPrice(sub.getProductId())
+            .orElseGet(() -> {
+                log.warn("No current price for product {} (subscription {}) — using fallback {}",
+                    sub.getProductId(), sub.getId(), fallbackPrice);
+                return fallbackPrice;
+            });
         OrderItem item = OrderItem.builder()
             .productId(sub.getProductId())
             .productName("Subscription product " + sub.getProductId())
-            .price(BigDecimal.ZERO)
+            .price(price)
             .quantity(sub.getQuantity())
             .build();
         orderService.createOrder(sub.getUserId(), List.of(item), address, null);

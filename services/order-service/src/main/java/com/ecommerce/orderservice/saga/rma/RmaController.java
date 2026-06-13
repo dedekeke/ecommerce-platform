@@ -3,7 +3,11 @@ package com.ecommerce.orderservice.saga.rma;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +52,10 @@ public class RmaController {
         @RequestHeader(value = "X-User-Email", required = false) String userEmail
     ) {
         log.info("REST: starting RMA saga for order {}", body.orderId());
-        Return rma = orchestrator.requestReturn(body.orderId(), userId, body.reason(), userEmail);
+        List<RmaOrchestrator.LineRequest> lines = body.lines() == null ? null : body.lines().stream()
+            .map(l -> new RmaOrchestrator.LineRequest(l.orderItemId(), l.quantity(), l.reason()))
+            .toList();
+        Return rma = orchestrator.requestReturn(body.orderId(), userId, body.reason(), lines, userEmail);
         URI location = URI.create("/api/returns/" + rma.getId());
         return ResponseEntity.accepted().location(location).body(rma);
     }
@@ -83,7 +91,8 @@ public class RmaController {
         @Valid @RequestBody InspectRequest body,
         @RequestHeader(value = "X-User-Email", required = false) String userEmail
     ) {
-        Return rma = orchestrator.inspect(rmaId, body.outcome(), body.condition(), body.notes(), userEmail);
+        Return rma = orchestrator.inspect(rmaId, body.outcome(), body.condition(),
+            body.notes(), body.restockingFeePercent(), userEmail);
         return ResponseEntity.ok(rma);
     }
 
@@ -95,6 +104,15 @@ public class RmaController {
 
     public record RmaRequest(
         @NotBlank @Size(max = 128) String orderId,
+        @Size(max = 500) String reason,
+        @Valid List<LineItem> lines
+    ) {
+    }
+
+    /** A single line a customer wants to return (partial-return support). */
+    public record LineItem(
+        @NotBlank @Size(max = 128) String orderItemId,
+        @NotNull @Min(1) Integer quantity,
         @Size(max = 500) String reason
     ) {
     }
@@ -102,7 +120,10 @@ public class RmaController {
     public record InspectRequest(
         @NotBlank @Size(max = 32) String outcome,
         @Size(max = 64) String condition,
-        @Size(max = 1000) String notes
+        @Size(max = 1000) String notes,
+        @DecimalMin(value = "0.0", inclusive = true)
+        @DecimalMax(value = "100.0", inclusive = true)
+        BigDecimal restockingFeePercent
     ) {
     }
 }

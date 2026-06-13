@@ -198,11 +198,19 @@ order:
 subscription:
   scheduler-enabled: ${SUBSCRIPTION_SCHEDULER_ENABLED:true}
   scheduler-poll-ms: ${SUBSCRIPTION_SCHEDULER_POLL_MS:60000}
+  # Last-resort unit price when product-service is unreachable at fire time.
+  fallback-price: ${SUBSCRIPTION_FALLBACK_PRICE:0.01}
 
 # Promotion Service URL
 promotion:
   service:
     url: ${PROMOTION_SERVICE_URL}
+
+# Product Service (load-balanced via Eureka) for subscription price lookups
+product:
+  service:
+    url: ${PRODUCT_SERVICE_URL:lb://product-service}
+    price-lookup-timeout-ms: ${PRODUCT_PRICE_LOOKUP_TIMEOUT_MS:2000}
 
 # Resilience4j Configuration
 resilience4j:

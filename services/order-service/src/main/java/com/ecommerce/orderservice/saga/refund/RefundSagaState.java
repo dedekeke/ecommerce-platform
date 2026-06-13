@@ -60,6 +60,17 @@ public class RefundSagaState {
     @Column(precision = 10, scale = 2)
     private BigDecimal refundAmount;
 
+    /**
+     * Pre-computed refund base (e.g. RMA partial-return approved-line total).
+     * Persisted so the recovery scheduler reconstructs the same amount.
+     */
+    @Column(name = "refund_amount_override", precision = 10, scale = 2)
+    private BigDecimal refundAmountOverride;
+
+    /** Restocking fee percentage (0..100) deducted from the refund. */
+    @Column(name = "restocking_fee_percent", precision = 5, scale = 2)
+    private BigDecimal restockingFeePercent;
+
     @Column
     private String paymentIntentId;
 

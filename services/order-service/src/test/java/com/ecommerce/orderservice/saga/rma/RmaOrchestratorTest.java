@@ -1,6 +1,7 @@
 package com.ecommerce.orderservice.saga.rma;
 
 import com.ecommerce.orderservice.domain.entity.Order;
+import com.ecommerce.orderservice.domain.entity.OrderItem;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
 import com.ecommerce.orderservice.repository.OrderRepository;
 import com.ecommerce.orderservice.saga.refund.RefundOrchestrator;
@@ -181,7 +182,7 @@ class RmaOrchestratorTest {
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(deliveredOrder()));
         RefundSagaState refundState = RefundSagaState.builder()
             .id("refund-1").status(RefundSagaStatus.COMPLETED).build();
-        when(refundOrchestrator.startRefund(eq("order-1"), anyString(), anyString()))
+        when(refundOrchestrator.startRefund(eq("order-1"), anyString(), anyString(), any(), any()))
             .thenReturn(refundState);
 
         Return result = orchestrator.inspect("rma-1", "APPROVED", "OPENED", "ok", "u@x.com");
@@ -191,7 +192,7 @@ class RmaOrchestratorTest {
         assertThat(result.getRefundSagaId()).isEqualTo("refund-1");
         assertThat(result.getInspectedAt()).isNotNull();
         ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
-        verify(refundOrchestrator).startRefund(eq("order-1"), reasonCaptor.capture(), anyString());
+        verify(refundOrchestrator).startRefund(eq("order-1"), reasonCaptor.capture(), anyString(), any(), any());
         assertThat(reasonCaptor.getValue()).startsWith("RMA-");
         verify(eventPublisher).publishCompleted(any(RmaEvent.class));
     }
@@ -209,7 +210,7 @@ class RmaOrchestratorTest {
             .status(RefundSagaStatus.FAILED)
             .failureReason("payment down")
             .build();
-        when(refundOrchestrator.startRefund(eq("order-1"), anyString(), any()))
+        when(refundOrchestrator.startRefund(eq("order-1"), anyString(), any(), any(), any()))
             .thenReturn(refundState);
 
         Return result = orchestrator.inspect("rma-1", "APPROVED", null, null, null);
@@ -228,13 +229,123 @@ class RmaOrchestratorTest {
             .status(ReturnStatus.RECEIVED).build();
         when(returnRepository.findById("rma-1")).thenReturn(Optional.of(rma));
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(deliveredOrder()));
-        when(refundOrchestrator.startRefund(anyString(), anyString(), any()))
+        when(refundOrchestrator.startRefund(anyString(), anyString(), any(), any(), any()))
             .thenThrow(new RuntimeException("boom"));
 
         Return result = orchestrator.inspect("rma-1", "APPROVED", null, null, null);
 
         assertThat(result.getStatus()).isEqualTo(ReturnStatus.FAILED);
         assertThat(result.getFailureReason()).contains("boom");
+    }
+
+    // ---------- restocking fee + partial returns ----------
+
+    @Test
+    @DisplayName("should_passRestockingFeeToRefund_when_inspectApprovedWithFee")
+    void should_passRestockingFeeToRefund_when_inspectApprovedWithFee() {
+        Return rma = Return.builder()
+            .id("rma-1").rmaNumber("RMA-1").orderId("order-1")
+            .status(ReturnStatus.RECEIVED).build();
+        when(returnRepository.findById("rma-1")).thenReturn(Optional.of(rma));
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(deliveredOrder()));
+        when(refundOrchestrator.startRefund(eq("order-1"), anyString(), any(), any(), any()))
+            .thenReturn(RefundSagaState.builder().id("refund-1").status(RefundSagaStatus.COMPLETED).build());
+
+        orchestrator.inspect("rma-1", "APPROVED", "OPENED", "ok",
+            new java.math.BigDecimal("20.00"), "u@x.com");
+
+        assertThat(rma.getRestockingFeePercent()).isEqualByComparingTo("20.00");
+        ArgumentCaptor<java.math.BigDecimal> feeCaptor = ArgumentCaptor.forClass(java.math.BigDecimal.class);
+        verify(refundOrchestrator).startRefund(eq("order-1"), anyString(), any(),
+            any(), feeCaptor.capture());
+        assertThat(feeCaptor.getValue()).isEqualByComparingTo("20.00");
+    }
+
+    @Test
+    @DisplayName("should_rejectInspect_when_restockingFeeAbove100")
+    void should_rejectInspect_when_restockingFeeAbove100() {
+        Return rma = Return.builder().id("rma-1").orderId("order-1")
+            .status(ReturnStatus.RECEIVED).build();
+        when(returnRepository.findById("rma-1")).thenReturn(Optional.of(rma));
+
+        assertThatThrownBy(() -> orchestrator.inspect("rma-1", "APPROVED", null, null,
+            new java.math.BigDecimal("101"), null))
+            .isInstanceOf(RmaException.class)
+            .hasMessageContaining("between 0 and 100");
+        verify(refundOrchestrator, never()).startRefund(anyString(), anyString(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("should_rejectInspect_when_restockingFeeNegative")
+    void should_rejectInspect_when_restockingFeeNegative() {
+        Return rma = Return.builder().id("rma-1").orderId("order-1")
+            .status(ReturnStatus.RECEIVED).build();
+        when(returnRepository.findById("rma-1")).thenReturn(Optional.of(rma));
+
+        assertThatThrownBy(() -> orchestrator.inspect("rma-1", "APPROVED", null, null,
+            new java.math.BigDecimal("-1"), null))
+            .isInstanceOf(RmaException.class)
+            .hasMessageContaining("between 0 and 100");
+    }
+
+    @Test
+    @DisplayName("should_persistReturnLines_when_partialReturnRequested")
+    void should_persistReturnLines_when_partialReturnRequested() {
+        Order order = deliveredOrder();
+        OrderItem item = OrderItem.builder()
+            .id("item-1").productId("prod-1").productName("P1")
+            .price(new java.math.BigDecimal("30.00")).quantity(3).build();
+        order.getItems().add(item);
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+        when(shippingClient.generateReturnLabel(anyString(), anyString())).thenReturn("https://x");
+
+        Return rma = orchestrator.requestReturn("order-1", "user-1", "defect",
+            List.of(new RmaOrchestrator.LineRequest("item-1", 2, "broken")), "u@x.com");
+
+        assertThat(rma.getLines()).hasSize(1);
+        ReturnLine line = rma.getLines().get(0);
+        assertThat(line.getOrderItemId()).isEqualTo("item-1");
+        assertThat(line.getQuantity()).isEqualTo(2);
+        assertThat(line.getUnitPrice()).isEqualByComparingTo("30.00");
+        assertThat(line.isApproved()).isFalse();
+        assertThat(line.lineValue()).isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    @DisplayName("should_rejectPartialReturn_when_quantityExceedsOrdered")
+    void should_rejectPartialReturn_when_quantityExceedsOrdered() {
+        Order order = deliveredOrder();
+        order.getItems().add(OrderItem.builder()
+            .id("item-1").productId("prod-1").productName("P1")
+            .price(new java.math.BigDecimal("30.00")).quantity(1).build());
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> orchestrator.requestReturn("order-1", "user-1", "defect",
+            List.of(new RmaOrchestrator.LineRequest("item-1", 5, "broken")), "u@x.com"))
+            .isInstanceOf(RmaException.class)
+            .hasMessageContaining("only 1 ordered");
+    }
+
+    @Test
+    @DisplayName("should_refundApprovedLinesTotal_when_partialReturnApproved")
+    void should_refundApprovedLinesTotal_when_partialReturnApproved() {
+        Return rma = Return.builder()
+            .id("rma-1").rmaNumber("RMA-1").orderId("order-1")
+            .status(ReturnStatus.RECEIVED).build();
+        rma.addLine(ReturnLine.builder().orderItemId("item-1").productId("prod-1")
+            .quantity(2).unitPrice(new java.math.BigDecimal("30.00")).build());
+        when(returnRepository.findById("rma-1")).thenReturn(Optional.of(rma));
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(deliveredOrder()));
+        when(refundOrchestrator.startRefund(eq("order-1"), anyString(), any(), any(), any()))
+            .thenReturn(RefundSagaState.builder().id("refund-1").status(RefundSagaStatus.COMPLETED).build());
+
+        orchestrator.inspect("rma-1", "APPROVED", "OPENED", "ok", null, "u@x.com");
+
+        assertThat(rma.getLines().get(0).isApproved()).isTrue();
+        ArgumentCaptor<java.math.BigDecimal> baseCaptor = ArgumentCaptor.forClass(java.math.BigDecimal.class);
+        verify(refundOrchestrator).startRefund(eq("order-1"), anyString(), any(),
+            baseCaptor.capture(), any());
+        assertThat(baseCaptor.getValue()).isEqualByComparingTo("60.00");
     }
 
     // ---------- inspect REJECTED ----------
@@ -257,7 +368,7 @@ class RmaOrchestratorTest {
         assertThat(result.getNotes()).isEqualTo("scratched");
         verify(shippingClient).shipBackToCustomer(eq("RMA-1"), eq("order-1"));
         verify(eventPublisher).publishRejected(any(RmaEvent.class));
-        verify(refundOrchestrator, never()).startRefund(anyString(), anyString(), any());
+        verify(refundOrchestrator, never()).startRefund(anyString(), anyString(), any(), any(), any());
     }
 
     @Test
@@ -318,13 +429,13 @@ class RmaOrchestratorTest {
         when(orderRepository.findById("order-1")).thenReturn(Optional.of(deliveredOrder()));
         RefundSagaState refundState = RefundSagaState.builder()
             .id("refund-1").status(RefundSagaStatus.COMPLETED).build();
-        when(refundOrchestrator.startRefund(anyString(), anyString(), any()))
+        when(refundOrchestrator.startRefund(anyString(), anyString(), any(), any(), any()))
             .thenReturn(refundState);
 
         Return result = orchestrator.resume(rma);
 
         assertThat(result.getStatus()).isEqualTo(ReturnStatus.COMPLETED);
-        verify(refundOrchestrator, times(1)).startRefund(anyString(), anyString(), any());
+        verify(refundOrchestrator, times(1)).startRefund(anyString(), anyString(), any(), any(), any());
     }
 
     // ---------- look-ups ----------

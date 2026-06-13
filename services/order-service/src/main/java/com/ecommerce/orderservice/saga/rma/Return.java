@@ -1,13 +1,16 @@
 package com.ecommerce.orderservice.saga.rma;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,7 +19,10 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * JPA entity backing a single RMA saga row.
@@ -73,6 +79,22 @@ public class Return {
     @Column(length = 32)
     private String outcome;
 
+    /**
+     * Restocking fee percentage (0..100) recorded at inspection. The refund
+     * saga deducts this from the approved line total. Null means no fee.
+     */
+    @Column(name = "restocking_fee_percent", precision = 5, scale = 2)
+    private BigDecimal restockingFeePercent;
+
+    /**
+     * Line-item-level returns. A whole-order return simply has one line per
+     * order item; partial returns carry the returned subset.
+     */
+    @OneToMany(mappedBy = "returnRequest", cascade = CascadeType.ALL,
+        orphanRemoval = true, fetch = FetchType.EAGER)
+    @Builder.Default
+    private List<ReturnLine> lines = new ArrayList<>();
+
     /** Free-text condition (NEW, OPENED, DAMAGED…). */
     @Column(length = 64)
     private String condition;
@@ -90,4 +112,26 @@ public class Return {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    public void addLine(ReturnLine line) {
+        if (lines == null) {
+            lines = new ArrayList<>();
+        }
+        line.setReturnRequest(this);
+        lines.add(line);
+    }
+
+    /**
+     * Sum of the extended value of every {@code approved} line. This is the
+     * pre-restocking-fee refund base for a partial return.
+     */
+    public BigDecimal approvedLinesTotal() {
+        if (lines == null || lines.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return lines.stream()
+            .filter(ReturnLine::isApproved)
+            .map(ReturnLine::lineValue)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
 }
