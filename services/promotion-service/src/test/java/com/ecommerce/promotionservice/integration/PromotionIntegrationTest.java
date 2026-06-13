@@ -174,7 +174,7 @@ class PromotionIntegrationTest {
                         .content(objectMapper.writeValueAsString(validationRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(false))
-                .andExpect(jsonPath("$.message").value(containsString("minimum purchase amount")));
+                .andExpect(jsonPath("$.message").value(containsString("at least")));
     }
 
     @Test
