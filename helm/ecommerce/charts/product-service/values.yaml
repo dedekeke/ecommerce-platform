@@ -3,7 +3,7 @@ service:
   name: product-service
   port: 8082
 image:
-  repository: ecommerce/product-service
+  repository: product-service
   pullPolicy: IfNotPresent
   tag: "1.0.0"
 replicaCount: 1

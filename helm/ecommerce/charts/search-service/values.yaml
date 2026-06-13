@@ -3,7 +3,7 @@ service:
   name: search-service
   port: 8088
 image:
-  repository: ecommerce/search-service
+  repository: search-service
   pullPolicy: IfNotPresent
   tag: "1.0.0"
 replicaCount: 1

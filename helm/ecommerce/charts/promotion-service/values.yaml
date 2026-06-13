@@ -3,7 +3,7 @@ service:
   name: promotion-service
   port: 8090
 image:
-  repository: ecommerce/promotion-service
+  repository: promotion-service
   pullPolicy: IfNotPresent
   tag: "1.0.0"
 replicaCount: 1

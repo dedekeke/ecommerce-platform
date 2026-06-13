@@ -14,13 +14,6 @@ vi.mock('./registry', () => ({
   })),
 }))
 
-const ThrowingComponent = ({ shouldThrow = true }: { shouldThrow?: boolean }) => {
-  if (shouldThrow) {
-    throw new Error('Test error from MFE')
-  }
-  return <div data-testid="child-content">Child Content</div>
-}
-
 const ErrorThrowingComponent = () => {
   throw new Error('Test error from MFE')
 }

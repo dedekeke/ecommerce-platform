@@ -11,5 +11,8 @@ tier: backend
 {{- end -}}
 
 {{- define "svc.image" -}}
-{{- printf "%s:%s" .Values.image.repository (.Values.global.imageTag | default .Values.image.tag) -}}
+{{- $registry := required "global.imageRegistry is required (set --set global.imageRegistry=$IMAGE_REGISTRY); refusing to build an image ref without a registry" (.Values.global.imageRegistry | default .Values.image.registry) -}}
+{{- $repo := .Values.image.repository -}}
+{{- $tag := .Values.global.imageTag | default .Values.image.tag -}}
+{{- printf "%s/%s:%s" $registry $repo $tag -}}
 {{- end -}}

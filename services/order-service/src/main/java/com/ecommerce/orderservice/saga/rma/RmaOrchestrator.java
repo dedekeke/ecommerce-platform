@@ -1,6 +1,7 @@
 package com.ecommerce.orderservice.saga.rma;
 
 import com.ecommerce.orderservice.domain.entity.Order;
+import com.ecommerce.orderservice.domain.entity.OrderItem;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
 import com.ecommerce.orderservice.repository.OrderRepository;
 import com.ecommerce.orderservice.saga.refund.RefundOrchestrator;
@@ -11,14 +12,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Orchestrator for the long-running Returns / RMA saga (§3.8).
@@ -80,6 +84,19 @@ public class RmaOrchestrator {
      */
     @Transactional
     public Return requestReturn(String orderId, String userId, String reason, String userEmail) {
+        return requestReturn(orderId, userId, reason, null, userEmail);
+    }
+
+    /**
+     * Partial-return variant: {@code lineRequests} names the order items and
+     * quantities to return. When null/empty the return covers the whole order
+     * (no lines persisted — backward compatible). Each requested line is
+     * validated against the order's items and snapshotted with the item's
+     * unit price so the refund can sum approved lines later.
+     */
+    @Transactional
+    public Return requestReturn(String orderId, String userId, String reason,
+                                List<LineRequest> lineRequests, String userEmail) {
         Order order = orderRepository.findById(orderId)
             .orElseThrow(() -> new RmaException("Order not found: " + orderId));
 
@@ -107,6 +124,7 @@ public class RmaOrchestrator {
             .reason(reason)
             .status(ReturnStatus.REQUESTED)
             .build();
+        attachLines(rma, order, lineRequests);
         rma = returnRepository.save(rma);
 
         // Step 2: mock-call shipping API for a label. Failure here aborts
@@ -172,6 +190,17 @@ public class RmaOrchestrator {
      */
     @Transactional
     public Return inspect(String rmaId, String outcome, String condition, String notes, String userEmail) {
+        return inspect(rmaId, outcome, condition, notes, null, userEmail);
+    }
+
+    /**
+     * Inspection with a restocking fee. The fee is validated 0..100 and, on an
+     * APPROVED outcome, deducted from the refund by the
+     * {@link RefundOrchestrator}.
+     */
+    @Transactional
+    public Return inspect(String rmaId, String outcome, String condition, String notes,
+                          BigDecimal restockingFeePercent, String userEmail) {
         Return rma = mustFind(rmaId);
         if (rma.getStatus() != ReturnStatus.RECEIVED && rma.getStatus() != ReturnStatus.INSPECTING) {
             throw new RmaException("Return cannot be inspected from status " + rma.getStatus());
@@ -183,11 +212,13 @@ public class RmaOrchestrator {
         if (!OUTCOME_APPROVED.equals(normalized) && !OUTCOME_REJECTED.equals(normalized)) {
             throw new RmaException("Invalid outcome: " + outcome);
         }
+        validateRestockingFee(restockingFeePercent);
 
         rma.setStatus(ReturnStatus.INSPECTING);
         rma.setOutcome(normalized);
         rma.setCondition(condition);
         rma.setNotes(notes);
+        rma.setRestockingFeePercent(restockingFeePercent);
         rma.setInspectedAt(LocalDateTime.now(clock));
         rma = returnRepository.save(rma);
 
@@ -202,15 +233,29 @@ public class RmaOrchestrator {
 
     private Return handleApproved(Return rma, Order order, String userEmail) {
         rma.setStatus(ReturnStatus.APPROVED);
+        // An APPROVED inspection approves every requested line. Per-line
+        // rejection would be a future refinement; for now an inspector who
+        // wants to reject part of a return rejects the whole RMA.
+        if (rma.getLines() != null) {
+            rma.getLines().forEach(line -> line.setApproved(true));
+        }
         rma = returnRepository.save(rma);
 
         // Delegate refund + inventory restoration to the existing saga.
         // Reason carries the RMA number so downstream auditors can trace.
+        // Partial returns pass the approved-line total as the refund base;
+        // whole-order returns (no lines) leave it null so the full order
+        // total is refunded. The restocking fee is deducted downstream.
         try {
+            BigDecimal refundBase = rma.getLines() != null && !rma.getLines().isEmpty()
+                ? rma.approvedLinesTotal()
+                : null;
             RefundSagaState refundState = refundOrchestrator.startRefund(
                 rma.getOrderId(),
                 "RMA-" + rma.getRmaNumber(),
-                userEmail);
+                userEmail,
+                refundBase,
+                rma.getRestockingFeePercent());
             rma.setRefundSagaId(refundState.getId());
 
             if (refundState.getStatus() == RefundSagaStatus.COMPLETED) {
@@ -297,11 +342,59 @@ public class RmaOrchestrator {
     }
 
     public Optional<Return> findById(String rmaId) {
-        return returnRepository.findById(rmaId);
+        // Fetch lines eagerly: the single-return GET serializes them and the
+        // persistence context is closed by the time Jackson runs (lines is LAZY).
+        return returnRepository.findByIdWithLines(rmaId);
     }
 
     public List<Return> findByUser(String userId) {
-        return returnRepository.findByUserId(userId);
+        // Single JOIN FETCH query — avoids the N+1 the old EAGER mapping caused.
+        return returnRepository.findByUserIdWithLines(userId);
+    }
+
+    /**
+     * Build and attach {@link ReturnLine}s from the request, validating each
+     * against the order's items and snapshotting the unit price. Returned
+     * quantity may not exceed the quantity originally ordered.
+     */
+    private void attachLines(Return rma, Order order, List<LineRequest> lineRequests) {
+        if (lineRequests == null || lineRequests.isEmpty()) {
+            return;
+        }
+        Map<String, OrderItem> itemsById = order.getItems().stream()
+            .collect(Collectors.toMap(OrderItem::getId, item -> item, (a, b) -> a));
+
+        for (LineRequest req : lineRequests) {
+            OrderItem item = itemsById.get(req.orderItemId());
+            if (item == null) {
+                throw new RmaException("Order item not found on order " + order.getId()
+                    + ": " + req.orderItemId());
+            }
+            if (req.quantity() == null || req.quantity() < 1) {
+                throw new RmaException("Return quantity must be >= 1 for item " + req.orderItemId());
+            }
+            if (req.quantity() > item.getQuantity()) {
+                throw new RmaException("Cannot return " + req.quantity() + " of item "
+                    + req.orderItemId() + " — only " + item.getQuantity() + " ordered");
+            }
+            rma.addLine(ReturnLine.builder()
+                .orderItemId(item.getId())
+                .productId(item.getProductId())
+                .quantity(req.quantity())
+                .unitPrice(item.getPrice())
+                .reason(req.reason())
+                .approved(false)
+                .build());
+        }
+    }
+
+    private void validateRestockingFee(BigDecimal feePercent) {
+        if (feePercent == null) {
+            return;
+        }
+        if (feePercent.signum() < 0 || feePercent.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new RmaException("restockingFeePercent must be between 0 and 100, got " + feePercent);
+        }
     }
 
     private Return mustFind(String rmaId) {
@@ -327,5 +420,9 @@ public class RmaOrchestrator {
 
     private String generateRmaNumber() {
         return "RMA-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase(Locale.ROOT);
+    }
+
+    /** A requested return line: which order item, how many, and why. */
+    public record LineRequest(String orderItemId, Integer quantity, String reason) {
     }
 }

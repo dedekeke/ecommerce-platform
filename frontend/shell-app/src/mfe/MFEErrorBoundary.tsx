@@ -63,7 +63,7 @@ function ErrorFallbackComponent({
           The {displayName} module encountered an error.
         </Typography>
 
-        {error && (
+        {error instanceof Error && (
           <Typography
             variant="body2"
             sx={{
@@ -123,7 +123,7 @@ export function MFEErrorBoundary({ mfeName, children, fallback, onRetry, maxRetr
   }, [retryCount, maxRetries, onRetry])
 
   const handleError = useCallback(
-    (error: Error, info: React.ErrorInfo) => {
+    (error: unknown, info: React.ErrorInfo) => {
       console.error(`MFE Error in ${config.displayName}:`, error, info)
     },
     [config.displayName]

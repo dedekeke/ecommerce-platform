@@ -97,12 +97,22 @@ logging:
 
 #### logback-spring.xml
 
-Copy the template from common-library:
+Add a thin `logback-spring.xml` that includes the shared base shipped in
+the `common-logging` module (single source of truth at
+`common-logging/src/main/resources/logback-includes/logging-base.xml`, placed on
+the classpath by depending on `common-logging`):
 
-```bash
-cp common-library/src/main/resources/logback-spring-template.xml \
-   your-service/src/main/resources/logback-spring.xml
+```xml
+<configuration>
+    <include resource="logback-includes/logging-base.xml"/>
+</configuration>
 ```
+
+The base emits a human-readable console for local/default and structured JSON
+(`service`, `level`, `traceId`, `spanId`, `@timestamp`, `message`, `logger`, `thread`)
+under the `docker`, `prod` or `json-logging` profile, ready for Promtail -> Loki ingestion.
+Services without a common-library dependency mirror `logging-base.xml` under the same
+resource path and add the managed `logstash-logback-encoder` dependency.
 
 #### Docker Environment Variables
 
@@ -235,14 +245,14 @@ All logs automatically include trace information:
 **Production (JSON)**:
 ```json
 {
-  "timestamp": "2025-01-15T10:30:45.123Z",
+  "@timestamp": "2025-01-15T10:30:45.123Z",
   "level": "INFO",
   "logger": "com.ecommerce.order.OrderService",
   "message": "Creating order for user 12345",
   "traceId": "abc123",
   "spanId": "def456",
   "correlationId": "xyz789",
-  "application": "order-service"
+  "service": "order-service"
 }
 ```
 

@@ -52,14 +52,23 @@ see `k8s/README.md` for the full `kubectl create secret` commands. The chart
 references the secrets via `envFrom.secretRef.optional: true`, so install will
 not fail if the secret is absent yet, but pods will crash-loop until it exists.
 
-## Image overrides
+## Registry & domain (environment-driven)
+
+Image refs render as `<global.imageRegistry>/<service>:<global.imageTag>` via the shared `svc.image`
+helper. Registry defaults to `ghcr.io/ecommerce-platform`; the ingress host defaults to the
+`${BASE_DOMAIN}` placeholder. Override per environment — never commit a real registry/domain:
 
 ```bash
 helm upgrade --install ecommerce ./helm/ecommerce \
-  --set global.imageRegistry=ghcr.io/your-org \
+  --set global.imageRegistry="$IMAGE_REGISTRY" \
   --set global.imageTag=1.2.3 \
-  -f values-prod.yaml
+  --set global.ingress.host="$BASE_DOMAIN" \
+  -f helm/ecommerce/values-prod.yaml
 ```
+
+TLS: the ingress is annotated `cert-manager.io/cluster-issuer` (from
+`global.ingress.certManager.clusterIssuer`); the issuer + `ecommerce-tls` Certificate live in
+`k8s/cert-manager/`. Vault HA values + per-service ESO policies live in `helm/vault/`.
 
 ## Open items
 

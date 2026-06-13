@@ -30,6 +30,16 @@ public class RefundSagaContext {
     private String paymentIntentId;
     private BigDecimal refundAmount;
 
+    /**
+     * Optional pre-computed refund base. When set (e.g. by an RMA partial
+     * return summing approved lines), the validate step uses this instead of
+     * the full order total. Restocking fee is applied on top.
+     */
+    private BigDecimal refundAmountOverride;
+
+    /** Restocking fee percentage (0..100) to deduct, or null for none. */
+    private BigDecimal restockingFeePercent;
+
     private String refundTransactionId;
     private String restorationId;
 

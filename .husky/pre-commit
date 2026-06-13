@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+# OPTIONAL pre-commit hook — runs affected MFE tests before each commit.
+#
+# This hook is NOT installed automatically. Opt in with EITHER:
+#
+#   # a) Plain git (no extra tooling):
+#   git config core.hooksPath .husky
+#
+#   # b) husky (if/when a root package.json with husky is added):
+#   npx husky install
+#
+# To skip the hook for a single commit:  git commit --no-verify
+# To opt out entirely:                   git config --unset core.hooksPath
+
+# Only test MFEs whose files are staged; fast no-op for backend-only commits.
+exec "$(git rev-parse --show-toplevel)/scripts/test-frontend-all.sh" --affected

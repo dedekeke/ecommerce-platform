@@ -38,6 +38,9 @@ vi.mock('./components/auth', () => ({
   ProtectedRoute: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="protected-route">{children}</div>
   ),
+  MFERouteGuard: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="mfe-route-guard">{children}</div>
+  ),
 }))
 
 vi.mock('./components/auth/RoleGuard', () => ({
@@ -132,10 +135,9 @@ describe('App routing', () => {
     expect(screen.getByTestId('mfe-userDashboard')).toBeInTheDocument()
   })
 
-  it('renders adminDashboard MFE at /admin wrapped in RoleGuard and ProtectedRoute', () => {
+  it('renders adminDashboard MFE at /admin wrapped in MFERouteGuard', () => {
     renderAppAtRoute('/admin')
-    expect(screen.getByTestId('protected-route')).toBeInTheDocument()
-    expect(screen.getByTestId('role-guard')).toBeInTheDocument()
+    expect(screen.getByTestId('mfe-route-guard')).toBeInTheDocument()
     expect(screen.getByTestId('mfe-adminDashboard')).toBeInTheDocument()
   })
 

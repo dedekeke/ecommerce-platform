@@ -117,11 +117,36 @@ The resulting `SealedSecret` is safe to commit; only the cluster's controller ca
 
 Alternatives: HashiCorp Vault + the External Secrets Operator, or AWS Secrets Manager via ESO.
 
+## Environment-driven values
+
+Manifests carry no hardcoded environment specifics. These are rendered at deploy time
+(via `envsubst` before `kubectl apply` / `kustomize build`, or by CI):
+
+| Variable | Where |
+|----------|-------|
+| `IMAGE_REGISTRY` | overlay `images[].newName` (default `ghcr.io/ecommerce-platform`) |
+| `BASE_DOMAIN` | `base/ingress/ingress.yaml`, `cert-manager/certificate.yaml` |
+| `ACME_EMAIL` | `cert-manager/cluster-issuer.yaml` |
+| `ES_SNAPSHOT_BUCKET`, `AWS_S3_REGION` | `dr/elasticsearch-snapshot.yaml` |
+| `KAFKA_SOURCE_BOOTSTRAP`, `KAFKA_DR_BOOTSTRAP` | `dr/kafka-mirrormaker2.yaml` |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka/kafka-acls-job.yaml` |
+
+See `.env.example` / `.env.template` for the full list.
+
+## Sub-directories
+
+| Dir | Purpose |
+|-----|---------|
+| `cert-manager/` | Let's Encrypt ClusterIssuers + `ecommerce-tls` Certificate |
+| `secrets/` | Vault + ESO ClusterSecretStore, shared + per-service ExternalSecrets |
+| `dr/` | Elasticsearch snapshot CronJob + Kafka MirrorMaker 2.0 |
+| `kafka/` | Per-SASL-principal broker ACL init Job |
+
 ## Open Items For Production Go-Live
 
-- Replace `example.com` in `base/ingress/ingress.yaml` with the real domain.
-- Provision a TLS certificate (`cert-manager` ClusterIssuer) and confirm the secret name `ecommerce-tls`.
-- Push images to a private registry; update overlay `images:` blocks.
-- Choose a secret backend (Sealed Secrets / Vault / cloud secret manager).
+- The ingress host + TLS SANs are env-driven (`${BASE_DOMAIN}`); confirm DNS resolves to the ingress before ACME issuance.
+- TLS is provisioned by `cert-manager/` (ClusterIssuer + `ecommerce-tls` Certificate).
+- Images are pulled from `${IMAGE_REGISTRY}` (GHCR default) — overlay `images:` are env-driven.
+- Secret backend finalized: HashiCorp Vault + External Secrets Operator (`secrets/README.md`, `helm/vault/`).
 - Wire data tier (PostgreSQL/MySQL/MongoDB/Kafka/Elasticsearch) — these manifests assume those run as in-cluster StatefulSets or as managed services. A managed-DB approach is recommended for prod.
 - Configure pod disruption budgets per StatefulSet for data-tier components.

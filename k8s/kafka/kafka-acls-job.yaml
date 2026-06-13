@@ -1,0 +1,105 @@
+# Kafka broker ACLs — restrict produce per service SASL principal.
+# A one-shot Job runs kafka-acls.sh against the broker, granting each service principal
+# WRITE only on the topic prefixes it owns (produces) and READ on the prefixes it consumes.
+# Broker must run with an authorizer + SASL (see README). Endpoints/credentials are env-driven.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-acls-config
+  namespace: ecommerce
+data:
+  BOOTSTRAP: "${KAFKA_BOOTSTRAP_SERVERS}"
+  # Per-service produce ownership (principal -> WRITE topic prefixes) and consume needs
+  # (principal -> READ topic prefixes). One line per principal; prefixes are space-separated.
+  produce.map: |
+    order-service=order.
+    payment-service=payment. refund.
+    product-service=product.
+    inventory-service=stock. inventory-updated.
+    promotion-service=promotion.
+    cart-service=cart.
+    search-service=search.
+    notification-service=notification.
+  consume.map: |
+    order-service=payment. inventory. stock.
+    payment-service=order. rma.
+    inventory-service=order. product. promotion.
+    promotion-service=order. stock.
+    search-service=product. promotion. order.
+    notification-service=order. payment. refund. rma. stock. cart. promotion.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-acls-init
+  namespace: ecommerce
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: kafka-acls
+          image: confluentinc/cp-kafka:7.6.0
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              CMD_CONFIG=/tmp/admin.properties
+              cat > "$CMD_CONFIG" <<EOF
+              security.protocol=SASL_SSL
+              sasl.mechanism=PLAIN
+              ssl.truststore.type=PEM
+              ssl.truststore.location=/etc/kafka/tls/ca.crt
+              sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_ADMIN_USER}" password="${KAFKA_ADMIN_PASSWORD}";
+              EOF
+
+              acl() { kafka-acls --bootstrap-server "$BOOTSTRAP" --command-config "$CMD_CONFIG" "$@"; }
+
+              echo "$PRODUCE_MAP" | while IFS='=' read -r svc prefixes; do
+                [ -z "$svc" ] && continue
+                for p in $prefixes; do
+                  acl --add --allow-principal "User:${svc}" --producer \
+                      --topic "$p" --resource-pattern-type prefixed
+                done
+              done
+
+              echo "$CONSUME_MAP" | while IFS='=' read -r svc prefixes; do
+                [ -z "$svc" ] && continue
+                for p in $prefixes; do
+                  acl --add --allow-principal "User:${svc}" --consumer \
+                      --topic "$p" --resource-pattern-type prefixed \
+                      --group "${svc}" --group-resource-pattern-type prefixed
+                done
+              done
+
+              echo "ACLs applied:"
+              acl --list
+          env:
+            - name: BOOTSTRAP
+              valueFrom: { configMapKeyRef: { name: kafka-acls-config, key: BOOTSTRAP } }
+            - name: PRODUCE_MAP
+              valueFrom: { configMapKeyRef: { name: kafka-acls-config, key: produce.map } }
+            - name: CONSUME_MAP
+              valueFrom: { configMapKeyRef: { name: kafka-acls-config, key: consume.map } }
+            - name: KAFKA_ADMIN_USER
+              valueFrom: { secretKeyRef: { name: kafka-secret, key: admin_user } }
+            - name: KAFKA_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: kafka-secret, key: admin_password } }
+          volumeMounts:
+            - name: kafka-ca
+              mountPath: /etc/kafka/tls
+              readOnly: true
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits:   { memory: "512Mi", cpu: "500m" }
+      volumes:
+        # Broker CA for the SASL_SSL handshake (PEM truststore). Provided out-of-band
+        # as Secret `kafka-tls` (key `ca.crt`) in the ecommerce namespace.
+        - name: kafka-ca
+          secret:
+            secretName: kafka-tls
+            items:
+              - key: ca.crt
+                path: ca.crt

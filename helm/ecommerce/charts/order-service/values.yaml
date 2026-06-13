@@ -3,7 +3,7 @@ service:
   name: order-service
   port: 8084
 image:
-  repository: ecommerce/order-service
+  repository: order-service
   pullPolicy: IfNotPresent
   tag: "1.0.0"
 replicaCount: 1

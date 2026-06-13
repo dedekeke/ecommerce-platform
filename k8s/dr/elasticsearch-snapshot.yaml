@@ -1,0 +1,87 @@
+# Disaster recovery — Elasticsearch snapshots to S3.
+# A one-shot Job registers the S3 snapshot repository; a CronJob takes scheduled snapshots.
+# All endpoints/credentials are env-driven (ConfigMap + ESO-managed Secrets). Render the
+# ConfigMap host/bucket per environment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: es-snapshot-config
+  namespace: ecommerce
+data:
+  ES_HOST: "http://elasticsearch:9200"
+  SNAPSHOT_REPO: "ecommerce-dr"
+  # S3 bucket for the repository; set per environment (envsubst or kustomize patch).
+  S3_BUCKET: "${ES_SNAPSHOT_BUCKET}"
+  S3_REGION: "${AWS_S3_REGION}"
+---
+# Register the S3-backed snapshot repository (idempotent; safe to re-run).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: es-snapshot-repo-init
+  namespace: ecommerce
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: register-repo
+          image: curlimages/curl:8.7.1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              curl -sf -X PUT "${ES_HOST}/_snapshot/${SNAPSHOT_REPO}" \
+                -H 'Content-Type: application/json' \
+                -d "{
+                  \"type\": \"s3\",
+                  \"settings\": {
+                    \"bucket\": \"${S3_BUCKET}\",
+                    \"region\": \"${S3_REGION}\",
+                    \"base_path\": \"elasticsearch-snapshots\"
+                  }
+                }"
+          envFrom:
+            - configMapRef:
+                name: es-snapshot-config
+          resources:
+            requests: { memory: "64Mi", cpu: "50m" }
+            limits:   { memory: "128Mi", cpu: "200m" }
+---
+# Scheduled snapshot — daily at 03:00 UTC, snapshot name carries the timestamp.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: es-snapshot
+  namespace: ecommerce
+spec:
+  schedule: "0 3 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: take-snapshot
+              image: curlimages/curl:8.7.1
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  SNAP="snap-$(date -u +%Y%m%dt%H%M%Sz)"
+                  curl -sf -X PUT "${ES_HOST}/_snapshot/${SNAPSHOT_REPO}/${SNAP}?wait_for_completion=true" \
+                    -H 'Content-Type: application/json' \
+                    -d '{ "indices": "*", "include_global_state": true }'
+              envFrom:
+                - configMapRef:
+                    name: es-snapshot-config
+              resources:
+                requests: { memory: "64Mi", cpu: "50m" }
+                limits:   { memory: "128Mi", cpu: "200m" }

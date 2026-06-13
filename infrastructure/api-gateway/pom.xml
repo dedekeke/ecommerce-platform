@@ -17,6 +17,12 @@
     <description>Spring Cloud Gateway with Auth0 integration for API routing and authentication</description>
 
     <dependencies>
+        <!-- Shared logback base (single physical copy lives in common-logging) -->
+        <dependency>
+            <groupId>com.ecommerce</groupId>
+            <artifactId>common-logging</artifactId>
+        </dependency>
+
         <!-- Spring Cloud Gateway -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

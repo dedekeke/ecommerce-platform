@@ -6,16 +6,14 @@ import com.ecommerce.orderservice.saga.refund.step.ReversePaymentStep;
 import com.ecommerce.orderservice.saga.refund.step.UpdateOrderStep;
 import com.ecommerce.orderservice.saga.refund.step.ValidateRefundStep;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Orchestration saga that coordinates a customer refund.
@@ -58,11 +56,16 @@ import java.util.concurrent.CompletableFuture;
 public class RefundOrchestrator {
 
     private final RefundSagaRepository sagaRepository;
+    private final RefundSagaRunner sagaRunner;
     private final Map<RefundSagaStep, SagaStep> stepsById;
     private final List<RefundSagaStep> stepOrder;
 
     public RefundOrchestrator(
         RefundSagaRepository sagaRepository,
+        // @Lazy breaks the orchestrator <-> runner cycle: the runner depends on
+        // the orchestrator (to call run()), and the orchestrator dispatches via
+        // the runner's @Async proxy. Lazy resolution defers wiring until first use.
+        @Lazy RefundSagaRunner sagaRunner,
         ValidateRefundStep validateStep,
         ReversePaymentStep reversePaymentStep,
         RestoreInventoryStep restoreInventoryStep,
@@ -70,6 +73,7 @@ public class RefundOrchestrator {
         NotifyRefundStep notifyRefundStep
     ) {
         this.sagaRepository = sagaRepository;
+        this.sagaRunner = sagaRunner;
         this.stepsById = new EnumMap<>(RefundSagaStep.class);
         this.stepsById.put(RefundSagaStep.VALIDATE, validateStep);
         this.stepsById.put(RefundSagaStep.REVERSE_PAYMENT, reversePaymentStep);
@@ -84,25 +88,52 @@ public class RefundOrchestrator {
      * sagaId to poll, then dispatches the actual run on a background thread.
      */
     public RefundSagaState startRefund(String orderId, String reason, String userEmail) {
+        return startRefund(orderId, reason, userEmail, null, null);
+    }
+
+    /**
+     * Public entry variant for partial / fee-adjusted refunds (RMA path).
+     *
+     * @param refundAmountOverride pre-computed refund base (e.g. sum of
+     *        approved return lines), or {@code null} to refund the full total
+     * @param restockingFeePercent fee 0..100 to deduct, or {@code null}
+     * @throws IllegalArgumentException if the fee is outside 0..100
+     */
+    public RefundSagaState startRefund(String orderId, String reason, String userEmail,
+                                       BigDecimal refundAmountOverride,
+                                       BigDecimal restockingFeePercent) {
+        validateRestockingFee(restockingFeePercent);
         RefundSagaState state = newSagaState(orderId, reason);
+        state.setRefundAmountOverride(refundAmountOverride);
+        state.setRestockingFeePercent(restockingFeePercent);
+        sagaRepository.save(state);
         RefundSagaContext ctx = RefundSagaContext.builder()
             .state(state)
             .orderId(orderId)
             .reason(reason)
             .userEmail(userEmail)
+            .refundAmountOverride(refundAmountOverride)
+            .restockingFeePercent(restockingFeePercent)
             .build();
-        runAsync(ctx);
+        // Dispatch through the dedicated @Async bean so the saga actually runs
+        // off-thread (a self-invocation would bypass the proxy and run inline).
+        sagaRunner.runAsync(ctx);
         return state;
     }
 
-    @Async
-    @Transactional(propagation = Propagation.NEVER)
-    public CompletableFuture<RefundSagaState> runAsync(RefundSagaContext ctx) {
-        return CompletableFuture.completedFuture(run(ctx));
+    private void validateRestockingFee(BigDecimal feePercent) {
+        if (feePercent == null) {
+            return;
+        }
+        if (feePercent.signum() < 0 || feePercent.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new IllegalArgumentException(
+                "restockingFeePercent must be between 0 and 100, got " + feePercent);
+        }
     }
 
     /**
-     * Synchronous variant — used by the recovery scheduler and by tests.
+     * Synchronous saga execution. Invoked off-thread by {@link RefundSagaRunner}
+     * for the live path, and directly by the recovery scheduler and tests.
      */
     public RefundSagaState run(RefundSagaContext ctx) {
         RefundSagaState state = ctx.getState();
@@ -152,6 +183,9 @@ public class RefundOrchestrator {
             .reason(state.getReason())
             .restorationId(state.getRestorationId())
             .refundTransactionId(state.getRefundTransactionId())
+            .refundAmount(state.getRefundAmount())
+            .refundAmountOverride(state.getRefundAmountOverride())
+            .restockingFeePercent(state.getRestockingFeePercent())
             .build();
         return run(ctx);
     }

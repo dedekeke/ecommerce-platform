@@ -127,6 +127,7 @@ jobs:
             -f helm/ecommerce/values-staging.yaml \
             --set global.imageRegistry=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
             --set global.imageTag=staging-${{ github.sha }} \
+            --set global.ingress.host=staging.${{ secrets.BASE_DOMAIN }} \
             -n ${{ env.K8S_NAMESPACE }} --create-namespace \
             --wait --timeout 10m
       - name: Smoke test

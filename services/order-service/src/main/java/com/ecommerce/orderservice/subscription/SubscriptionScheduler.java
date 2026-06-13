@@ -1,25 +1,19 @@
 package com.ecommerce.orderservice.subscription;
 
-import com.ecommerce.orderservice.domain.embedded.Address;
-import com.ecommerce.orderservice.domain.entity.OrderItem;
-import com.ecommerce.orderservice.service.OrderService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Polls the {@code subscriptions} table at a fixed interval and fires due
- * subscriptions through {@link OrderService} (§3.6).
+ * Polls the {@code subscriptions} table at a fixed interval and fires each due
+ * subscription through {@link SubscriptionRunner} — which wraps the order
+ * creation in its own {@code REQUIRES_NEW} transaction (§3.6).
  *
  * <p>Idempotency safeguard: a subscription whose {@code lastRunAt} is within
  * {@link #DEDUP_WINDOW} of "now" is skipped. This protects against the
@@ -44,21 +38,18 @@ public class SubscriptionScheduler {
     static final Duration DEDUP_WINDOW = Duration.ofHours(1);
 
     private final SubscriptionRepository subscriptionRepository;
-    private final OrderService orderService;
-    private final ObjectMapper objectMapper;
+    private final SubscriptionRunner subscriptionRunner;
     private final Clock clock;
     private final boolean enabled;
 
     public SubscriptionScheduler(
         SubscriptionRepository subscriptionRepository,
-        OrderService orderService,
-        ObjectMapper objectMapper,
+        SubscriptionRunner subscriptionRunner,
         Clock clock,
         @Value("${subscription.scheduler-enabled:true}") boolean enabled
     ) {
         this.subscriptionRepository = subscriptionRepository;
-        this.orderService = orderService;
-        this.objectMapper = objectMapper;
+        this.subscriptionRunner = subscriptionRunner;
         this.clock = clock;
         this.enabled = enabled;
     }
@@ -84,8 +75,12 @@ public class SubscriptionScheduler {
     /**
      * Visible for testability — drains all due subscriptions in one pass and
      * returns the count successfully processed.
+     *
+     * <p>This method is intentionally NOT {@code @Transactional}: each
+     * subscription is fired in its own {@code REQUIRES_NEW} transaction via
+     * {@link SubscriptionRunner#fireAndAdvance}, so one failure rolls back only
+     * that row and never poisons the rest of the batch.</p>
      */
-    @Transactional
     public int processDueSubscriptions() {
         LocalDateTime now = LocalDateTime.now(clock);
         List<Subscription> due = subscriptionRepository.findByStatusAndNextRunAtBefore(
@@ -98,13 +93,12 @@ public class SubscriptionScheduler {
                 continue;
             }
             try {
-                fireOrder(sub);
-                advance(sub, now);
+                subscriptionRunner.fireAndAdvance(sub, now);
                 processed++;
             } catch (RuntimeException ex) {
-                // One bad row should not block the rest — log and move on. The
-                // scheduler will retry next poll because next_run_at is
-                // unchanged.
+                // One bad row should not block the rest — log and move on. Its
+                // own transaction already rolled back, leaving next_run_at
+                // unchanged so the next poll retries it.
                 log.error("Failed to process subscription {}: {}", sub.getId(), ex.getMessage(), ex);
             }
         }
@@ -117,31 +111,5 @@ public class SubscriptionScheduler {
         }
         Duration sinceLastRun = Duration.between(sub.getLastRunAt(), now);
         return !sinceLastRun.isNegative() && sinceLastRun.compareTo(DEDUP_WINDOW) < 0;
-    }
-
-    private void fireOrder(Subscription sub) {
-        Address address = parseAddress(sub.getShippingAddressJson());
-        OrderItem item = OrderItem.builder()
-            .productId(sub.getProductId())
-            .productName("Subscription product " + sub.getProductId())
-            .price(BigDecimal.ZERO)
-            .quantity(sub.getQuantity())
-            .build();
-        orderService.createOrder(sub.getUserId(), List.of(item), address, null);
-    }
-
-    private Address parseAddress(String json) {
-        try {
-            return objectMapper.readValue(json, Address.class);
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException(
-                "Subscription has malformed shippingAddressJson: " + ex.getMessage(), ex);
-        }
-    }
-
-    private void advance(Subscription sub, LocalDateTime now) {
-        sub.setLastRunAt(now);
-        sub.setNextRunAt(sub.getNextRunAt().plusDays(sub.getIntervalDays()));
-        subscriptionRepository.save(sub);
     }
 }

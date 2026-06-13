@@ -6,29 +6,41 @@ namespace: ecommerce-staging
 resources:
   - ../../base
 
-# Staging-specific image tags. CI replaces these with the actual tag at deploy time.
+# Registry is env-driven (${IMAGE_REGISTRY}); rendered via envsubst/CI before build.
+# Staging-specific image tags. CI replaces newTag with the actual tag at deploy time.
 images:
   - name: ecommerce/api-gateway
+    newName: ${IMAGE_REGISTRY}/api-gateway
     newTag: staging-latest
   - name: ecommerce/user-service
+    newName: ${IMAGE_REGISTRY}/user-service
     newTag: staging-latest
   - name: ecommerce/product-service
+    newName: ${IMAGE_REGISTRY}/product-service
     newTag: staging-latest
   - name: ecommerce/cart-service
+    newName: ${IMAGE_REGISTRY}/cart-service
     newTag: staging-latest
   - name: ecommerce/order-service
+    newName: ${IMAGE_REGISTRY}/order-service
     newTag: staging-latest
   - name: ecommerce/payment-service
+    newName: ${IMAGE_REGISTRY}/payment-service
     newTag: staging-latest
   - name: ecommerce/inventory-service
+    newName: ${IMAGE_REGISTRY}/inventory-service
     newTag: staging-latest
   - name: ecommerce/notification-service
+    newName: ${IMAGE_REGISTRY}/notification-service
     newTag: staging-latest
   - name: ecommerce/search-service
+    newName: ${IMAGE_REGISTRY}/search-service
     newTag: staging-latest
   - name: ecommerce/media-service
+    newName: ${IMAGE_REGISTRY}/media-service
     newTag: staging-latest
   - name: ecommerce/promotion-service
+    newName: ${IMAGE_REGISTRY}/promotion-service
     newTag: staging-latest
 
 patches:

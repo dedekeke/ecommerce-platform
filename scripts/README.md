@@ -7,6 +7,7 @@ This directory contains shell scripts to help with local development and testing
 | Script | Description | Usage |
 |--------|-------------|-------|
 | `ci-local.sh` | Local CI replacement (backend + frontend + infra lint) | `./ci-local.sh [--backend\|--frontend\|--infra] [--quick]` |
+| `test-frontend-all.sh` | Run every micro-frontend's test suite (auto-detects React/Angular) | `./test-frontend-all.sh [--affected] [--lint]` |
 | `setup-local-dev.sh` | Setup local development environment | `./setup-local-dev.sh` |
 | `build-all.sh` | Build all services | `./build-all.sh [--test] [--deploy]` |
 | `run-service.sh` | Run a single service | `./run-service.sh <service-name>` |
@@ -356,6 +357,49 @@ Runs integration tests with menu interface.
 - `concurrent` - Concurrent order tests
 - `performance` - Performance tests
 - `load` - Load tests
+
+#### test-frontend-all.sh
+```bash
+./scripts/test-frontend-all.sh            # run every MFE's test suite
+./scripts/test-frontend-all.sh --affected # only MFEs with staged changes (pre-commit)
+./scripts/test-frontend-all.sh --lint     # also run lint where a lint script exists
+```
+Auto-discovers each `frontend/*` package and runs the right runner per framework
+(React/Vite -> `vitest --run`, Angular -> `ng test` headless). This is the same set
+of suites the `Quality` GitHub Actions workflow runs.
+
+---
+
+## Optional pre-commit hook
+
+A husky-style pre-commit hook lives at `.husky/pre-commit`. It is **opt-in** and not
+installed automatically. It runs `test-frontend-all.sh --affected`, so backend-only
+commits are a fast no-op.
+
+Enable it with plain git (no extra tooling):
+```bash
+git config core.hooksPath .husky
+```
+Or, once a root `package.json` with husky is added: `npx husky install`.
+
+Bypass for a single commit with `git commit --no-verify`; disable with
+`git config --unset core.hooksPath`.
+
+---
+
+## Security: OWASP dependency-check
+
+The OWASP `dependency-check-maven` plugin is wired in the parent `pom.xml` under the
+`security` profile (it does **not** run on a normal build). It fails the build on any
+dependency with CVSS >= 7.0; false positives go in `dependency-check-suppressions.xml`
+at the repo root (with justification).
+
+```bash
+mvn -Psecurity verify                       # full scan (cold NVD download is slow)
+mvn -Psecurity verify -Dnvd.api.key=$KEY     # faster + avoids NVD rate limiting
+```
+In CI the gate runs in the `Quality` workflow; provide an `NVD_API_KEY` Actions secret
+to speed up the NVD feed download. HTML/SARIF reports land in `target/`.
 
 ---
 

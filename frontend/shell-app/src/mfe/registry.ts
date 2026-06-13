@@ -44,6 +44,7 @@ export const mfeRegistry: Record<MFEName, MFEConfig> = {
     fallbackSkeleton: 'profile',
     requiresAuth: true,
     runtime: 'native',
+    basePath: '/profile',
   },
   adminDashboard: {
     name: 'adminDashboard',
@@ -54,6 +55,7 @@ export const mfeRegistry: Record<MFEName, MFEConfig> = {
     requiresAuth: true,
     requiredRoles: ['admin'],
     runtime: 'native',
+    basePath: '/admin',
   },
 }
 

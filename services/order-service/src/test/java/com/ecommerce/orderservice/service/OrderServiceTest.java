@@ -132,6 +132,60 @@ class OrderServiceTest {
     }
 
     @Test
+    void should_applyLoyaltyDiscountAndReduceTotal_when_userHasTier() {
+        when(orderNumberGenerator.generateOrderNumber()).thenReturn("ORD-2026-00100");
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+        // 10% loyalty tier on a $50 subtotal -> $5 off.
+        when(promotionServiceClient.getLoyaltyDiscountPercent(userId))
+            .thenReturn(BigDecimal.valueOf(10));
+
+        Order order = orderService.createOrder(userId, orderItems, shippingAddress, null);
+
+        assertEquals(0, BigDecimal.valueOf(5.00).compareTo(order.getLoyaltyDiscount()));
+        // Tax is computed on the post-discount taxable amount (45 = 50 - 5),
+        // so tax = 45 * 0.08 = 3.60.
+        assertEquals(0, BigDecimal.valueOf(3.60).compareTo(order.getTax()));
+        // subtotal 50 - loyalty 5 + tax 3.60 + shipping 0 (free over 50) = 48.60
+        assertEquals(0, BigDecimal.valueOf(48.60).compareTo(order.getTotal()));
+    }
+
+    @Test
+    void should_leaveLoyaltyDiscountNull_when_noTierDiscount() {
+        when(orderNumberGenerator.generateOrderNumber()).thenReturn("ORD-2026-00101");
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+        when(promotionServiceClient.getLoyaltyDiscountPercent(userId))
+            .thenReturn(BigDecimal.ZERO);
+
+        Order order = orderService.createOrder(userId, orderItems, shippingAddress, null);
+
+        assertNull(order.getLoyaltyDiscount());
+        assertEquals(0, BigDecimal.valueOf(54.00).compareTo(order.getTotal()));
+    }
+
+    @Test
+    void should_applyLoyaltyOnPostPromotionSubtotal_when_bothDiscountsPresent() {
+        when(orderNumberGenerator.generateOrderNumber()).thenReturn("ORD-2026-00102");
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+        when(promotionServiceClient.validatePromotion(any(PromotionValidationRequest.class)))
+            .thenReturn(DiscountResult.builder()
+                .valid(true)
+                .discountAmount(BigDecimal.valueOf(10.00))
+                .build());
+        // 10% loyalty applies to (50 - 10) = 40 -> $4 off.
+        when(promotionServiceClient.getLoyaltyDiscountPercent(userId))
+            .thenReturn(BigDecimal.valueOf(10));
+
+        Order order = orderService.createOrder(userId, orderItems, shippingAddress, "SAVE10");
+
+        assertEquals(0, BigDecimal.valueOf(4.00).compareTo(order.getLoyaltyDiscount()));
+        // Tax base = postPromotionSubtotal - loyalty = (50 - 10) - 4 = 36,
+        // so tax = 36 * 0.08 = 2.88.
+        assertEquals(0, BigDecimal.valueOf(2.88).compareTo(order.getTax()));
+        // 50 - 10 (promo) - 4 (loyalty) + 2.88 (tax) + 0 (shipping) = 38.88
+        assertEquals(0, BigDecimal.valueOf(38.88).compareTo(order.getTotal()));
+    }
+
+    @Test
     void testCreateOrder_WithShippingCost() {
         // Arrange - order under free shipping threshold
         orderItems.get(0).setQuantity(1); // $25 total

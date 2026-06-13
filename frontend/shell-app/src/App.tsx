@@ -3,8 +3,7 @@ import { useAuth0 } from '@auth0/auth0-react'
 import { useTranslation } from 'react-i18next'
 import { Typography, Box, Paper, Grid } from '@mui/material'
 import { MainLayout } from './components/layout'
-import { ProtectedRoute } from './components/auth'
-import { RoleGuard } from './components/auth/RoleGuard'
+import { ProtectedRoute, MFERouteGuard } from './components/auth'
 import { PageSkeleton, NotFound, RouteProgressBar, PageTransition } from './components/common'
 import { useCartStore, selectCartItemCount } from './stores'
 import { MicroFrontendLoader, MFEErrorBoundary, useMFEPreload, type MFEName } from './mfe'
@@ -162,15 +161,13 @@ function App() {
             <Route
               path="/admin/*"
               element={
-                <ProtectedRoute>
-                  <RoleGuard requiredRoles={['admin']}>
-                    <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
-                      <MFEErrorBoundary mfeName="adminDashboard">
-                        <MicroFrontendLoader mfeName="adminDashboard" />
-                      </MFEErrorBoundary>
-                    </Box>
-                  </RoleGuard>
-                </ProtectedRoute>
+                <MFERouteGuard mfeName="adminDashboard">
+                  <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
+                    <MFEErrorBoundary mfeName="adminDashboard">
+                      <MicroFrontendLoader mfeName="adminDashboard" />
+                    </MFEErrorBoundary>
+                  </Box>
+                </MFERouteGuard>
               }
             />
             <Route path="*" element={<NotFound />} />

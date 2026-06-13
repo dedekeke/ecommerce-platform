@@ -31,3 +31,17 @@ export interface Order {
   totalAmount: number
   createdAt?: string
 }
+
+export interface CreatePaymentIntentPayload {
+  orderId: string
+  userId: string
+  amount: number
+  currency: string
+}
+
+export interface PaymentIntentResponse {
+  paymentId: number
+  paymentIntentId: string
+  clientSecret: string
+  status: string
+}

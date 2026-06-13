@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -63,8 +65,38 @@ public class ValidateRefundStep implements SagaStep {
         ctx.setUserId(order.getUserId());
         ctx.setOrderNumber(order.getOrderNumber());
         ctx.setPaymentIntentId(order.getPaymentIntentId());
-        ctx.setRefundAmount(order.getTotal());
-        log.info("Refund validation OK for order {}", order.getOrderNumber());
+        BigDecimal refundAmount = computeRefundAmount(ctx, order);
+        ctx.setRefundAmount(refundAmount);
+        // Persist on the saga state so a resumed run (which skips this step)
+        // still has the amount for the payment-reversal / compensation steps.
+        if (ctx.getState() != null) {
+            ctx.getState().setRefundAmount(refundAmount);
+        }
+        log.info("Refund validation OK for order {} — amount {}",
+            order.getOrderNumber(), refundAmount);
         return StepResult.ok();
+    }
+
+    /**
+     * Refund base is the override (partial-return approved-line total) when
+     * present, else the full order total. A restocking fee percentage, if
+     * set, is then deducted. The result is clamped to non-negative and scaled
+     * to 2 decimals.
+     */
+    private BigDecimal computeRefundAmount(RefundSagaContext ctx, Order order) {
+        BigDecimal base = ctx.getRefundAmountOverride() != null
+            ? ctx.getRefundAmountOverride()
+            : order.getTotal();
+        if (base == null) {
+            base = BigDecimal.ZERO;
+        }
+
+        BigDecimal fee = ctx.getRestockingFeePercent();
+        if (fee != null && fee.signum() > 0) {
+            BigDecimal keepRatio = BigDecimal.ONE.subtract(
+                fee.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP));
+            base = base.multiply(keepRatio);
+        }
+        return base.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
     }
 }

@@ -1,7 +1,7 @@
 global:
   imageTag: "1.0.0"
   ingress:
-    host: example.com  # TODO replace
+    host: "${BASE_DOMAIN}"  # rendered from env at deploy time; never hardcode the real domain
 
 api-gateway:
   replicaCount: 2

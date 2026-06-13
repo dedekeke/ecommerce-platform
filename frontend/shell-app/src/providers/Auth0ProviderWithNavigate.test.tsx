@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Auth0ProviderWithNavigate } from './Auth0ProviderWithNavigate'
+import type { Auth0ProviderWithConfigOptions } from '@auth0/auth0-react'
 
 vi.mock('@auth0/auth0-react', () => ({
   Auth0Provider: vi.fn(({ children }) => <div data-testid="auth0-provider">{children}</div>),
@@ -45,7 +46,7 @@ describe('Auth0ProviderWithNavigate', () => {
       </MemoryRouter>
     )
 
-    const callArgs = mockedAuth0Provider.mock.calls[0][0]
+    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderWithConfigOptions
     expect(callArgs.domain).toBe('test.auth0.com')
     expect(callArgs.clientId).toBe('test-client-id')
   })
@@ -59,10 +60,8 @@ describe('Auth0ProviderWithNavigate', () => {
       </MemoryRouter>
     )
 
-    const callArgs = mockedAuth0Provider.mock.calls[0][0]
+    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderWithConfigOptions
     expect(callArgs.authorizationParams).toBeDefined()
-    // Use optional chaining (?.) to safely access nested properties
-    // This tells TypeScript: "only access if authorizationParams exists"
     expect(callArgs.authorizationParams?.audience).toBe('https://test-api.example.com')
     expect(callArgs.authorizationParams?.redirect_uri).toBeDefined()
   })
@@ -76,7 +75,7 @@ describe('Auth0ProviderWithNavigate', () => {
       </MemoryRouter>
     )
 
-    const callArgs = mockedAuth0Provider.mock.calls[0][0]
+    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderWithConfigOptions
     expect(callArgs.cacheLocation).toBe('memory')
   })
 
@@ -89,7 +88,7 @@ describe('Auth0ProviderWithNavigate', () => {
       </MemoryRouter>
     )
 
-    const callArgs = mockedAuth0Provider.mock.calls[0][0]
+    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderWithConfigOptions
     expect(callArgs.useRefreshTokens).toBe(true)
   })
 })

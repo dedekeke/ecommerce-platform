@@ -128,12 +128,33 @@ public class OrderService {
             }
         }
 
-        // Calculate tax
-        BigDecimal tax = subtotal.multiply(BigDecimal.valueOf(taxRate))
+        // Apply loyalty tier discount on the post-promotion subtotal. The
+        // percent is sourced from promotion-service and degrades to zero when
+        // that service is unavailable, so checkout never blocks on it.
+        BigDecimal postPromotionSubtotal = discountAmount != null
+            ? subtotal.subtract(discountAmount).max(BigDecimal.ZERO)
+            : subtotal;
+        BigDecimal loyaltyDiscount = calculateLoyaltyDiscount(userId, postPromotionSubtotal);
+
+        // CHOSEN BEHAVIOR: tax is levied on the post-discount taxable amount,
+        // i.e. (postPromotionSubtotal - loyaltyDiscount) floored at 0, NOT on
+        // the gross subtotal. Promo + loyalty discounts therefore reduce the
+        // taxable base, so the customer is not taxed on money they never paid.
+        // (Tax-on-discounted-subtotal is a jurisdiction-dependent policy —
+        // flagged for product confirmation.)
+        BigDecimal taxableAmount = postPromotionSubtotal.subtract(loyaltyDiscount)
+            .max(BigDecimal.ZERO);
+        BigDecimal tax = taxableAmount.multiply(BigDecimal.valueOf(taxRate))
             .setScale(2, RoundingMode.HALF_UP);
 
-        // Calculate shipping cost
+        // Shipping is assessed on the gross subtotal (free-shipping threshold
+        // is a merchandising decision, intentionally independent of discounts).
         BigDecimal shippingCost = calculateShippingCost(subtotal);
+
+        BigDecimal discountTotal = (discountAmount != null ? discountAmount : BigDecimal.ZERO)
+            .add(loyaltyDiscount);
+        BigDecimal total = subtotal.subtract(discountTotal).max(BigDecimal.ZERO)
+            .add(tax).add(shippingCost);
 
         // Build order
         Order order = Order.builder()
@@ -142,11 +163,12 @@ public class OrderService {
             .subtotal(subtotal)
             .tax(tax)
             .shippingCost(shippingCost)
-            .total(subtotal.add(tax).add(shippingCost))
+            .total(total)
             .status(OrderStatus.PENDING)
             .shippingAddress(shippingAddress)
             .promotionCode(validPromotionCode)
             .discountAmount(discountAmount)
+            .loyaltyDiscount(loyaltyDiscount.signum() > 0 ? loyaltyDiscount : null)
             .build();
 
         // Add items to order
@@ -301,6 +323,25 @@ public class OrderService {
         order.calculateTotals(); // Recalculate totals with discount
 
         return orderRepository.save(order);
+    }
+
+    /**
+     * Resolve the loyalty tier discount as an absolute amount off the given
+     * base. Returns {@link BigDecimal#ZERO} when no discount applies (unknown
+     * user, no tier, or promotion-service unavailable).
+     */
+    private BigDecimal calculateLoyaltyDiscount(String userId, BigDecimal base) {
+        if (base == null || base.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal percent = promotionServiceClient.getLoyaltyDiscountPercent(userId);
+        if (percent == null || percent.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal discount = base.multiply(percent)
+            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        log.info("Applying loyalty discount {} ({}%) for user {}", discount, percent, userId);
+        return discount;
     }
 
     /**

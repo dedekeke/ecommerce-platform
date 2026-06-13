@@ -45,3 +45,8 @@ declare module 'adminDashboard/AdminDashboard' {
 interface Window {
   __getAuthToken?: () => Promise<string | null>
 }
+
+/** Minimal process declaration for Vitest's `vi.stubEnv` compatibility (no @types/node needed). */
+declare const process: {
+  env: Record<string, string | undefined>
+}

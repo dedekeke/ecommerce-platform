@@ -1,16 +1,29 @@
 # Default umbrella values. Each subchart inherits its values from the matching key here.
 # Overridable via -f values-staging.yaml / values-prod.yaml or --set.
 
+# Container registry is environment-driven (project rule: no hardcoded env-specific values).
+# CI/deploy renders ${IMAGE_REGISTRY} (default ghcr.io/ecommerce-platform) before `helm upgrade`,
+# or pass --set global.imageRegistry=$IMAGE_REGISTRY. Image refs become
+# <imageRegistry>/<service>:<imageTag> via the shared `svc.image` helper.
 global:
-  imageRegistry: "ecommerce"   # placeholder; replace with private registry, e.g. ghcr.io/your-org
+  # Empty by default so an unset registry fails loudly via the svc.image `required` guard
+  # instead of silently baking in a placeholder. Must be set at deploy time
+  # (--set global.imageRegistry=$IMAGE_REGISTRY).
+  imageRegistry: ""
   imageTag: "1.0.0"
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   namespace: ecommerce
   ingress:
     enabled: true
-    host: example.com  # TODO replace
+    # Base domain is environment-driven and has no default; it MUST be supplied at deploy time
+    # (--set global.ingress.host=$BASE_DOMAIN). An empty value fails the `required` guard in
+    # templates/ingress.yaml so a release never ships a placeholder/literal host.
+    host: ""
     className: nginx
+    # ACME e-mail for the cert-manager ClusterIssuer is env-driven (${ACME_EMAIL}); see k8s/cert-manager.
+    certManager:
+      clusterIssuer: letsencrypt-prod
     tls:
       enabled: true
       secretName: ecommerce-tls
@@ -21,7 +34,7 @@ api-gateway:
     name: api-gateway
     port: 8080
   image:
-    repository: ecommerce/api-gateway
+    repository: api-gateway
   replicaCount: 1
   resources:
     requests: { memory: "256Mi", cpu: "200m" }
@@ -33,7 +46,7 @@ user-service: &svc-defaults
     name: user-service
     port: 8081
   image:
-    repository: ecommerce/user-service
+    repository: user-service
   replicaCount: 1
   resources:
     requests: { memory: "256Mi", cpu: "100m" }
@@ -42,7 +55,7 @@ user-service: &svc-defaults
 product-service:
   <<: *svc-defaults
   service: { name: product-service, port: 8082 }
-  image: { repository: ecommerce/product-service }
+  image: { repository: product-service }
   hpa:
     enabled: true
     minReplicas: 2
@@ -52,12 +65,12 @@ product-service:
 cart-service:
   <<: *svc-defaults
   service: { name: cart-service, port: 8083 }
-  image: { repository: ecommerce/cart-service }
+  image: { repository: cart-service }
 
 order-service:
   <<: *svc-defaults
   service: { name: order-service, port: 8084 }
-  image: { repository: ecommerce/order-service }
+  image: { repository: order-service }
   hpa:
     enabled: true
     minReplicas: 2
@@ -67,7 +80,7 @@ order-service:
 payment-service:
   <<: *svc-defaults
   service: { name: payment-service, port: 8085 }
-  image: { repository: ecommerce/payment-service }
+  image: { repository: payment-service }
   hpa:
     enabled: true
     minReplicas: 2
@@ -77,24 +90,24 @@ payment-service:
 inventory-service:
   <<: *svc-defaults
   service: { name: inventory-service, port: 8086 }
-  image: { repository: ecommerce/inventory-service }
+  image: { repository: inventory-service }
 
 notification-service:
   <<: *svc-defaults
   service: { name: notification-service, port: 8087 }
-  image: { repository: ecommerce/notification-service }
+  image: { repository: notification-service }
 
 search-service:
   <<: *svc-defaults
   service: { name: search-service, port: 8088 }
-  image: { repository: ecommerce/search-service }
+  image: { repository: search-service }
 
 media-service:
   <<: *svc-defaults
   service: { name: media-service, port: 8089 }
-  image: { repository: ecommerce/media-service }
+  image: { repository: media-service }
 
 promotion-service:
   <<: *svc-defaults
   service: { name: promotion-service, port: 8090 }
-  image: { repository: ecommerce/promotion-service }
+  image: { repository: promotion-service }

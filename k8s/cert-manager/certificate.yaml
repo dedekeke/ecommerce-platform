@@ -1,0 +1,22 @@
+# TLS certificate for the platform domain, issued by the letsencrypt-prod ClusterIssuer.
+# The Ingress (k8s/base/ingress/ingress.yaml) references the resulting Secret `ecommerce-tls`.
+# Domain is env-driven: render via `envsubst < certificate.yaml | kubectl apply -f -`.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ecommerce-tls
+  namespace: ecommerce
+spec:
+  secretName: ecommerce-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: ${BASE_DOMAIN}
+  dnsNames:
+    - ${BASE_DOMAIN}
+    - api.${BASE_DOMAIN}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  duration: 2160h    # 90d
+  renewBefore: 360h  # 15d

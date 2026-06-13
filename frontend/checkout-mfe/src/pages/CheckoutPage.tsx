@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Container from '@mui/material/Container'
@@ -7,13 +7,23 @@ import Alert from '@mui/material/Alert'
 import { useCheckout } from '../hooks/useCheckout'
 import { useCartStore, selectCartItems, selectCartTotal } from '../stores/cartStore'
 import { createOrder } from '../api/orderService'
+import { isStripeEnabled } from '../config/payments'
 import AddressForm from '../components/AddressForm'
 import PaymentMethodForm from '../components/PaymentMethodForm'
+import StripeCheckout from '../components/StripeCheckout'
 import OrderReview from '../components/OrderReview'
 import CheckoutStepper from '../components/CheckoutStepper'
 import type { ShippingAddress } from '../api/types'
 
 const STEPS = ['Shipping', 'Payment', 'Review']
+
+const USER_ID = 'guest'
+
+const computeTotal = (subtotal: number) => {
+  const tax = subtotal * 0.1
+  const shipping = subtotal >= 50 ? 0 : 5
+  return subtotal + tax + shipping
+}
 
 export default function CheckoutPage() {
   const navigate = useNavigate()
@@ -37,6 +47,13 @@ export default function CheckoutPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  const stripeEnabled = isStripeEnabled()
+  // Stable draft order id for the PaymentIntent's idempotency/correlation, created once per session.
+  const draftOrderId = useMemo(
+    () => (stripeEnabled ? `draft-${crypto.randomUUID()}` : ''),
+    [stripeEnabled]
+  )
+
   const handleNext = async () => {
     if (!isLastStep) {
       goNext()
@@ -46,14 +63,12 @@ export default function CheckoutPage() {
     setIsSubmitting(true)
     setSubmitError(null)
     try {
-      const tax = subtotal * 0.1
-      const shipping = subtotal >= 50 ? 0 : 5
       const order = await createOrder({
-        userId: 'guest',
+        userId: USER_ID,
         items: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity, price: i.price })),
         shippingAddress: address,
         paymentMethodId,
-        totalAmount: subtotal + tax + shipping,
+        totalAmount: computeTotal(subtotal),
       })
       reset()
       navigate(`confirmation/${order.id}`)
@@ -91,9 +106,18 @@ export default function CheckoutPage() {
             />
           )}
 
-          {step === 1 && (
-            <PaymentMethodForm onPaymentMethodReady={setPaymentMethod} />
-          )}
+          {step === 1 &&
+            (stripeEnabled ? (
+              <StripeCheckout
+                orderId={draftOrderId}
+                userId={USER_ID}
+                amount={computeTotal(subtotal)}
+                currency="USD"
+                onConfirmed={(paymentIntentId) => setPaymentMethod(paymentIntentId)}
+              />
+            ) : (
+              <PaymentMethodForm onPaymentMethodReady={setPaymentMethod} />
+            ))}
 
           {step === 2 && address && paymentMethodId && (
             <OrderReview address={address} paymentMethodId={paymentMethodId} />
