@@ -5,10 +5,12 @@ import com.ecommerce.orderservice.domain.enums.OrderStatus;
 import com.ecommerce.orderservice.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -16,17 +18,28 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Security tests for OrderController.
  *
- * Verifies that status-update mutations are restricted to admin users and that
- * unauthenticated or under-privileged callers receive the correct denial status.
+ * Boots the real Spring Security filter chain ({@code security.enabled=true}) so
+ * the JWT-scope authorization on the status-update endpoint is exercised end to
+ * end: unauthenticated callers get 401, authenticated callers without
+ * {@code SCOPE_admin} get 403, and admin-scoped callers succeed. The JwtDecoder
+ * is mocked so the resource server starts without contacting Auth0; the
+ * authenticated principal is supplied via the {@code jwt()} post-processor.
  */
-@WebMvcTest(OrderController.class)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@AutoConfigureMockMvc
 @ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "security.enabled=true",
+        "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://test-tenant.auth0.com/",
+        "grpc.server.port=-1"
+})
 class OrderControllerSecurityTest {
 
     @Autowired
@@ -35,9 +48,8 @@ class OrderControllerSecurityTest {
     @MockBean
     private OrderService orderService;
 
-    // ---------------------------------------------------------------------------
-    // PUT /api/orders/{orderId}/status
-    // ---------------------------------------------------------------------------
+    @MockBean
+    private JwtDecoder jwtDecoder;
 
     @Test
     void updateOrderStatus_unauthenticated_returns401() throws Exception {
@@ -50,18 +62,17 @@ class OrderControllerSecurityTest {
     }
 
     @Test
-    @WithMockUser(roles = "USER")
     void updateOrderStatus_authenticatedWithoutAdminScope_returns403() throws Exception {
         mockMvc.perform(
                 put("/api/orders/order-123/status")
-                    .param("status", "SHIPPED"))
+                    .param("status", "SHIPPED")
+                    .with(jwt().jwt(jwt -> jwt.claim("scope", "read:orders"))))
             .andExpect(status().isForbidden());
 
         verify(orderService, never()).updateOrderStatus(any(), any());
     }
 
     @Test
-    @WithMockUser(authorities = "SCOPE_admin")
     void updateOrderStatus_authenticatedWithAdminScope_returns200() throws Exception {
         Order updated = new Order();
         updated.setId("order-123");
@@ -71,7 +82,8 @@ class OrderControllerSecurityTest {
 
         mockMvc.perform(
                 put("/api/orders/order-123/status")
-                    .param("status", "SHIPPED"))
+                    .param("status", "SHIPPED")
+                    .with(jwt().authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_admin"))))
             .andExpect(status().isOk());
 
         verify(orderService).updateOrderStatus("order-123", OrderStatus.SHIPPED);

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration tests for CategoryRepository using Testcontainers.
  */
 @DataJpaTest
+@ContextConfiguration(classes = RepositoryTestConfig.class)
 @Testcontainers
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class CategoryRepositoryTest {
@@ -41,6 +43,9 @@ class CategoryRepositoryTest {
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    @Autowired
+    private org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager entityManager;
 
     private Category electronics;
     private Category computers;
@@ -90,6 +95,15 @@ class CategoryRepositoryTest {
             .displayOrder(2)
             .build();
         clothing = categoryRepository.save(clothing);
+
+        // Flush and clear so reloaded entities reflect the persisted bidirectional
+        // hierarchy (the children collections are populated on fresh fetch).
+        entityManager.flush();
+        entityManager.clear();
+        electronics = categoryRepository.findById(electronics.getId()).orElseThrow();
+        computers = categoryRepository.findById(computers.getId()).orElseThrow();
+        laptops = categoryRepository.findById(laptops.getId()).orElseThrow();
+        clothing = categoryRepository.findById(clothing.getId()).orElseThrow();
     }
 
     @Test

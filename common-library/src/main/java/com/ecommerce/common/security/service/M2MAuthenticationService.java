@@ -5,6 +5,7 @@ import com.ecommerce.common.security.model.M2MToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
@@ -16,10 +17,13 @@ import java.util.Map;
 
 /**
  * Service for obtaining M2M access tokens from Auth0 using Client Credentials flow.
- * Used for service-to-service authentication.
+ * Used for service-to-service authentication. Only active when Auth0 M2M is
+ * configured ({@code auth0.m2m.client-id}); otherwise it (and the cached variant)
+ * back off so services/slices without M2M don't require its collaborators.
  */
 @Slf4j
 @Service
+@ConditionalOnProperty(prefix = "auth0.m2m", name = "client-id")
 @RequiredArgsConstructor
 public class M2MAuthenticationService {
 

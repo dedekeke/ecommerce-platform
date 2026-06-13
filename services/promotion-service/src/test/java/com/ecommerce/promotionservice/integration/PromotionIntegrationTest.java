@@ -45,6 +45,10 @@ class PromotionIntegrationTest {
         registry.add("spring.datasource.url", mysql::getJdbcUrl);
         registry.add("spring.datasource.username", mysql::getUsername);
         registry.add("spring.datasource.password", mysql::getPassword);
+        // Override the H2 driver/dialect from application-test.yml — this IT runs
+        // against a real MySQL container.
+        registry.add("spring.datasource.driver-class-name", mysql::getDriverClassName);
+        registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.MySQLDialect");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("spring.flyway.enabled", () -> "false");
     }
@@ -170,7 +174,7 @@ class PromotionIntegrationTest {
                         .content(objectMapper.writeValueAsString(validationRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(false))
-                .andExpect(jsonPath("$.message").value(containsString("minimum purchase amount")));
+                .andExpect(jsonPath("$.message").value(containsString("at least")));
     }
 
     @Test

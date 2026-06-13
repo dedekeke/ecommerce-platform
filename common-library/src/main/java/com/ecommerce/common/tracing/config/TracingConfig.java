@@ -7,6 +7,7 @@ import brave.baggage.CorrelationScopeConfig;
 import brave.context.slf4j.MDCScopeDecorator;
 import brave.propagation.B3Propagation;
 import brave.propagation.CurrentTraceContext;
+import com.ecommerce.common.tracing.filter.CorrelationIdFilter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -101,5 +102,18 @@ public class TracingConfig {
                 .name("requestId")
                 .flushOnUpdate()
                 .build();
+    }
+
+    /**
+     * Servlet filter that stamps correlation/request/user IDs onto the baggage
+     * fields and MDC. Registered here so it shares this config's lifecycle and
+     * its {@link BaggageField} dependencies.
+     */
+    @Bean
+    public CorrelationIdFilter correlationIdFilter(
+            BaggageField correlationIdField,
+            BaggageField requestIdField,
+            BaggageField userIdField) {
+        return new CorrelationIdFilter(correlationIdField, requestIdField, userIdField);
     }
 }

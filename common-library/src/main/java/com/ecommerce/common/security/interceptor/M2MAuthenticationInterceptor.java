@@ -3,6 +3,7 @@ package com.ecommerce.common.security.interceptor;
 import com.ecommerce.common.security.service.CachedM2MAuthenticationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
@@ -13,10 +14,12 @@ import java.io.IOException;
 
 /**
  * Interceptor that automatically adds M2M authentication token to outgoing HTTP requests.
- * Useful for RestTemplate-based service-to-service communication.
+ * Useful for RestTemplate-based service-to-service communication. Only active when
+ * Auth0 M2M is configured ({@code auth0.m2m.client-id}).
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "auth0.m2m", name = "client-id")
 @RequiredArgsConstructor
 public class M2MAuthenticationInterceptor implements ClientHttpRequestInterceptor {
 

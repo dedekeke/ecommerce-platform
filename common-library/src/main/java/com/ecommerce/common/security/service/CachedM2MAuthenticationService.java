@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -16,7 +15,6 @@ import java.util.concurrent.TimeUnit;
  * Stores tokens in Redis to avoid unnecessary calls to Auth0.
  */
 @Slf4j
-@Service
 @RequiredArgsConstructor
 public class CachedM2MAuthenticationService {
 

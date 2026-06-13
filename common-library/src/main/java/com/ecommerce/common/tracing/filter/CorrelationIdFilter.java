@@ -7,7 +7,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -16,8 +15,14 @@ import java.util.UUID;
  * Filter to ensure correlation IDs are present in all requests.
  * Generates a new correlation ID if one is not provided.
  * Adds correlation ID to response headers for client tracking.
+ *
+ * <p>Not a {@code @Component}: it is registered as a {@code @Bean} by
+ * {@link com.ecommerce.common.tracing.config.TracingConfig}, which only loads
+ * when tracing is enabled and the {@link BaggageField} beans exist. This keeps
+ * the filter and its baggage dependencies enabled/disabled together, so sliced
+ * or integration tests with tracing off don't fail on an unsatisfied
+ * {@code BaggageField} dependency.
  */
-@Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class CorrelationIdFilter implements Filter {
 

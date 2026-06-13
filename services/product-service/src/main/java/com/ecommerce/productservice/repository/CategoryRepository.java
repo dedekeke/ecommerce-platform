@@ -45,12 +45,15 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     /**
      * Finds subcategories up to 3 levels deep via explicit parent chain traversal.
-     * A recursive CTE would be cleaner but requires DB-specific SQL; this JPQL
-     * keeps the code portable across H2 (tests) and MySQL (prod).
+     * Uses LEFT JOINs so categories whose ancestor chain is shorter than 3 levels
+     * (e.g. a direct child has no grandparent) are not dropped by implicit inner
+     * joins. A recursive CTE would be cleaner but requires DB-specific SQL; this
+     * JPQL keeps the code portable across H2 (tests) and MySQL (prod).
      */
-    @Query("SELECT c FROM Category c WHERE " +
-           "c.parent.id = :categoryId OR " +
-           "c.parent.parent.id = :categoryId OR " +
-           "c.parent.parent.parent.id = :categoryId")
+    @Query("SELECT c FROM Category c " +
+           "LEFT JOIN c.parent p1 " +
+           "LEFT JOIN p1.parent p2 " +
+           "LEFT JOIN p2.parent p3 " +
+           "WHERE p1.id = :categoryId OR p2.id = :categoryId OR p3.id = :categoryId")
     List<Category> findAllSubcategories(@Param("categoryId") Long categoryId);
 }

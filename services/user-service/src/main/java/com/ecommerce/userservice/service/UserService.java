@@ -87,7 +87,7 @@ public class UserService {
      * @return Optional containing the user if found
      */
     @Transactional(readOnly = true)
-    @Cacheable(value = "users-by-auth0", key = "#auth0Id", unless = "#result == null || !#result.isPresent()")
+    @Cacheable(value = "users-by-auth0", key = "#auth0Id", unless = "#result == null")
     public Optional<User> findByAuth0Id(String auth0Id) {
         log.debug("Cache miss - fetching user from DB for auth0Id: {}", auth0Id);
         return userRepository.findByAuth0Id(auth0Id);
@@ -100,7 +100,7 @@ public class UserService {
      * @return Optional containing the user if found
      */
     @Transactional(readOnly = true)
-    @Cacheable(value = "users", key = "#id", unless = "#result == null || !#result.isPresent()")
+    @Cacheable(value = "users", key = "#id", unless = "#result == null")
     public Optional<User> findById(Long id) {
         log.debug("Cache miss - fetching user from DB for id: {}", id);
         return userRepository.findById(id);
@@ -113,7 +113,7 @@ public class UserService {
      * @return Optional containing the user if found
      */
     @Transactional(readOnly = true)
-    @Cacheable(value = "users-by-email", key = "#email", unless = "#result == null || !#result.isPresent()")
+    @Cacheable(value = "users-by-email", key = "#email", unless = "#result == null")
     public Optional<User> findByEmail(String email) {
         log.debug("Cache miss - fetching user from DB for email: {}", email);
         return userRepository.findByEmail(email);

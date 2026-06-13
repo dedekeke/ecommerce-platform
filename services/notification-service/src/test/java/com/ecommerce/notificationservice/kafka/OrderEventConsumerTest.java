@@ -1,6 +1,7 @@
 package com.ecommerce.notificationservice.kafka;
 
 import com.ecommerce.notificationservice.kafka.event.OrderEvent;
+import com.ecommerce.notificationservice.repository.NotificationLogRepository;
 import com.ecommerce.notificationservice.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,6 +36,9 @@ class OrderEventConsumerTest {
     @Mock
     private ObjectMapper objectMapper;
 
+    @Mock
+    private NotificationLogRepository notificationLogRepository;
+
     @InjectMocks
     private OrderEventConsumer orderEventConsumer;
 
@@ -42,6 +47,10 @@ class OrderEventConsumerTest {
 
     @BeforeEach
     void setUp() {
+        // Treat every event as non-duplicate so the consumer proceeds to send.
+        lenient().when(notificationLogRepository.existsByRelatedEntityIdAndTemplateCodeAndStatusIn(
+                anyString(), anyString(), any(List.class))).thenReturn(false);
+
         orderEvent = new OrderEvent();
         orderEvent.setOrderId("order123");
         orderEvent.setOrderNumber("ORD-12345");

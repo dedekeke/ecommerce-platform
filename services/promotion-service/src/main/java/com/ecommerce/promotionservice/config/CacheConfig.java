@@ -56,6 +56,8 @@ public class CacheConfig {
     }
 
     @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "spring.cache.type", havingValue = "redis", matchIfMissing = true)
     public RedisCacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
             .entryTtl(Duration.ofMinutes(10))
@@ -85,8 +87,20 @@ public class CacheConfig {
 
     @Bean
     @Primary
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "spring.cache.type", havingValue = "redis", matchIfMissing = true)
     public CacheManager cacheManager(CaffeineCacheManager caffeineCacheManager,
                                      RedisCacheManager redisCacheManager) {
         return new LayeredCacheManager(caffeineCacheManager, redisCacheManager);
+    }
+
+    // When Redis is disabled (e.g. tests with spring.cache.type=none), fall back
+    // to the L1 Caffeine manager so @Cacheable methods don't hit a live Redis.
+    @Bean
+    @Primary
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "spring.cache.type", havingValue = "none")
+    public CacheManager localCacheManager(CaffeineCacheManager caffeineCacheManager) {
+        return caffeineCacheManager;
     }
 }

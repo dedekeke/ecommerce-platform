@@ -15,6 +15,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 @Testcontainers
 class AddressControllerIntegrationTest {
 
@@ -122,8 +124,8 @@ class AddressControllerIntegrationTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].label", is("Home")))
-                .andExpect(jsonPath("$[0].address.street", is("123 Main St")))
-                .andExpect(jsonPath("$[0].address.city", is("New York")))
+                .andExpect(jsonPath("$[0].street", is("123 Main St")))
+                .andExpect(jsonPath("$[0].city", is("New York")))
                 .andExpect(jsonPath("$[0].isDefault", is(true)));
     }
 
@@ -136,7 +138,7 @@ class AddressControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.label", is("Home")))
-                .andExpect(jsonPath("$.address.street", is("123 Main St")));
+                .andExpect(jsonPath("$.street", is("123 Main St")));
     }
 
     @Test
@@ -184,8 +186,8 @@ class AddressControllerIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.label", is("Work")))
-                .andExpect(jsonPath("$.address.street", is("456 Office Blvd")))
-                .andExpect(jsonPath("$.address.city", is("Boston")))
+                .andExpect(jsonPath("$.street", is("456 Office Blvd")))
+                .andExpect(jsonPath("$.city", is("Boston")))
                 .andExpect(jsonPath("$.isDefault", is(false)));
 
         // Verify in database
@@ -239,7 +241,7 @@ class AddressControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.label", is("Home Updated")))
-                .andExpect(jsonPath("$.address.street", is("789 New St")))
+                .andExpect(jsonPath("$.street", is("789 New St")))
                 .andExpect(jsonPath("$.isBilling", is(true)));
 
         // Verify in database
