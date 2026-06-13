@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.http.MediaType;
+import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -38,6 +39,9 @@ class PaymentIntentControllerTest {
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new PaymentIntentController(paymentService))
                 .setControllerAdvice(new PaymentApiExceptionHandler())
+                // Resolves @AuthenticationPrincipal Jwt to null in this unauthenticated standalone
+                // setup so the controller falls back to the body userId (security is covered separately).
+                .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
     }
 
@@ -115,10 +119,10 @@ class PaymentIntentControllerTest {
     }
 
     @Test
-    @DisplayName("should return 500 with message when service fails")
-    void should_return500_when_serviceFails() throws Exception {
+    @DisplayName("should return 500 with a generic message that does not leak internals when service fails")
+    void should_return500WithGenericMessage_when_serviceFails() throws Exception {
         when(paymentService.createPaymentIntent(any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("gateway down"));
+                .thenThrow(new RuntimeException("connection refused: jdbc://internal-db:5432"));
 
         String body = """
                 {"orderId":"order-1","userId":"user-1","amount":42.00,"currency":"USD"}""";
@@ -127,6 +131,38 @@ class PaymentIntentControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.message").value("gateway down"));
+                .andExpect(jsonPath("$.message").value("An unexpected error occurred while processing the payment."));
+    }
+
+    @Test
+    @DisplayName("should return 404 when the payment is not found")
+    void should_return404_when_paymentNotFound() throws Exception {
+        when(paymentService.createPaymentIntent(any(), any(), any(), any()))
+                .thenThrow(new com.ecommerce.paymentservice.service.PaymentNotFoundException("Payment not found for intent: pi_x"));
+
+        String body = """
+                {"orderId":"order-1","userId":"user-1","amount":42.00,"currency":"USD"}""";
+
+        mockMvc.perform(post("/api/payments/intents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Payment not found for intent: pi_x"));
+    }
+
+    @Test
+    @DisplayName("should return 409 when the payment is in an invalid state")
+    void should_return409_when_invalidState() throws Exception {
+        when(paymentService.createPaymentIntent(any(), any(), any(), any()))
+                .thenThrow(new com.ecommerce.paymentservice.service.InvalidPaymentStateException("Payment cannot be refunded. Current status: PENDING"));
+
+        String body = """
+                {"orderId":"order-1","userId":"user-1","amount":42.00,"currency":"USD"}""";
+
+        mockMvc.perform(post("/api/payments/intents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Payment cannot be refunded. Current status: PENDING"));
     }
 }

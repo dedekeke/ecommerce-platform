@@ -65,6 +65,7 @@ class PaymentServiceTest {
         @Test
         @DisplayName("should persist a pending payment carrying the provider client secret")
         void should_persistPendingPayment_when_createIntent() {
+            when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.empty());
             when(paymentProvider.createPaymentIntent(ORDER_ID, USER_ID, new BigDecimal("42.00"), "USD"))
                     .thenReturn(PaymentGatewayResponse.builder()
                             .success(true).paymentIntentId(INTENT_ID).clientSecret("pi_123_secret_abc")
@@ -76,6 +77,36 @@ class PaymentServiceTest {
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.PENDING);
             assertThat(result.getPaymentIntentId()).isEqualTo(INTENT_ID);
             assertThat(result.getClientSecret()).isEqualTo("pi_123_secret_abc");
+        }
+
+        @Test
+        @DisplayName("should reuse the existing pending payment instead of creating a second Stripe intent")
+        void should_reuseExistingPending_when_orderAlreadyHasPendingIntent() {
+            Payment existing = savedPayment(PaymentStatus.PENDING);
+            when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(existing));
+
+            Payment result = paymentService.createPaymentIntent(ORDER_ID, USER_ID, new BigDecimal("42.00"), "USD");
+
+            assertThat(result).isSameAs(existing);
+            verify(paymentProvider, never()).createPaymentIntent(any(), any(), any(), any());
+            verify(paymentRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should create a new intent when the existing payment is not pending")
+        void should_createNewIntent_when_existingPaymentNotPending() {
+            when(paymentRepository.findByOrderId(ORDER_ID))
+                    .thenReturn(Optional.of(savedPayment(PaymentStatus.FAILED)));
+            when(paymentProvider.createPaymentIntent(ORDER_ID, USER_ID, new BigDecimal("42.00"), "USD"))
+                    .thenReturn(PaymentGatewayResponse.builder()
+                            .success(true).paymentIntentId(INTENT_ID).clientSecret("pi_123_secret_abc")
+                            .status("PENDING").build());
+            when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            Payment result = paymentService.createPaymentIntent(ORDER_ID, USER_ID, new BigDecimal("42.00"), "USD");
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.PENDING);
+            verify(paymentProvider).createPaymentIntent(ORDER_ID, USER_ID, new BigDecimal("42.00"), "USD");
         }
     }
 

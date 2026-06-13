@@ -8,9 +8,15 @@ vi.mock('../api/paymentService', () => ({
   createPaymentIntent: (...args: unknown[]) => createPaymentIntent(...args),
 }))
 
+// A publishable key is required for the component to attempt loadStripe; supply a fake one.
+vi.mock('../config/payments', () => ({
+  STRIPE_PUBLISHABLE_KEY: 'pk_test_fake',
+}))
+
 // loadStripe must not perform a network fetch in tests; Elements is stubbed to render children.
+const loadStripe = vi.fn((..._args: unknown[]) => Promise.resolve({}))
 vi.mock('@stripe/stripe-js', () => ({
-  loadStripe: () => Promise.resolve({}),
+  loadStripe: (...args: unknown[]) => loadStripe(...args),
 }))
 
 vi.mock('@stripe/react-stripe-js', () => ({
@@ -63,5 +69,12 @@ describe('StripeCheckout', () => {
     createPaymentIntent.mockRejectedValue(new Error('boom'))
     renderWithProviders(<StripeCheckout {...props} />)
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/unable to start payment/i))
+  })
+
+  it('should only ever call loadStripe with a non-empty publishable key', () => {
+    createPaymentIntent.mockReturnValue(new Promise(() => {}))
+    renderWithProviders(<StripeCheckout {...props} />)
+    expect(loadStripe).toHaveBeenCalledWith('pk_test_fake')
+    loadStripe.mock.calls.forEach((args) => expect(args[0]).toBeTruthy())
   })
 })

@@ -8,6 +8,15 @@ import { createPaymentIntent } from '../api/paymentService'
 import { STRIPE_PUBLISHABLE_KEY } from '../config/payments'
 import StripePaymentForm from './StripePaymentForm'
 
+// Memoised at module scope so the SDK is fetched at most once. Guarded so loadStripe is never
+// called with an empty key (provider=mock) — that would throw inside the Stripe SDK.
+let stripePromise: Promise<Stripe | null> | null = null
+const getStripe = (): Promise<Stripe | null> | null => {
+  if (!STRIPE_PUBLISHABLE_KEY) return null
+  if (!stripePromise) stripePromise = loadStripe(STRIPE_PUBLISHABLE_KEY)
+  return stripePromise
+}
+
 export interface StripeCheckoutProps {
   orderId: string
   userId: string
@@ -15,9 +24,6 @@ export interface StripeCheckoutProps {
   currency: string
   onConfirmed: (paymentIntentId: string) => void
 }
-
-// loadStripe is memoised at module scope so the SDK is fetched once per app load.
-const stripePromise: Promise<Stripe | null> = loadStripe(STRIPE_PUBLISHABLE_KEY)
 
 /**
  * Real Stripe checkout step. Creates a PaymentIntent on the backend to obtain a client_secret,
@@ -33,6 +39,7 @@ export default function StripeCheckout({
 }: StripeCheckoutProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const stripePromise = useMemo(() => getStripe(), [])
 
   useEffect(() => {
     let active = true
@@ -53,6 +60,14 @@ export default function StripeCheckout({
     () => (clientSecret ? { clientSecret } : undefined),
     [clientSecret]
   )
+
+  if (!stripePromise) {
+    return (
+      <Alert severity="error" role="alert">
+        Payment is not configured. Please contact support.
+      </Alert>
+    )
+  }
 
   if (error) {
     return (

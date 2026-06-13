@@ -15,14 +15,15 @@ public final class PaymentIntentDtos {
     }
 
     /**
-     * Request to create a payment intent. The client receives a {@code clientSecret} back and
-     * confirms the payment in the browser with Stripe.js.
+     * Request to create a payment intent. The owning user is taken from the authenticated JWT
+     * (never trusted from the body). An optional {@code userId} may be supplied only for
+     * client-side correlation; if present it must match the token subject or the request is rejected.
      */
     public record CreateRequest(
 
             @NotBlank String orderId,
 
-            @NotBlank String userId,
+            String userId,
 
             @NotNull @DecimalMin(value = "0.50", message = "amount must be at least 0.50") BigDecimal amount,
 

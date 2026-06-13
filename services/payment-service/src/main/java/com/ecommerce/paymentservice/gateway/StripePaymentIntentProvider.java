@@ -56,7 +56,9 @@ public class StripePaymentIntentProvider implements PaymentIntentProvider {
                                     .build())
                     .build();
 
-            PaymentIntent intent = PaymentIntent.create(params, requestOptions.build());
+            // Deterministic idempotency key keyed on the order: a Resilience4j retry of this same
+            // create call is deduplicated by Stripe and returns the original intent, never a second charge.
+            PaymentIntent intent = PaymentIntent.create(params, requestOptions.build(orderId));
 
             return PaymentGatewayResponse.builder()
                     .success(true)
@@ -111,7 +113,12 @@ public class StripePaymentIntentProvider implements PaymentIntentProvider {
             if (amount != null) {
                 params.setAmount(toMinorUnits(amount));
             }
-            Refund refund = Refund.create(params.build(), requestOptions.build());
+            RefundCreateParams.Reason mappedReason = mapRefundReason(reason);
+            if (mappedReason != null) {
+                params.setReason(mappedReason);
+            }
+            // Idempotency key derived from the intent so a retried refund is not applied twice.
+            Refund refund = Refund.create(params.build(), requestOptions.build(paymentIntentId + ":refund"));
 
             return PaymentGatewayResponse.builder()
                     .success(true)
@@ -123,6 +130,23 @@ public class StripePaymentIntentProvider implements PaymentIntentProvider {
             log.error("[stripe] refundPayment failed for intent {}: {}", paymentIntentId, e.getMessage());
             return failure(paymentIntentId, e);
         }
+    }
+
+    /**
+     * Maps a free-text reason onto Stripe's restricted refund reason enum. Stripe only accepts
+     * {@code duplicate}, {@code fraudulent} and {@code requested_by_customer}; anything else (or
+     * blank) is omitted so the SDK does not reject the request.
+     */
+    private RefundCreateParams.Reason mapRefundReason(String reason) {
+        if (!StringUtils.hasText(reason)) {
+            return null;
+        }
+        return switch (reason.trim().toLowerCase()) {
+            case "duplicate" -> RefundCreateParams.Reason.DUPLICATE;
+            case "fraudulent" -> RefundCreateParams.Reason.FRAUDULENT;
+            case "requested_by_customer" -> RefundCreateParams.Reason.REQUESTED_BY_CUSTOMER;
+            default -> null;
+        };
     }
 
     private long toMinorUnits(BigDecimal amount) {

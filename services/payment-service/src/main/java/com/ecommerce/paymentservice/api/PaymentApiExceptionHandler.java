@@ -1,5 +1,7 @@
 package com.ecommerce.paymentservice.api;
 
+import com.ecommerce.paymentservice.service.InvalidPaymentStateException;
+import com.ecommerce.paymentservice.service.PaymentNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,10 +26,30 @@ public class PaymentApiExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "Validation failed", fieldErrors);
     }
 
+    @ExceptionHandler(PaymentNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotFound(PaymentNotFoundException ex) {
+        log.warn("Payment not found: {}", ex.getMessage());
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(InvalidPaymentStateException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidState(InvalidPaymentStateException ex) {
+        log.warn("Invalid payment state: {}", ex.getMessage());
+        return build(HttpStatus.CONFLICT, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(UserMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleUserMismatch(UserMismatchException ex) {
+        log.warn("Payment request user mismatch: {}", ex.getMessage());
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), null);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>> handleRuntime(RuntimeException ex) {
+        // Never leak the underlying exception detail to clients; the full stack trace is logged.
         log.error("Unhandled error in payment API", ex);
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage(), null);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR,
+                "An unexpected error occurred while processing the payment.", null);
     }
 
     private ResponseEntity<Map<String, Object>> build(HttpStatus status, String message, Object details) {

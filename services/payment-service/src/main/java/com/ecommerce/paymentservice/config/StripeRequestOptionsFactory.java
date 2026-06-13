@@ -33,11 +33,23 @@ public class StripeRequestOptionsFactory {
     }
 
     public RequestOptions build() {
+        return build(null);
+    }
+
+    /**
+     * Builds request options with a deterministic Stripe idempotency key. Stripe deduplicates any
+     * write request carrying the same key for 24h, so Resilience4j {@code @Retry} re-invocations
+     * cannot create duplicate charges or refunds. A blank/null key yields plain options.
+     */
+    public RequestOptions build(String idempotencyKey) {
         RequestOptions.RequestOptionsBuilder builder = RequestOptions.builder()
                 .setApiKey(properties.getSecretKey())
                 .setMaxNetworkRetries(0);
         if (StringUtils.hasText(properties.getApiBase())) {
             builder.setBaseUrl(properties.getApiBase());
+        }
+        if (StringUtils.hasText(idempotencyKey)) {
+            builder.setIdempotencyKey(idempotencyKey);
         }
         return builder.build();
     }

@@ -39,6 +39,25 @@ class StripeRequestOptionsFactoryTest {
     }
 
     @Test
+    @DisplayName("should attach the idempotency key when one is supplied")
+    void should_attachIdempotencyKey_when_supplied() {
+        StripeRequestOptionsFactory factory = factory("sk_test_abc", "");
+
+        RequestOptions options = factory.build("order-42");
+
+        assertThat(options.getIdempotencyKey()).isEqualTo("order-42");
+    }
+
+    @Test
+    @DisplayName("should omit the idempotency key when blank or null")
+    void should_omitIdempotencyKey_when_blank() {
+        StripeRequestOptionsFactory factory = factory("sk_test_abc", "");
+
+        assertThat(factory.build("  ").getIdempotencyKey()).isNull();
+        assertThat(factory.build().getIdempotencyKey()).isNull();
+    }
+
+    @Test
     @DisplayName("should reject startup when the secret key is blank")
     void should_reject_when_secretKeyBlank() {
         StripeRequestOptionsFactory factory = factory("  ", "http://localhost:1");

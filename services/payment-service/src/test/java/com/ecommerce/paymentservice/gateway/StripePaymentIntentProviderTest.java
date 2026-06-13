@@ -14,6 +14,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.matching;
+import static com.github.tomakehurst.wiremock.client.WireMock.notMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
@@ -68,6 +69,7 @@ class StripePaymentIntentProviderTest {
 
         wireMock.verify(postRequestedFor(urlPathEqualTo("/v1/payment_intents"))
                 .withHeader("Authorization", equalTo("Bearer sk_test_dummy"))
+                .withHeader("Idempotency-Key", equalTo("order-9"))
                 .withRequestBody(matching(".*amount=4200.*"))
                 .withRequestBody(matching(".*currency=usd.*"))
                 .withRequestBody(matching(".*metadata\\[orderId]=order-9.*")));
@@ -141,8 +143,25 @@ class StripePaymentIntentProviderTest {
         assertThat(response.getStatus()).isEqualTo("REFUNDED");
         assertThat(response.getTransactionId()).isEqualTo("re_test_789");
         wireMock.verify(postRequestedFor(urlPathEqualTo("/v1/refunds"))
+                .withHeader("Idempotency-Key", equalTo("pi_test_123:refund"))
                 .withRequestBody(matching(".*amount=1000.*"))
-                .withRequestBody(matching(".*payment_intent=pi_test_123.*")));
+                .withRequestBody(matching(".*payment_intent=pi_test_123.*"))
+                .withRequestBody(matching(".*reason=requested_by_customer.*")));
+    }
+
+    @Test
+    @DisplayName("should omit the refund reason when it is not a recognised Stripe reason")
+    void should_omitReason_when_unrecognised() {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/refunds"))
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {"id":"re_test_790","object":"refund","status":"succeeded","payment_intent":"pi_test_123"}""")));
+
+        PaymentGatewayResponse response = provider.refundPayment("pi_test_123", new BigDecimal("10.00"), "because reasons");
+
+        assertThat(response.isSuccess()).isTrue();
+        wireMock.verify(postRequestedFor(urlPathEqualTo("/v1/refunds"))
+                .withRequestBody(notMatching(".*reason=.*")));
     }
 
     @Test

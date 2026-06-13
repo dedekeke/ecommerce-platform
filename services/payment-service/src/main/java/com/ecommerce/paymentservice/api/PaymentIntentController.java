@@ -9,6 +9,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,14 +34,31 @@ public class PaymentIntentController {
     @PostMapping("/intents")
     @Operation(summary = "Create a payment intent and return its client secret for Stripe.js confirmation")
     public ResponseEntity<PaymentIntentDtos.Response> createPaymentIntent(
-            @Valid @RequestBody PaymentIntentDtos.CreateRequest request) {
-        log.info("REST: create payment intent for order {}", request.orderId());
+            @Valid @RequestBody PaymentIntentDtos.CreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        // The owning user is the token subject — never trusted from the request body. When the body
+        // does carry a userId it is only a correlation hint and must match, otherwise we reject it.
+        String userId = resolveUserId(request, jwt);
+        log.info("REST: create payment intent for order {} (user {})", request.orderId(), userId);
 
         Payment payment = paymentService.createPaymentIntent(
-                request.orderId(), request.userId(), request.amount(), request.currency());
+                request.orderId(), userId, request.amount(), request.currency());
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(PaymentIntentDtos.Response.from(payment));
+    }
+
+    private String resolveUserId(PaymentIntentDtos.CreateRequest request, Jwt jwt) {
+        if (jwt == null) {
+            // No authenticated principal (e.g. security disabled for local dev): fall back to the body.
+            return request.userId();
+        }
+        String subject = jwt.getSubject();
+        if (StringUtils.hasText(request.userId()) && !request.userId().equals(subject)) {
+            throw new UserMismatchException("Request userId does not match the authenticated user");
+        }
+        return subject;
     }
 }
