@@ -1,30 +1,16 @@
 /**
- * Frontend feature-flag SDK (§4.6).
+ * Feature-flag SDK for product-catalog-mfe.
  *
- * Mirror of `frontend/shell-app/src/featureFlags.ts`. Each MFE keeps a local
- * copy so the module is bundled into the remote chunk and stays self-sufficient
- * (no Module Federation share needed for one-file utilities). When we adopt a
- * real provider per `docs/FEATURE_FLAGS.md`, both copies will be replaced
- * with imports of the new provider's React SDK.
+ * `isFeatureEnabled` is the shared, framework-agnostic implementation from
+ * @ecommerce/shared-ui. `useFeatureFlag` is the React hook wrapper kept here
+ * so the shared package stays dependency-free.
  */
-
 import { useMemo } from 'react'
+import { isFeatureEnabled as _isFeatureEnabled } from '@ecommerce/shared-ui/featureFlags'
 
-const FLAG_PREFIX = 'VITE_FEATURE_FLAG_' as const
+export { _isFeatureEnabled as isFeatureEnabled }
 
-export function isFeatureEnabled(flagName: string): boolean {
-  if (!flagName || !flagName.trim()) {
-    return false
-  }
-  const key = `${FLAG_PREFIX}${flagName}`
-  const metaEnv = (import.meta as ImportMeta).env as Record<string, string | undefined>
-  const procEnv = (typeof process !== 'undefined' && process.env)
-    ? (process.env as Record<string, string | undefined>)
-    : undefined
-  const raw = metaEnv?.[key] ?? procEnv?.[key]
-  return typeof raw === 'string' && raw.toLowerCase() === 'true'
-}
-
+/** React hook wrapper around {@link isFeatureEnabled}. */
 export function useFeatureFlag(flagName: string): boolean {
-  return useMemo(() => isFeatureEnabled(flagName), [flagName])
+  return useMemo(() => _isFeatureEnabled(flagName), [flagName])
 }
