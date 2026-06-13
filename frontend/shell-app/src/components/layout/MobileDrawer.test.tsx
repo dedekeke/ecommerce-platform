@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
 import { MobileDrawer } from './MobileDrawer'
 import theme from '../../theme'
-import { createAuth0Mock, authenticatedAuth0Mock } from '../../test/mocks/auth0'
+import { mockAuth0, authenticatedAuth0Mock } from '../../test/mocks/auth0'
 
 vi.mock('@auth0/auth0-react', () => ({
   useAuth0: vi.fn(),
@@ -27,7 +27,7 @@ const renderMobileDrawer = (open = true, onClose = vi.fn()) => {
 describe('MobileDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockedUseAuth0.mockReturnValue(createAuth0Mock() as unknown as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(mockAuth0())
   })
 
   it('should render when open is true', () => {
@@ -58,7 +58,7 @@ describe('MobileDrawer', () => {
   })
 
   it('should render user info when authenticated', () => {
-    mockedUseAuth0.mockReturnValue(authenticatedAuth0Mock as unknown as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(authenticatedAuth0Mock)
     renderMobileDrawer(true)
     expect(screen.getByText(/test user/i)).toBeInTheDocument()
   })

@@ -9,9 +9,12 @@
  * React hook wrapper (`useFeatureFlag`) lives in each app's local featureFlags.ts
  * which re-exports this function alongside the hook.
  *
- * Reads via process.env so that vi.stubEnv patches take effect in Vitest tests
- * (static import.meta.env accesses are inlined at transform time for known
- * keys and bypass stubs for dynamic keys).
+ * Dual-read strategy:
+ *   1. import.meta.env[key] — works in built Vite browser bundles where Vite
+ *      replaces static references but exposes dynamic bracket access at runtime.
+ *   2. process.env[key]     — patched by vi.stubEnv in Vitest; env.d.ts carries
+ *      a minimal `process` declaration so @types/node is not needed.
+ * The nullish-coalesce falls through to process.env so tests always win.
  */
 
 const FLAG_PREFIX = 'VITE_FEATURE_FLAG_' as const
@@ -27,8 +30,8 @@ export function isFeatureEnabled(flagName: string): boolean {
     return false
   }
   const key = `${FLAG_PREFIX}${flagName}`
-  // process.env is patched by vi.stubEnv in Vitest; env.d.ts in each consuming
-  // app carries a minimal `process` declaration so @types/node is not needed.
-  const raw = process.env[key]
+  // import.meta.env is the canonical Vite browser runtime source; process.env
+  // is the vi.stubEnv-patched fallback for Vitest (see env.d.ts).
+  const raw = import.meta.env[key] ?? process.env[key]
   return typeof raw === 'string' && raw.toLowerCase() === 'true'
 }

@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
 import { MainLayout } from './MainLayout'
 import theme from '../../theme'
-import { createAuth0Mock } from '../../test/mocks/auth0'
+import { mockAuth0 } from '../../test/mocks/auth0'
 
 vi.mock('@auth0/auth0-react', () => ({
   useAuth0: vi.fn(),
@@ -29,7 +29,7 @@ const renderMainLayout = () => {
 describe('MainLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockedUseAuth0.mockReturnValue(createAuth0Mock() as unknown as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(mockAuth0())
   })
 
   it('should render header', () => {
