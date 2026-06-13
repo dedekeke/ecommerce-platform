@@ -53,6 +53,16 @@ function mountApp() {
   )
 }
 
+// Zone.js regression guard: warn if Zone.js was pulled into the shell bundle.
+// Zone.js must only be loaded lazily inside the Angular MFE bundles, never here.
+if (import.meta.env.DEV && (globalThis as Record<string, unknown>)['Zone']) {
+  console.warn(
+    '[shell] Zone.js detected before React mount. ' +
+    'Ensure zone.js is NOT imported in the shell bundle — ' +
+    'it should only load inside the Angular MFE bundles (see frontend/docs/zonejs-react-scheduler-analysis.md).'
+  )
+}
+
 // Initialize native-federation import maps for Angular MFEs before mounting.
 // A failure here is non-fatal: Angular MFEs will show their own error state
 // via AngularMFEWrapper, while all webpack-based MFEs continue to work.
