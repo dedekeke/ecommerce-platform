@@ -46,7 +46,7 @@ function ErrorFallbackComponent({ error, resetErrorBoundary }: FallbackProps) {
           We're sorry, but something unexpected happened.
         </Typography>
 
-        {error && (
+        {error instanceof Error && (
           <Paper
             sx={{
               p: 2,
@@ -85,7 +85,7 @@ function ErrorFallbackComponent({ error, resetErrorBoundary }: FallbackProps) {
 }
 
 export function ErrorBoundary({ children, fallback }: Props) {
-  const handleError = useCallback((error: Error, info: React.ErrorInfo) => {
+  const handleError = useCallback((error: unknown, info: React.ErrorInfo) => {
     console.error('Error caught by boundary:', error, info)
   }, [])
 

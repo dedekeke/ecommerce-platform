@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
 import { Header } from './Header'
 import { lightTheme } from '../../theme'
-import { createAuth0Mock, authenticatedAuth0Mock } from '../../test/mocks/auth0'
+import { mockAuth0, authenticatedAuth0Mock } from '../../test/mocks/auth0'
 import { useUserPreferencesStore } from '../../stores/userPreferencesStore'
 
 vi.mock('@auth0/auth0-react', () => ({
@@ -37,7 +37,7 @@ const renderHeader = (cartItemCount = 0) =>
 describe('Header', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockedUseAuth0.mockReturnValue(createAuth0Mock() as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(mockAuth0())
     useUserPreferencesStore.getState().resetPreferences()
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -82,7 +82,7 @@ describe('Header', () => {
   })
 
   it('should render user menu when authenticated', () => {
-    mockedUseAuth0.mockReturnValue(authenticatedAuth0Mock as ReturnType<typeof useAuth0>)
+    mockedUseAuth0.mockReturnValue(authenticatedAuth0Mock)
     renderHeader()
     expect(screen.getByTestId('user-menu-button')).toBeInTheDocument()
   })

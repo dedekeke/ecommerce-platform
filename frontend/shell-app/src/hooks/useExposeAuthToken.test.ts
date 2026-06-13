@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useExposeAuthToken } from './useExposeAuthToken'
 import * as auth0 from '@auth0/auth0-react'
+import { mockAuth0 } from '../test/mocks/auth0'
 
 vi.mock('@auth0/auth0-react', () => ({
   useAuth0: vi.fn(),
@@ -20,18 +21,11 @@ describe('useExposeAuthToken', () => {
   })
 
   function mockAuth(isAuthenticated: boolean) {
-    vi.mocked(auth0.useAuth0).mockReturnValue({
+    vi.mocked(auth0.useAuth0).mockReturnValue(mockAuth0({
       isAuthenticated,
       isLoading: false,
       getAccessTokenSilently: mockGetAccessTokenSilently,
-      logout: vi.fn(),
-      user: undefined,
-      getAccessTokenWithPopup: vi.fn(),
-      getIdTokenClaims: vi.fn(),
-      loginWithRedirect: vi.fn(),
-      loginWithPopup: vi.fn(),
-      handleRedirectCallback: vi.fn(),
-    })
+    }))
   }
 
   it('should set window.__getAuthToken on mount', () => {

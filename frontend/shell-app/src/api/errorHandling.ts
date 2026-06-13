@@ -1,5 +1,5 @@
 import { useNotificationStore } from '../stores'
-import { ApiClientError, isApiClientError } from './apiClient'
+import { isApiClientError } from './apiClient'
 
 const HTTP_ERROR_MESSAGES: Record<number, string> = {
   0: 'Unable to connect. Please check your internet connection.',

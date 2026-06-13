@@ -5,6 +5,7 @@ import * as auth0 from '@auth0/auth0-react'
 import * as router from 'react-router-dom'
 import * as api from '../api'
 import * as notifications from './useNotifications'
+import { mockAuth0 } from '../test/mocks/auth0'
 
 vi.mock('@auth0/auth0-react', () => ({
   useAuth0: vi.fn(),
@@ -34,18 +35,12 @@ describe('useApiSetup', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    vi.mocked(auth0.useAuth0).mockReturnValue({
+    vi.mocked(auth0.useAuth0).mockReturnValue(mockAuth0({
       isAuthenticated: true,
       isLoading: false,
       getAccessTokenSilently: mockGetAccessTokenSilently,
       logout: mockLogout,
-      user: undefined,
-      getAccessTokenWithPopup: vi.fn(),
-      getIdTokenClaims: vi.fn(),
-      loginWithRedirect: vi.fn(),
-      loginWithPopup: vi.fn(),
-      handleRedirectCallback: vi.fn(),
-    })
+    }))
 
     vi.mocked(router.useNavigate).mockReturnValue(mockNavigate)
 
@@ -103,18 +98,12 @@ describe('useApiSetup', () => {
   })
 
   it('should return null when not authenticated', async () => {
-    vi.mocked(auth0.useAuth0).mockReturnValue({
+    vi.mocked(auth0.useAuth0).mockReturnValue(mockAuth0({
       isAuthenticated: false,
       isLoading: false,
       getAccessTokenSilently: mockGetAccessTokenSilently,
       logout: mockLogout,
-      user: undefined,
-      getAccessTokenWithPopup: vi.fn(),
-      getIdTokenClaims: vi.fn(),
-      loginWithRedirect: vi.fn(),
-      loginWithPopup: vi.fn(),
-      handleRedirectCallback: vi.fn(),
-    })
+    }))
 
     renderHook(() => useApiSetup())
 
