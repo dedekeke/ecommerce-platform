@@ -103,6 +103,35 @@ class AbandonedCartScannerTest {
     }
 
     @Test
+    @DisplayName("should_emitStoredUserEmail_when_cartHasDenormalisedEmail")
+    void should_emitStoredUserEmail_when_cartHasDenormalisedEmail() {
+        Cart cart = abandonedCart(202L, "user-2", List.of(item("p-2", "Gadget", 5.0, 1)));
+        cart.setUserEmail("shopper@example.com");
+        when(cartRepository.findCartsEligibleForAbandonmentReminder(
+                eq(CartStatus.ACTIVE), any(Instant.class), any(Instant.class)))
+                .thenReturn(List.of(cart));
+
+        scanner.scanAndPublish();
+
+        verify(eventPublisher).publish(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getUserEmail()).isEqualTo("shopper@example.com");
+    }
+
+    @Test
+    @DisplayName("should_emitNullUserEmail_when_cartHasNoResolvedEmail")
+    void should_emitNullUserEmail_when_cartHasNoResolvedEmail() {
+        Cart cart = abandonedCart(203L, "user-3", List.of(item("p-3", "Thing", 7.0, 1)));
+        when(cartRepository.findCartsEligibleForAbandonmentReminder(
+                eq(CartStatus.ACTIVE), any(Instant.class), any(Instant.class)))
+                .thenReturn(List.of(cart));
+
+        scanner.scanAndPublish();
+
+        verify(eventPublisher).publish(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getUserEmail()).isNull();
+    }
+
+    @Test
     @DisplayName("should_passCorrectIdleThresholdAndCooldownCutoff_toRepository")
     void should_passCorrectIdleThresholdAndCooldownCutoff_toRepository() {
         Instant beforeRun = Instant.now();

@@ -43,6 +43,9 @@ class CartServiceTest {
     @Mock
     private ProductServiceClient productServiceClient;
 
+    @Mock
+    private com.ecommerce.cartservice.client.UserServiceClient userServiceClient;
+
     @InjectMocks
     private CartService cartService;
 

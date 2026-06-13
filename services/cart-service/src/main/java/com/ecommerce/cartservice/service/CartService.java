@@ -1,6 +1,7 @@
 package com.ecommerce.cartservice.service;
 
 import com.ecommerce.cartservice.client.ProductServiceClient;
+import com.ecommerce.cartservice.client.UserServiceClient;
 import com.ecommerce.cartservice.domain.Cart;
 import com.ecommerce.cartservice.domain.CartItem;
 import com.ecommerce.cartservice.domain.CartStatus;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -33,6 +35,7 @@ public class CartService {
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final ProductServiceClient productServiceClient;
+    private final UserServiceClient userServiceClient;
 
     private static final int CART_EXPIRATION_DAYS = 30;
 
@@ -66,6 +69,10 @@ public class CartService {
         // Get or create cart
         Cart cart = cartRepository.findByUserIdAndStatus(userId, CartStatus.ACTIVE)
                 .orElseGet(() -> createNewCart(userId));
+
+        // Denormalise the shopper email on first add so the abandonment scanner
+        // has a recipient. Backfills existing carts created before this column.
+        ensureUserEmail(cart);
 
         // Check if product already exists in cart
         CartItem existingItem = cartItemRepository
@@ -226,6 +233,31 @@ public class CartService {
                 .expiresAt(Instant.now().plus(CART_EXPIRATION_DAYS, ChronoUnit.DAYS))
                 .build();
         return cartRepository.save(cart);
+    }
+
+    /**
+     * Populate {@link Cart#getUserEmail()} from user-service if not already
+     * resolved. No-op when the email is present; a failed lookup leaves it
+     * null so the operation never blocks on user-service availability.
+     */
+    private void ensureUserEmail(Cart cart) {
+        if (cart.getUserEmail() != null && !cart.getUserEmail().isBlank()) {
+            return;
+        }
+        resolveUserEmail(cart.getUserId()).ifPresent(cart::setUserEmail);
+    }
+
+    private Optional<String> resolveUserEmail(String userId) {
+        try {
+            UserContactDto contact = userServiceClient.getUserByAuth0Id(userId);
+            if (contact != null && contact.getEmail() != null && !contact.getEmail().isBlank()) {
+                return Optional.of(contact.getEmail());
+            }
+            log.warn("user-service returned no email for user {}", userId);
+        } catch (Exception e) {
+            log.warn("Failed to resolve email for user {} from user-service: {}", userId, e.getMessage());
+        }
+        return Optional.empty();
     }
 
     private ProductDto getProductOrThrow(String productId) {

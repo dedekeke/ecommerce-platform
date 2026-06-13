@@ -2,6 +2,7 @@ package com.ecommerce.gateway.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
@@ -27,6 +28,7 @@ public class GatewayRoutesConfig {
     private String sunset;
 
     @Bean
+    @ConditionalOnProperty(name = "gateway.programmatic-routes.enabled", havingValue = "true", matchIfMissing = true)
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         return builder.routes()
             // ---------------- User Service ----------------

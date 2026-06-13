@@ -143,6 +143,26 @@ springdoc:
 security:
   enabled: ${SECURITY_ENABLED}
 
+# Inter-service lookup of user contact details (per-user promotion targeting).
+user:
+  service:
+    url: ${USER_SERVICE_URL:http://user-service:8085}
+    connect-timeout-ms: ${USER_SERVICE_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${USER_SERVICE_READ_TIMEOUT_MS:3000}
+
+# Multi-currency rate refresh (§3.5). The job is feature-flagged OFF by default
+# (FEATURE_FLAG_CURRENCY_RATE_REFRESH); set the URL + flag to enable live refresh.
+currency:
+  rate:
+    api-url: ${CURRENCY_RATE_API_URL:}
+    refresh-cron: ${CURRENCY_RATE_REFRESH_CRON:0 0 * * * *}
+    connect-timeout-ms: ${CURRENCY_RATE_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${CURRENCY_RATE_READ_TIMEOUT_MS:5000}
+
+feature:
+  flag:
+    currency-rate-refresh: ${FEATURE_FLAG_CURRENCY_RATE_REFRESH:false}
+
 
 auth0:
   domain: ${AUTH0_DOMAIN}
