@@ -128,6 +128,7 @@ jobs:
             -f helm/ecommerce/values-prod.yaml \
             --set global.imageRegistry=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
             --set global.imageTag=${{ steps.ver.outputs.VERSION }} \
+            --set global.ingress.host=${{ secrets.BASE_DOMAIN }} \
             -n ${{ env.K8S_NAMESPACE }} --create-namespace \
             --wait --timeout 15m
       - name: Smoke test

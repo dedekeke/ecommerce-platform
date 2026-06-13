@@ -1,0 +1,8 @@
+# Production profile overrides.
+# Swagger / OpenAPI UI is disabled in production (kept enabled in dev/local/docker).
+# See k8s base ConfigMaps + helm values: SPRING_PROFILES_ACTIVE=prod.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
