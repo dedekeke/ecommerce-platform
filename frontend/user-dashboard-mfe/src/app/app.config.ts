@@ -8,23 +8,24 @@ import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 
 /**
- * APP_BASE_HREF is set to the shell's mounted base path (/profile) so Angular's
- * path-based LocationStrategy resolves sub-routes relative to that prefix.
- * This keeps Angular sub-routes (/profile/orders, /profile/addresses …) in sync
- * with React Router — no hash fragments that bypass the shell's history stack.
+ * APP_BASE_HREF is resolved via useFactory (not useValue) so it is read at
+ * createApplication() call-time rather than at module-eval time.
  *
- * The value is read from window.__MFE_BASE_HREF injected by AngularMFEWrapper
- * at mount time; it falls back to '/profile' for standalone local development.
+ * This matters for userDashboard, which is dual-mounted at /profile and /orders.
+ * AngularMFEWrapper writes window.__MFE_BASE_HREF immediately before calling
+ * bootstrap(); a useValue binding would capture whatever value the global held
+ * the first time the module was imported — potentially the wrong base path on
+ * the second mount.
  */
-const basePath =
-  (globalThis as Record<string, unknown>)['__MFE_BASE_HREF'] as string | undefined
-  ?? '/profile';
-
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
-    { provide: APP_BASE_HREF, useValue: basePath },
+    {
+      provide: APP_BASE_HREF,
+      useFactory: () =>
+        (globalThis as Record<string, unknown>)['__MFE_BASE_HREF'] as string ?? '/profile',
+    },
     provideAnimationsAsync(),
     provideHttpClient(withInterceptors([authInterceptor])),
   ],

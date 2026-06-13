@@ -8,21 +8,20 @@ import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 
 /**
- * APP_BASE_HREF tells Angular's PathLocationStrategy the base path the MFE is
- * mounted under in the React shell (/admin). Sub-routes rendered by Angular
- * (/admin/users, /admin/products …) stay in the browser's path history and
- * integrate with React Router's back/forward navigation — unlike hash routing
- * which would append #fragment segments that React Router never sees.
+ * APP_BASE_HREF is resolved via useFactory so it is read at createApplication()
+ * call-time, not at module-eval time, keeping it consistent with whatever base
+ * path AngularMFEWrapper has written to window.__MFE_BASE_HREF just before
+ * calling bootstrap().
  */
-const basePath =
-  (globalThis as Record<string, unknown>)['__MFE_BASE_HREF'] as string | undefined
-  ?? '/admin';
-
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
-    { provide: APP_BASE_HREF, useValue: basePath },
+    {
+      provide: APP_BASE_HREF,
+      useFactory: () =>
+        (globalThis as Record<string, unknown>)['__MFE_BASE_HREF'] as string ?? '/admin',
+    },
     provideAnimationsAsync(),
     provideHttpClient(withInterceptors([authInterceptor])),
   ],

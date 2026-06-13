@@ -5,14 +5,27 @@ describe('bootstrap function', () => {
     expect(typeof bootstrap).toBe('function');
   });
 
+  it('should accept an elementId parameter', () => {
+    expect(bootstrap.length).toBe(1);
+  });
+
   it('should throw when the mount element is not found in the DOM', async () => {
     await expectAsync(
       bootstrap('non-existent-element-id-xyz')
     ).toBeRejectedWithError(/non-existent-element-id-xyz/);
   });
 
-  it('should accept an elementId parameter', () => {
-    const params = bootstrap.length;
-    expect(params).toBe(1);
+  it('should return a destroy handle (function) on successful bootstrap', async () => {
+    const el = document.createElement('div');
+    el.id = 'test-mount-admin';
+    document.body.appendChild(el);
+
+    try {
+      const destroy = await bootstrap('test-mount-admin');
+      expect(typeof destroy).toBe('function');
+      destroy();
+    } finally {
+      document.body.removeChild(el);
+    }
   });
 });

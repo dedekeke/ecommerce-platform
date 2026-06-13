@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { AngularMFEWrapper } from './AngularMFEWrapper'
 
 // Mock the native-federation runtime (fallback path for non-JSON remotes)
@@ -47,7 +48,7 @@ describe('AngularMFEWrapper', () => {
   })
 
   it('should render a container div after successful bootstrap load', async () => {
-    const mockBootstrap = vi.fn().mockResolvedValue(undefined)
+    const mockBootstrap = vi.fn().mockResolvedValue(vi.fn())
     mockLoadAngularRemoteModule.mockResolvedValue({ bootstrap: mockBootstrap })
 
     render(<AngularMFEWrapper mfeName="userDashboard" />)
@@ -58,7 +59,7 @@ describe('AngularMFEWrapper', () => {
   })
 
   it('should call the bootstrap function from the remote module with the mount element id', async () => {
-    const mockBootstrap = vi.fn().mockResolvedValue(undefined)
+    const mockBootstrap = vi.fn().mockResolvedValue(vi.fn())
     mockLoadAngularRemoteModule.mockResolvedValue({ bootstrap: mockBootstrap })
 
     render(<AngularMFEWrapper mfeName="userDashboard" />)
@@ -69,7 +70,7 @@ describe('AngularMFEWrapper', () => {
   })
 
   it('should call the bridge loader with the correct remoteUrl and exposedModule', async () => {
-    const mockBootstrap = vi.fn().mockResolvedValue(undefined)
+    const mockBootstrap = vi.fn().mockResolvedValue(vi.fn())
     mockLoadAngularRemoteModule.mockResolvedValue({ bootstrap: mockBootstrap })
 
     render(<AngularMFEWrapper mfeName="adminDashboard" />)
@@ -80,6 +81,35 @@ describe('AngularMFEWrapper', () => {
         './AdminDashboard'
       )
     })
+  })
+
+  it('should call the destroy handle returned by bootstrap when unmounting', async () => {
+    const mockDestroy = vi.fn()
+    const mockBootstrap = vi.fn().mockResolvedValue(mockDestroy)
+    mockLoadAngularRemoteModule.mockResolvedValue({ bootstrap: mockBootstrap })
+
+    const { unmount } = render(<AngularMFEWrapper mfeName="userDashboard" />)
+
+    await waitFor(() => {
+      expect(mockBootstrap).toHaveBeenCalled()
+    })
+
+    unmount()
+
+    expect(mockDestroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('should not call the destroy handle when unmounted before bootstrap resolves', () => {
+    const mockDestroy = vi.fn()
+    // Never resolves — simulates slow network
+    mockLoadAngularRemoteModule.mockReturnValue(
+      new Promise<{ bootstrap: () => Promise<() => void> }>(() => {})
+    )
+
+    const { unmount } = render(<AngularMFEWrapper mfeName="userDashboard" />)
+    unmount()
+
+    expect(mockDestroy).not.toHaveBeenCalled()
   })
 
   it('should show an error state when bootstrap fails', async () => {
@@ -115,6 +145,26 @@ describe('AngularMFEWrapper', () => {
     })
   })
 
+  it('should retry loading on Retry button click', async () => {
+    const user = userEvent.setup()
+    mockLoadAngularRemoteModule.mockRejectedValue(new Error('network error'))
+
+    render(<AngularMFEWrapper mfeName="userDashboard" />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('angular-mfe-error')).toBeInTheDocument()
+    })
+
+    const mockBootstrap = vi.fn().mockResolvedValue(vi.fn())
+    mockLoadAngularRemoteModule.mockResolvedValue({ bootstrap: mockBootstrap })
+
+    await user.click(screen.getByRole('button', { name: /retry/i }))
+
+    await waitFor(() => {
+      expect(mockLoadAngularRemoteModule).toHaveBeenCalledTimes(2)
+    })
+  })
+
   it('should use native-federation runtime when remoteUrl does not end with .json', async () => {
     const { getMFEConfig } = await import('./registry')
     vi.mocked(getMFEConfig).mockReturnValueOnce({
@@ -127,7 +177,7 @@ describe('AngularMFEWrapper', () => {
       runtime: 'native',
       basePath: '/profile',
     })
-    const mockBootstrap = vi.fn().mockResolvedValue(undefined)
+    const mockBootstrap = vi.fn().mockResolvedValue(vi.fn())
     mockLoadRemoteModule.mockResolvedValue({ bootstrap: mockBootstrap })
 
     render(<AngularMFEWrapper mfeName="userDashboard" />)

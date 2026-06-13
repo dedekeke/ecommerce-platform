@@ -6,8 +6,9 @@ import type { MFEName } from './types'
 import { getMFEConfig } from './registry'
 import { loadAngularRemoteModule } from './angularFederationBridge'
 
+/** bootstrap() must return a destroy handle to prevent ApplicationRef leaks */
 interface AngularBootstrapModule {
-  bootstrap: (elementId: string) => Promise<void>
+  bootstrap: (elementId: string) => Promise<() => void>
 }
 
 interface AngularMFEWrapperProps {
@@ -26,6 +27,7 @@ export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
 
   useEffect(() => {
     let destroyed = false
+    let destroyAngular: (() => void) | undefined
     setStatus('loading')
     setErrorMessage('')
 
@@ -55,7 +57,7 @@ export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
           )
         }
 
-        await module.bootstrap(mountId)
+        destroyAngular = await module.bootstrap(mountId)
 
         if (!destroyed) {
           setStatus('mounted')
@@ -72,8 +74,9 @@ export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
 
     return () => {
       destroyed = true
+      destroyAngular?.()
     }
-  }, [mfeName, config.exposedModule, mountId, retryKey])
+  }, [mfeName, config.basePath, config.exposedModule, config.remoteUrl, mountId, retryKey])
 
   if (status === 'error') {
     return (

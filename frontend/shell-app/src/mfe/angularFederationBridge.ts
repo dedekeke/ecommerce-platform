@@ -3,12 +3,14 @@
  * webpack-style remotes used by the React shell.
  *
  * How it works:
- *  1. Fetch the Angular MFE's remoteEntry.json (native-federation manifest).
- *  2. Extract the import map it declares (imports + scopes).
- *  3. Inject that import map into the page via es-module-shims' `importShim.addImportMap()`.
- *  4. Use `importShim()` (the shim's dynamic-import equivalent) to load the exposed module
+ *  1. Wait for es-module-shims to finish loading (it is synchronous in index.html but
+ *     the guard protects against race conditions on direct navigation).
+ *  2. Fetch the Angular MFE's remoteEntry.json (native-federation manifest).
+ *  3. Extract the import map it declares (imports + scopes).
+ *  4. Inject that import map into the page via es-module-shims' `importShim.addImportMap()`.
+ *  5. Use `importShim()` (the shim's dynamic-import equivalent) to load the exposed module
  *     so that Angular's bare-specifier imports resolve through the injected map.
- *  5. Return the loaded module to the caller (AngularMFEWrapper).
+ *  6. Return the loaded module to the caller (AngularMFEWrapper).
  *
  * Why not use vite-plugin-federation's remote string format directly?
  * vite-plugin-federation emits a webpack-compatible remoteEntry.js that uses
@@ -37,6 +39,36 @@ interface NativeFederationRemoteEntry {
   scopes?: Record<string, Record<string, string>>
 }
 
+const SHIM_POLL_INTERVAL_MS = 20
+
+/**
+ * Poll globalThis.importShim until the es-module-shims script has evaluated.
+ * Under normal conditions (sync script tag) the shim is already present when
+ * this is called; the guard exists for direct navigation / race conditions.
+ */
+export async function waitForShim(timeoutMs = 5000): Promise<void> {
+  const g = globalThis as Record<string, unknown>
+  if (typeof g['importShim'] === 'function') return
+
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs
+    const interval = setInterval(() => {
+      if (typeof g['importShim'] === 'function') {
+        clearInterval(interval)
+        resolve()
+      } else if (Date.now() >= deadline) {
+        clearInterval(interval)
+        reject(
+          new Error(
+            `angularFederationBridge: es-module-shims did not load within ${timeoutMs}ms. ` +
+              'Ensure /es-module-shims.js is served correctly.'
+          )
+        )
+      }
+    }, SHIM_POLL_INTERVAL_MS)
+  })
+}
+
 /** Access es-module-shims on the global scope (injected via index.html) */
 function getShim(): EsModuleShims | null {
   const g = globalThis as Record<string, unknown>
@@ -45,35 +77,60 @@ function getShim(): EsModuleShims | null {
     : null
 }
 
-const remoteEntryCache = new Map<string, NativeFederationRemoteEntry>()
+function assertHttpsUrl(url: string, context: string): void {
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error(
+      `angularFederationBridge: ${context} must be an http(s):// URL, got: "${url}"`
+    )
+  }
+}
 
-async function fetchRemoteEntry(remoteEntryUrl: string): Promise<NativeFederationRemoteEntry> {
+/**
+ * Keyed by remoteEntry URL.
+ * Stores the in-flight fetch Promise OR the resolved entry so concurrent callers
+ * (including StrictMode double-invokes) share a single network request.
+ */
+const remoteEntryCache = new Map<string, Promise<NativeFederationRemoteEntry>>()
+
+function fetchRemoteEntry(remoteEntryUrl: string): Promise<NativeFederationRemoteEntry> {
   const cached = remoteEntryCache.get(remoteEntryUrl)
   if (cached) return cached
 
-  const res = await fetch(remoteEntryUrl)
-  if (!res.ok) {
-    throw new Error(
-      `angularFederationBridge: failed to fetch remote entry at ${remoteEntryUrl} (HTTP ${res.status})`
-    )
-  }
+  const promise = (async () => {
+    const res = await fetch(remoteEntryUrl)
+    if (!res.ok) {
+      throw new Error(
+        `angularFederationBridge: failed to fetch remote entry at ${remoteEntryUrl} (HTTP ${res.status})`
+      )
+    }
+    return (await res.json()) as NativeFederationRemoteEntry
+  })()
 
-  const entry = (await res.json()) as NativeFederationRemoteEntry
-  remoteEntryCache.set(remoteEntryUrl, entry)
-  return entry
+  remoteEntryCache.set(remoteEntryUrl, promise)
+  return promise
 }
 
 /**
  * Load an exposed module from an Angular native-federation remote.
  *
- * @param remoteEntryUrl  URL to the MFE's remoteEntry.json
+ * @param remoteEntryUrl  URL to the MFE's remoteEntry.json (must be http(s)://)
  * @param exposedModule   Key from the remote's `exposes` map, e.g. "./UserDashboard"
+ * @param shimTimeoutMs   Max ms to wait for es-module-shims (default 5000)
  * @returns               The ESM module namespace object
  */
 export async function loadAngularRemoteModule(
   remoteEntryUrl: string,
-  exposedModule: string
+  exposedModule: string,
+  shimTimeoutMs = 5000
 ): Promise<Record<string, unknown>> {
+  assertHttpsUrl(remoteEntryUrl, 'remoteEntryUrl')
+
+  // Ensure the shim is ready before injecting the import map
+  await waitForShim(shimTimeoutMs).catch((err: Error) => {
+    // Non-fatal: warn and continue so native importmap browsers still work
+    console.warn(err.message)
+  })
+
   const entry = await fetchRemoteEntry(remoteEntryUrl)
 
   // Merge the remote's own import map into the page so its chunks can resolve
@@ -84,8 +141,7 @@ export async function loadAngularRemoteModule(
       scopes: entry.scopes ?? {},
     })
   } else {
-    // es-module-shims not loaded yet (e.g. test environment) — proceed anyway;
-    // native browser importmap support or mocked loader will handle resolution.
+    // es-module-shims not available — native browser importmap or test env
     console.warn(
       'angularFederationBridge: es-module-shims not available. ' +
         'Import map injection skipped — Angular bare specifiers may fail to resolve.'
@@ -100,6 +156,8 @@ export async function loadAngularRemoteModule(
     )
   }
 
+  assertHttpsUrl(exposedUrl, `exposes["${exposedModule}"]`)
+
   // Use importShim() when available (respects the injected import map),
   // otherwise fall back to native dynamic import (works when browser supports importmap natively).
   const g = globalThis as Record<string, unknown>
@@ -111,7 +169,7 @@ export async function loadAngularRemoteModule(
   return dynamicImport(exposedUrl)
 }
 
-/** Clear the fetch cache (useful in tests) */
+/** Clear the fetch cache — for tests only; not part of the public API. */
 export function clearAngularBridgeCache(): void {
   remoteEntryCache.clear()
 }
