@@ -1,17 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Shared logging configuration for all e-commerce platform services.
-  SINGLE SOURCE OF TRUTH - do not fork the appender definitions per service.
+  SINGLE SOURCE OF TRUTH - this file lives ONLY in the `common-logging` module.
+  Every service/infra module gets it on the classpath by depending on `common-logging`
+  (no per-module mirrored copies). Do not fork the appender definitions.
 
-  Each service includes this from its own src/main/resources/logback-spring.xml:
+  Each module includes this from its own src/main/resources/logback-spring.xml:
 
-      <included>
+      <configuration>
           <include resource="logback-includes/logging-base.xml"/>
-      </included>
+      </configuration>
 
   Profiles:
-    * default / local / dev -> human-readable colored CONSOLE (local dev unchanged)
-    * prod  / json-logging  -> single-line JSON to stdout (scraped by Promtail -> Loki)
+    * default / local / dev        -> human-readable colored CONSOLE (local dev unchanged)
+    * docker / prod / json-logging -> single-line JSON to stdout (scraped by Promtail -> Loki)
 
   Trace correlation: traceId / spanId come from the Micrometer Tracing Brave bridge
   MDC (io.zipkin.brave:brave-context-slf4j), present on every service classpath.
@@ -51,7 +53,7 @@
         </encoder>
     </appender>
 
-    <springProfile name="prod | json-logging">
+    <springProfile name="docker | prod | json-logging">
         <root level="INFO">
             <appender-ref ref="JSON"/>
         </root>
@@ -59,7 +61,7 @@
         <logger name="org.springframework" level="WARN"/>
     </springProfile>
 
-    <springProfile name="!prod &amp; !json-logging">
+    <springProfile name="!docker &amp; !prod &amp; !json-logging">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
         </root>

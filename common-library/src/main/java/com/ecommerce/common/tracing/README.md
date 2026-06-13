@@ -46,9 +46,10 @@ shipped in common-library (`logback-includes/logging-base.xml`):
 
 The base provides a human-readable console for local/default profiles and structured
 JSON (LogstashEncoder, with `service`/`traceId`/`spanId` fields for Loki) under the
-`prod` or `json-logging` profile. Services that do not depend on common-library mirror
-`logging-base.xml` under the same resource path and declare the
-`net.logstash.logback:logstash-logback-encoder` dependency (managed in the parent pom).
+`docker`, `prod` or `json-logging` profile. The base lives in exactly one physical
+file in the dedicated `common-logging` module; every service and infra module gets it
+on the classpath (and the required `logstash-logback-encoder`) by depending on
+`common-logging` - there are no per-module mirrored copies.
 
 ## Usage
 
@@ -211,12 +212,12 @@ These headers are:
 
 ```json
 {
-  "timestamp": "2025-01-15T10:30:45.123Z",
+  "@timestamp": "2025-01-15T10:30:45.123Z",
   "level": "INFO",
   "thread": "http-nio-8080-exec-1",
   "logger": "com.ecommerce.order.OrderService",
   "message": "Creating order for user 12345",
-  "application": "order-service",
+  "service": "order-service",
   "traceId": "abc123",
   "spanId": "def456",
   "correlationId": "xyz789",

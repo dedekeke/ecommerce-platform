@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Service logging config. Delegates to logback-includes/logging-base.xml.
-  This service does not depend on common-library, so the base file is mirrored
-  into this module under the same resource path. Keep it in sync with
-  common-library/src/main/resources/logback-includes/logging-base.xml
-  (single authored source).
+  Service logging config. Delegates to the shared base on the classpath
+  (logback-includes/logging-base.xml), provided by the `common-logging` module.
+  Do not copy the base in here - it lives in exactly one place.
 -->
 <configuration>
     <include resource="logback-includes/logging-base.xml"/>

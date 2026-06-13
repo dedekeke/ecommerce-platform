@@ -16,6 +16,12 @@
     <description>Payment processing service with gRPC support</description>
 
     <dependencies>
+        <!-- Shared logback base (single physical copy lives in common-logging) -->
+        <dependency>
+            <groupId>com.ecommerce</groupId>
+            <artifactId>common-logging</artifactId>
+        </dependency>
+
         <!-- Spring Boot Starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

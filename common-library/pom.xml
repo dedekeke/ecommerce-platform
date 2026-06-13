@@ -18,6 +18,12 @@
     <description>Shared utilities, DTOs, and proto definitions for all microservices</description>
 
     <dependencies>
+        <!-- Shared logback base; re-exported so common-library consumers get it transitively -->
+        <dependency>
+            <groupId>com.ecommerce</groupId>
+            <artifactId>common-logging</artifactId>
+        </dependency>
+
         <!-- Spring Boot Starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

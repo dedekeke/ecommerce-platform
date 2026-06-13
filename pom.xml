@@ -62,6 +62,7 @@
     </properties>
 
     <modules>
+        <module>common-logging</module>
         <module>common-library</module>
         <module>infrastructure/eureka-server</module>
         <module>infrastructure/config-server</module>
@@ -243,6 +244,13 @@
             <dependency>
                 <groupId>com.ecommerce</groupId>
                 <artifactId>common-library</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Common Logging (shared logback base resource) -->
+            <dependency>
+                <groupId>com.ecommerce</groupId>
+                <artifactId>common-logging</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

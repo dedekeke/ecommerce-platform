@@ -62,6 +62,25 @@ class LoggingBaseConfigTest {
     }
 
     @Test
+    @DisplayName("should_routeRootToJsonLogstashEncoder_when_dockerProfileActive")
+    void should_routeRootToJsonLogstashEncoder_when_dockerProfileActive() {
+        // docker-compose runs every service with SPRING_PROFILES_ACTIVE=docker; it must emit JSON.
+        configure("docker");
+
+        ConsoleAppender<?> json = (ConsoleAppender<?>) rootAppender("JSON");
+
+        assertThat(json.getEncoder()).isInstanceOf(LogstashEncoder.class);
+    }
+
+    @Test
+    @DisplayName("should_notRouteRootToConsole_when_dockerProfileActive")
+    void should_notRouteRootToConsole_when_dockerProfileActive() {
+        configure("docker");
+
+        assertThat(loggerContext().getLogger(Logger.ROOT_LOGGER_NAME).getAppender("CONSOLE")).isNull();
+    }
+
+    @Test
     @DisplayName("should_emitServiceFieldFromAppName_when_jsonEncoderConfigured")
     void should_emitServiceFieldFromAppName_when_jsonEncoderConfigured() {
         configure("prod");
