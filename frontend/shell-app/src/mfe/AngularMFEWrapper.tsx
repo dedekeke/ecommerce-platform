@@ -4,6 +4,7 @@ import { Box, CircularProgress, Typography, Paper, Button } from '@mui/material'
 import { ErrorOutline as ErrorIcon, Refresh as RefreshIcon } from '@mui/icons-material'
 import type { MFEName } from './types'
 import { getMFEConfig } from './registry'
+import { loadAngularRemoteModule } from './angularFederationBridge'
 
 interface AngularBootstrapModule {
   bootstrap: (elementId: string) => Promise<void>
@@ -30,10 +31,21 @@ export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
 
     async function loadAndBootstrap() {
       try {
-        const module = (await loadRemoteModule({
-          remoteName: mfeName,
-          exposedModule: config.exposedModule,
-        })) as Partial<AngularBootstrapModule>
+        // Inject the base path so Angular's PathLocationStrategy can resolve
+        // sub-routes relative to the shell-assigned mount path.
+        ;(globalThis as Record<string, unknown>)['__MFE_BASE_HREF'] = config.basePath ?? `/${mfeName}`
+
+        // Prefer the bridge for native-federation remotes (remoteEntry.json based).
+        // The bridge injects the Angular import map via es-module-shims so bare
+        // Angular specifiers resolve correctly in the shell's ESM context.
+        // Fall back to the @angular-architects runtime loader when remoteUrl is
+        // not a JSON manifest (future webpack-based Angular MFEs).
+        const isNativeManifest = config.remoteUrl.endsWith('.json')
+        const module = (
+          isNativeManifest
+            ? await loadAngularRemoteModule(config.remoteUrl, config.exposedModule)
+            : await loadRemoteModule({ remoteName: mfeName, exposedModule: config.exposedModule })
+        ) as Partial<AngularBootstrapModule>
 
         if (destroyed) return
 

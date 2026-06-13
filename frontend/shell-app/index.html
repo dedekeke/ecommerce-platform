@@ -5,6 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>shell-app</title>
+    <!--
+      es-module-shims polyfills importmap support for browsers that do not implement it natively.
+      It must appear BEFORE any module script so the shim can intercept bare-specifier imports
+      that Angular native-federation injects via its runtime import map.
+      Integrity and version are pinned to prevent supply-chain risk.
+    -->
+    <script async src="https://ga.jspm.io/npm:es-module-shims@1.10.1/dist/es-module-shims.js"
+            crossorigin="anonymous"></script>
+    <!--
+      Placeholder import map — populated at runtime by angularFederationBridge.ts
+      via importShim.addImportMap() so Angular MFE bare specifiers resolve correctly.
+    -->
+    <script type="importmap">
+      { "imports": {} }
+    </script>
   </head>
   <body>
     <div id="root"></div>
