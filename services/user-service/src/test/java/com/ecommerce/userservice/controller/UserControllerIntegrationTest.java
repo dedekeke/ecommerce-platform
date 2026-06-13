@@ -217,4 +217,25 @@ class UserControllerIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void testGetUserByAuth0Id_existingUser_shouldReturnContact() throws Exception {
+        mockMvc.perform(get("/api/users/by-auth0/{sub}", auth0Id)
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|caller"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.email", is("test@example.com")))
+                .andExpect(jsonPath("$.fullName", is("John Doe")));
+    }
+
+    @Test
+    void testGetUserByAuth0Id_nonExistentUser_shouldReturnNotFound() throws Exception {
+        mockMvc.perform(get("/api/users/by-auth0/{sub}", "auth0|ghost")
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|caller"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
+                .andExpect(status().isNotFound());
+    }
+
 }

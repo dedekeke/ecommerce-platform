@@ -102,6 +102,28 @@ public class UserController {
     }
 
     /**
+     * Resolve a user's contact details by Auth0 {@code sub}.
+     *
+     * <p>Internal service-to-service endpoint used by promotion-service
+     * (per-user promotion targeting) and cart-service (abandoned-cart email
+     * resolution) to turn an Auth0 id into an email/name. Returns 404 when no
+     * user exists for the sub so callers can fall back gracefully.
+     *
+     * GET /api/users/by-auth0/{sub}
+     */
+    @GetMapping("/by-auth0/{sub}")
+    @Operation(summary = "Resolve user contact by Auth0 sub",
+            description = "Internal lookup of email/name by Auth0 sub for inter-service use")
+    public ResponseEntity<UserProfileResponse> getUserByAuth0Id(@PathVariable("sub") String sub) {
+        log.debug("Resolving user by auth0 sub: {}", sub);
+
+        return userService.findByAuth0Id(sub)
+                .map(UserProfileResponse::from)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
      * Get user profile by ID (admin only - to be secured with @PreAuthorize later)
      *
      * GET /api/users/{id}
