@@ -97,12 +97,21 @@ logging:
 
 #### logback-spring.xml
 
-Copy the template from common-library:
+Add a thin `logback-spring.xml` that includes the shared base shipped in
+common-library (single source of truth at
+`common-library/src/main/resources/logback-includes/logging-base.xml`):
 
-```bash
-cp common-library/src/main/resources/logback-spring-template.xml \
-   your-service/src/main/resources/logback-spring.xml
+```xml
+<configuration>
+    <include resource="logback-includes/logging-base.xml"/>
+</configuration>
 ```
+
+The base emits a human-readable console for local/default and structured JSON
+(`service`, `level`, `traceId`, `spanId`, `timestamp`, `message`, `logger`, `thread`)
+under the `prod` or `json-logging` profile, ready for Promtail -> Loki ingestion.
+Services without a common-library dependency mirror `logging-base.xml` under the same
+resource path and add the managed `logstash-logback-encoder` dependency.
 
 #### Docker Environment Variables
 

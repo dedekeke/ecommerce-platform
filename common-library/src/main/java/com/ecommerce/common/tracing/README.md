@@ -35,7 +35,20 @@ spring:
 
 ### 2. Logback Configuration
 
-Copy `logback-spring-template.xml` from common-library resources to your service's `src/main/resources/logback-spring.xml`.
+Add a thin `src/main/resources/logback-spring.xml` that includes the shared base
+shipped in common-library (`logback-includes/logging-base.xml`):
+
+```xml
+<configuration>
+    <include resource="logback-includes/logging-base.xml"/>
+</configuration>
+```
+
+The base provides a human-readable console for local/default profiles and structured
+JSON (LogstashEncoder, with `service`/`traceId`/`spanId` fields for Loki) under the
+`prod` or `json-logging` profile. Services that do not depend on common-library mirror
+`logging-base.xml` under the same resource path and declare the
+`net.logstash.logback:logstash-logback-encoder` dependency (managed in the parent pom).
 
 ## Usage
 
