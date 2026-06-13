@@ -18,6 +18,9 @@ export interface MFEConfig {
   requiresAuth: boolean
   requiredRoles?: string[]
   runtime: MFERuntime
+  /** Shell base path where this MFE is mounted (e.g. "/profile", "/admin"). Used
+   *  to set window.__MFE_BASE_HREF for Angular's PathLocationStrategy. */
+  basePath?: string
 }
 
 export interface MFEState {
