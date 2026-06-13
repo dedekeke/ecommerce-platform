@@ -6,16 +6,20 @@
 # or pass --set global.imageRegistry=$IMAGE_REGISTRY. Image refs become
 # <imageRegistry>/<service>:<imageTag> via the shared `svc.image` helper.
 global:
-  imageRegistry: "ghcr.io/ecommerce-platform"  # override via ${IMAGE_REGISTRY}
+  # Empty by default so an unset registry fails loudly via the svc.image `required` guard
+  # instead of silently baking in a placeholder. Must be set at deploy time
+  # (--set global.imageRegistry=$IMAGE_REGISTRY).
+  imageRegistry: ""
   imageTag: "1.0.0"
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   namespace: ecommerce
   ingress:
     enabled: true
-    # Base domain is environment-driven; rendered from ${BASE_DOMAIN} at deploy time
-    # (envsubst or --set global.ingress.host=$BASE_DOMAIN). Never hardcode a real domain.
-    host: "${BASE_DOMAIN}"
+    # Base domain is environment-driven and has no default; it MUST be supplied at deploy time
+    # (--set global.ingress.host=$BASE_DOMAIN). An empty value fails the `required` guard in
+    # templates/ingress.yaml so a release never ships a placeholder/literal host.
+    host: ""
     className: nginx
     # ACME e-mail for the cert-manager ClusterIssuer is env-driven (${ACME_EMAIL}); see k8s/cert-manager.
     certManager:

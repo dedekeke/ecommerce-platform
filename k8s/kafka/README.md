@@ -16,8 +16,11 @@ authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer   
 # (or kafka.security.authorizer.AclAuthorizer for ZooKeeper-based clusters)
 allow.everyone.if.no.acl.found=false
 super.users=User:admin
-listener.name.sasl_plaintext.sasl.enabled.mechanisms=PLAIN
+listener.name.sasl_ssl.sasl.enabled.mechanisms=PLAIN
 ```
+
+The ACL init Job connects over `SASL_SSL` and verifies the broker cert against the CA in
+Secret `kafka-tls` (key `ca.crt`, mounted at `/etc/kafka/tls/ca.crt`); create it before applying.
 
 Each service sets its client SASL identity (`User:<service>`) via its own credentials (delivered by
 ESO). Producer/consumer client config is out of scope here — this directory only manages broker ACLs.
@@ -29,11 +32,11 @@ ESO). Producer/consumer client config is out of scope here — this directory on
 | `order-service` | `order.` |
 | `payment-service` | `payment.`, `refund.` |
 | `product-service` | `product.` |
-| `inventory-service` | `stock.`, `inventory-updated` |
+| `inventory-service` | `stock.`, `inventory-updated.` |
 | `promotion-service` | `promotion.` |
 | `cart-service` | `cart.` |
 | `search-service` | `search.` |
-| `notification-service` | `admin.` |
+| `notification-service` | `notification.` |
 
 Consume (READ) grants are in `kafka-acls-job.yaml` (`consume.map`); each service also gets READ on its
 own consumer-group prefix.

@@ -15,13 +15,13 @@ data:
     order-service=order.
     payment-service=payment. refund.
     product-service=product.
-    inventory-service=stock. inventory-updated
+    inventory-service=stock. inventory-updated.
     promotion-service=promotion.
     cart-service=cart.
     search-service=search.
-    notification-service=admin.
+    notification-service=notification.
   consume.map: |
-    order-service=payment. inventory- stock.
+    order-service=payment. inventory. stock.
     payment-service=order. rma.
     inventory-service=order. product. promotion.
     promotion-service=order. stock.
@@ -48,8 +48,10 @@ spec:
               set -euo pipefail
               CMD_CONFIG=/tmp/admin.properties
               cat > "$CMD_CONFIG" <<EOF
-              security.protocol=SASL_PLAINTEXT
+              security.protocol=SASL_SSL
               sasl.mechanism=PLAIN
+              ssl.truststore.type=PEM
+              ssl.truststore.location=/etc/kafka/tls/ca.crt
               sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_ADMIN_USER}" password="${KAFKA_ADMIN_PASSWORD}";
               EOF
 
@@ -85,6 +87,19 @@ spec:
               valueFrom: { secretKeyRef: { name: kafka-secret, key: admin_user } }
             - name: KAFKA_ADMIN_PASSWORD
               valueFrom: { secretKeyRef: { name: kafka-secret, key: admin_password } }
+          volumeMounts:
+            - name: kafka-ca
+              mountPath: /etc/kafka/tls
+              readOnly: true
           resources:
             requests: { memory: "256Mi", cpu: "100m" }
             limits:   { memory: "512Mi", cpu: "500m" }
+      volumes:
+        # Broker CA for the SASL_SSL handshake (PEM truststore). Provided out-of-band
+        # as Secret `kafka-tls` (key `ca.crt`) in the ecommerce namespace.
+        - name: kafka-ca
+          secret:
+            secretName: kafka-tls
+            items:
+              - key: ca.crt
+                path: ca.crt

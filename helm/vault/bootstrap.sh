@@ -31,7 +31,8 @@ if ! vault auth list 2>/dev/null | grep -q '^kubernetes/'; then
   vault auth enable kubernetes
 fi
 vault write auth/kubernetes/config \
-  kubernetes_host="https://kubernetes.default.svc:443"
+  kubernetes_host="https://kubernetes.default.svc:443" \
+  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
 # 4) Per-service least-privilege policies + roles bound to the ESO ServiceAccount.
 #    ESO presents the external-secrets SA JWT; each role grants exactly one service policy.

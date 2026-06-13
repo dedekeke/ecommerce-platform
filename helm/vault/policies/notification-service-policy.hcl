@@ -11,3 +11,10 @@ path "kv/data/auth0" {
 path "kv/metadata/auth0" {
   capabilities = ["read", "list"]
 }
+# SMTP credentials for outbound mail (MAIL_USERNAME / MAIL_PASSWORD).
+path "kv/data/smtp" {
+  capabilities = ["read"]
+}
+path "kv/metadata/smtp" {
+  capabilities = ["read", "list"]
+}
