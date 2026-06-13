@@ -143,6 +143,17 @@ springdoc:
 security:
   enabled: ${SECURITY_ENABLED}
 
+# Multi-currency rate refresh (§3.5). The job is feature-flagged OFF by default
+# (FEATURE_FLAG_CURRENCY_RATE_REFRESH); set the URL + flag to enable live refresh.
+currency:
+  rate:
+    api-url: ${CURRENCY_RATE_API_URL:}
+    refresh-cron: ${CURRENCY_RATE_REFRESH_CRON:0 0 * * * *}
+
+feature:
+  flag:
+    currency-rate-refresh: ${FEATURE_FLAG_CURRENCY_RATE_REFRESH:false}
+
 
 auth0:
   domain: ${AUTH0_DOMAIN}

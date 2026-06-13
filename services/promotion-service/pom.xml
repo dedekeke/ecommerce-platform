@@ -171,6 +171,15 @@
             <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- WireMock — stubs the external currency-rate provider in tests
+             so the scheduled refresh job never hits a live FX API. -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.5.4</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
