@@ -3,7 +3,7 @@ service:
   name: cart-service
   port: 8083
 image:
-  repository: ecommerce/cart-service
+  repository: cart-service
   pullPolicy: IfNotPresent
   tag: "1.0.0"
 replicaCount: 1

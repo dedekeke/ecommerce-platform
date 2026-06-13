@@ -12,10 +12,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - example.com  # TODO: replace with real domain
+        - ${BASE_DOMAIN}  # env-driven: render via `envsubst < ingress.yaml | kubectl apply -f -`
       secretName: ecommerce-tls
   rules:
-    - host: example.com  # TODO: replace with real domain
+    - host: ${BASE_DOMAIN}  # env-driven: render via `envsubst < ingress.yaml | kubectl apply -f -`
       http:
         paths:
           - path: /api

@@ -11,5 +11,12 @@ tier: backend
 {{- end -}}
 
 {{- define "svc.image" -}}
-{{- printf "%s:%s" .Values.image.repository (.Values.global.imageTag | default .Values.image.tag) -}}
+{{- $registry := .Values.global.imageRegistry | default .Values.image.registry -}}
+{{- $repo := .Values.image.repository -}}
+{{- $tag := .Values.global.imageTag | default .Values.image.tag -}}
+{{- if $registry -}}
+{{- printf "%s/%s:%s" $registry $repo $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repo $tag -}}
+{{- end -}}
 {{- end -}}

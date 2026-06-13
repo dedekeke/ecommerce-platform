@@ -8,7 +8,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "20m"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    cert-manager.io/cluster-issuer: {{ .Values.global.ingress.certManager.clusterIssuer | default "letsencrypt-prod" | quote }}
 spec:
   ingressClassName: {{ .Values.global.ingress.className }}
   {{- if .Values.global.ingress.tls.enabled }}

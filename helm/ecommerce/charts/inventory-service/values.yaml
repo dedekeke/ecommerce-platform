@@ -3,7 +3,7 @@ service:
   name: inventory-service
   port: 8086
 image:
-  repository: ecommerce/inventory-service
+  repository: inventory-service
   pullPolicy: IfNotPresent
   tag: "1.0.0"
 replicaCount: 1

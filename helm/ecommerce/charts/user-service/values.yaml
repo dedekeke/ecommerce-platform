@@ -3,7 +3,7 @@ service:
   name: user-service
   port: 8081
 image:
-  repository: ecommerce/user-service
+  repository: user-service
   pullPolicy: IfNotPresent
   tag: "1.0.0"
 replicaCount: 1

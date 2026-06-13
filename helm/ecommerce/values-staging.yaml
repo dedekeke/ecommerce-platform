@@ -1,7 +1,7 @@
 global:
   imageTag: staging-latest
   ingress:
-    host: staging.example.com
+    host: "staging.${BASE_DOMAIN}"  # rendered from env at deploy time; never hardcode the real domain
 
 # 1 replica per service in staging
 api-gateway: { replicaCount: 1 }

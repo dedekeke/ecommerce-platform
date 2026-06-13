@@ -3,7 +3,7 @@ service:
   name: media-service
   port: 8089
 image:
-  repository: ecommerce/media-service
+  repository: media-service
   pullPolicy: IfNotPresent
   tag: "1.0.0"
 replicaCount: 1
