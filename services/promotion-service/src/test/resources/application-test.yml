@@ -32,6 +32,27 @@ management:
   tracing:
     enabled: false
 
+security:
+  enabled: false
+
+auth0:
+  domain: test-tenant.auth0.com
+  audience: test-audience
+
+# Defaults for env placeholders referenced by application.yml so the
+# SpringBootTest context can stand up without real infra.
+SECURITY_ENABLED: "false"
+AUTH0_DOMAIN: test-tenant.auth0.com
+AUTH0_AUDIENCE: test-audience
+PROMOTION_DB_URL: jdbc:h2:mem:testdb
+DB_USERNAME: sa
+DB_PASSWORD: ""
+SPRING_DATA_REDIS_HOST: localhost
+SPRING_DATA_REDIS_PORT: "6379"
+EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://localhost:8761/eureka
+MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://localhost:9411/api/v2/spans
+SPRING_KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+
 logging:
   level:
     root: WARN
