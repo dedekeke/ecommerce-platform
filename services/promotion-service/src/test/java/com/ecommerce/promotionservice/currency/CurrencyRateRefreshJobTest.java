@@ -12,13 +12,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -46,7 +46,7 @@ class CurrencyRateRefreshJobTest {
     private CurrencyRateRefreshJob job;
 
     @Captor
-    private ArgumentCaptor<CurrencyRate> rateCaptor;
+    private ArgumentCaptor<List<CurrencyRate>> ratesCaptor;
 
     @BeforeEach
     void setUp() {
@@ -61,7 +61,7 @@ class CurrencyRateRefreshJobTest {
         job.refresh();
 
         verifyNoInteractions(rateProvider);
-        verify(currencyRateRepository, never()).save(any());
+        verify(currencyRateRepository, never()).saveAll(any());
     }
 
     @Test
@@ -69,14 +69,16 @@ class CurrencyRateRefreshJobTest {
     void should_fetchAndUpsert_when_featureFlagEnabled() {
         when(featureFlags.isEnabled(CurrencyRateRefreshJob.FLAG_CURRENCY_RATE_REFRESH)).thenReturn(true);
         when(rateProvider.fetchLatestRates()).thenReturn(rates("EUR", "0.93"));
-        when(currencyRateRepository.findById("EUR")).thenReturn(Optional.empty());
+        when(currencyRateRepository.findAll()).thenReturn(List.of());
 
         job.refresh();
 
         verify(rateProvider).fetchLatestRates();
-        verify(currencyRateRepository).save(rateCaptor.capture());
-        assertThat(rateCaptor.getValue().getCode()).isEqualTo("EUR");
-        assertThat(rateCaptor.getValue().getRateToUsd()).isEqualByComparingTo("0.93");
+        verify(currencyRateRepository).saveAll(ratesCaptor.capture());
+        assertThat(ratesCaptor.getValue()).singleElement().satisfies(rate -> {
+            assertThat(rate.getCode()).isEqualTo("EUR");
+            assertThat(rate.getRateToUsd()).isEqualByComparingTo("0.93");
+        });
     }
 
     @Test
@@ -84,31 +86,34 @@ class CurrencyRateRefreshJobTest {
     void should_updateExistingRate_inPlace_when_codeAlreadyPresent() {
         CurrencyRate existing = CurrencyRate.builder().code("GBP").rateToUsd(new BigDecimal("0.79")).build();
         when(rateProvider.fetchLatestRates()).thenReturn(rates("GBP", "0.81"));
-        when(currencyRateRepository.findById("GBP")).thenReturn(Optional.of(existing));
+        when(currencyRateRepository.findAll()).thenReturn(List.of(existing));
 
         int upserted = job.refreshRates();
 
         assertThat(upserted).isOne();
-        verify(currencyRateRepository).save(rateCaptor.capture());
+        verify(currencyRateRepository).saveAll(ratesCaptor.capture());
         // Same managed entity, only the rate mutated — preserves @UpdateTimestamp semantics.
-        assertThat(rateCaptor.getValue()).isSameAs(existing);
-        assertThat(rateCaptor.getValue().getRateToUsd()).isEqualByComparingTo("0.81");
+        assertThat(ratesCaptor.getValue()).singleElement().isSameAs(existing);
+        assertThat(existing.getRateToUsd()).isEqualByComparingTo("0.81");
     }
 
     @Test
-    @DisplayName("should_upsertEveryReturnedRate_when_multipleRates")
-    void should_upsertEveryReturnedRate_when_multipleRates() {
+    @DisplayName("should_loadTableOnce_andUpsertEveryReturnedRate_when_multipleRates")
+    void should_loadTableOnce_andUpsertEveryReturnedRate_when_multipleRates() {
         Map<String, BigDecimal> latest = new LinkedHashMap<>();
         latest.put("USD", new BigDecimal("1"));
         latest.put("EUR", new BigDecimal("0.92"));
         latest.put("JPY", new BigDecimal("149.5"));
         when(rateProvider.fetchLatestRates()).thenReturn(latest);
-        when(currencyRateRepository.findById(any())).thenReturn(Optional.empty());
+        when(currencyRateRepository.findAll()).thenReturn(List.of());
 
         int upserted = job.refreshRates();
 
         assertThat(upserted).isEqualTo(3);
-        verify(currencyRateRepository, times(3)).save(any(CurrencyRate.class));
+        // Single SELECT (no N+1) and a single batched write.
+        verify(currencyRateRepository).findAll();
+        verify(currencyRateRepository).saveAll(ratesCaptor.capture());
+        assertThat(ratesCaptor.getValue()).hasSize(3);
     }
 
     @Test
@@ -119,7 +124,8 @@ class CurrencyRateRefreshJobTest {
         int upserted = job.refreshRates();
 
         assertThat(upserted).isZero();
-        verify(currencyRateRepository, never()).save(any());
+        verify(currencyRateRepository, never()).findAll();
+        verify(currencyRateRepository, never()).saveAll(anyList());
     }
 
     @Test
@@ -131,7 +137,7 @@ class CurrencyRateRefreshJobTest {
         // refresh() is the scheduler entry point — it must never propagate.
         job.refresh();
 
-        verify(currencyRateRepository, never()).save(any());
+        verify(currencyRateRepository, never()).saveAll(anyList());
     }
 
     private static Map<String, BigDecimal> rates(String code, String rate) {

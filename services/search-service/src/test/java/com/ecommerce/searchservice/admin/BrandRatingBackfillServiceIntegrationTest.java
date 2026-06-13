@@ -44,6 +44,9 @@ class BrandRatingBackfillServiceIntegrationTest {
         // @SpringBootTest contexts don't fight over the default port 9090.
         registry.add("grpc.server.port", () -> "-1");
         registry.add("eureka.client.enabled", () -> "false");
+        // This test targets ES, not auth; disable security so the JWT decoder
+        // does not attempt to reach a real Auth0 issuer at context startup.
+        registry.add("security.enabled", () -> "false");
     }
 
     @Autowired

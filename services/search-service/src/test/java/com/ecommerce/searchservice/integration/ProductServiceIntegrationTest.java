@@ -57,6 +57,9 @@ class ProductServiceIntegrationTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.elasticsearch.uris", elasticsearch::getHttpHostAddress);
         registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+        // This test targets ES/Kafka sync, not auth; disable security so the JWT
+        // decoder does not attempt to reach a real Auth0 issuer at startup.
+        registry.add("security.enabled", () -> "false");
     }
 
     @BeforeEach

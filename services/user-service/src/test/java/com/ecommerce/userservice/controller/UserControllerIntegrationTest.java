@@ -218,15 +218,41 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void testGetUserByAuth0Id_existingUser_shouldReturnContact() throws Exception {
+    void testGetUserByAuth0Id_adminScope_shouldReturnMinimalContact() throws Exception {
         mockMvc.perform(get("/api/users/by-auth0/{sub}", auth0Id)
                         .with(jwt()
                                 .jwt(jwt -> jwt.subject("auth0|caller"))
-                                .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.email", is("test@example.com")))
+                .andExpect(jsonPath("$.fullName", is("John Doe")))
+                // PII fields must NOT leak through this internal endpoint
+                .andExpect(jsonPath("$.id").doesNotExist())
+                .andExpect(jsonPath("$.role").doesNotExist())
+                .andExpect(jsonPath("$.phoneNumber").doesNotExist())
+                .andExpect(jsonPath("$.active").doesNotExist())
+                .andExpect(jsonPath("$.emailVerified").doesNotExist());
+    }
+
+    @Test
+    void testGetUserByAuth0Id_internalServiceScope_shouldReturnContact() throws Exception {
+        mockMvc.perform(get("/api/users/by-auth0/{sub}", auth0Id)
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|caller"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_internal:service"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email", is("test@example.com")))
                 .andExpect(jsonPath("$.fullName", is("John Doe")));
+    }
+
+    @Test
+    void testGetUserByAuth0Id_insufficientScope_shouldReturnForbidden() throws Exception {
+        mockMvc.perform(get("/api/users/by-auth0/{sub}", auth0Id)
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|caller"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_read:profile"))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -234,7 +260,7 @@ class UserControllerIntegrationTest {
         mockMvc.perform(get("/api/users/by-auth0/{sub}", "auth0|ghost")
                         .with(jwt()
                                 .jwt(jwt -> jwt.subject("auth0|caller"))
-                                .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isNotFound());
     }
 

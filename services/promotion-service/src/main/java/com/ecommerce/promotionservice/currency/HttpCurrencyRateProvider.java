@@ -3,6 +3,7 @@ package com.ecommerce.promotionservice.currency;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -33,8 +34,13 @@ public class HttpCurrencyRateProvider implements CurrencyRateProvider {
 
     public HttpCurrencyRateProvider(
             RestClient.Builder restClientBuilder,
-            @Value("${currency.rate.api-url:${CURRENCY_RATE_API_URL:}}") String apiUrl) {
-        this.restClient = restClientBuilder.build();
+            @Value("${currency.rate.api-url:${CURRENCY_RATE_API_URL:}}") String apiUrl,
+            @Value("${currency.rate.connect-timeout-ms:2000}") int connectTimeoutMs,
+            @Value("${currency.rate.read-timeout-ms:5000}") int readTimeoutMs) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(connectTimeoutMs);
+        requestFactory.setReadTimeout(readTimeoutMs);
+        this.restClient = restClientBuilder.requestFactory(requestFactory).build();
         this.apiUrl = apiUrl;
     }
 

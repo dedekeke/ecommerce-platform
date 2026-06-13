@@ -38,7 +38,7 @@ public class PromotionUserTarget {
     @Column(name = "promo_code", nullable = false, length = 50)
     private String promoCode;
 
-    @Column(name = "user_id", nullable = false, length = 100)
+    @Column(name = "user_id", nullable = false, length = 255)
     private String userId;
 
     @CreationTimestamp

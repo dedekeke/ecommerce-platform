@@ -2,10 +2,12 @@ package com.ecommerce.promotionservice.client;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -24,8 +26,21 @@ public class UserServiceClient {
 
     public UserServiceClient(
             RestClient.Builder restClientBuilder,
-            @Value("${user.service.url:http://user-service:8085}") String userServiceUrl) {
-        this.restClient = restClientBuilder.baseUrl(userServiceUrl).build();
+            @Value("${user.service.url:http://user-service:8085}") String userServiceUrl,
+            @Value("${user.service.connect-timeout-ms:2000}") int connectTimeoutMs,
+            @Value("${user.service.read-timeout-ms:3000}") int readTimeoutMs) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
+        requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
+
+        this.restClient = restClientBuilder
+                .baseUrl(userServiceUrl)
+                .requestFactory(requestFactory)
+                // Forward the caller's JWT so user-service authorises the lookup;
+                // without this the call is anonymous and targeting silently
+                // falls back to broadcast in secured environments.
+                .requestInterceptor(new JwtForwardingInterceptor())
+                .build();
     }
 
     public Optional<UserContact> findByAuth0Id(String auth0Id) {

@@ -8,12 +8,14 @@
 --
 -- user_id is the Auth0 `sub` claim (e.g. "auth0|abc123"), mirroring how the
 -- rest of the platform identifies users. It is not an FK because user data
--- lives in a separate service/database.
+-- lives in a separate service/database. VARCHAR(255) because OIDC social subs
+-- (e.g. "google-oauth2|<numeric>", "windowslive|<long-guid>") can exceed 100
+-- chars; 255 matches the platform-wide user id column width.
 
 CREATE TABLE promotion_user_targets (
     id          BIGINT AUTO_INCREMENT PRIMARY KEY,
     promo_code  VARCHAR(50)  NOT NULL,
-    user_id     VARCHAR(100) NOT NULL,
+    user_id     VARCHAR(255) NOT NULL,
     created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT uq_promo_user UNIQUE (promo_code, user_id)

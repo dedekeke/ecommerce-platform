@@ -7,7 +7,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Periodically refreshes the {@code currency_rates} pivot table from an
@@ -74,14 +79,21 @@ public class CurrencyRateRefreshJob {
             return 0;
         }
 
-        int upserted = 0;
-        for (Map.Entry<String, BigDecimal> entry : latest.entrySet()) {
-            CurrencyRate rate = currencyRateRepository.findById(entry.getKey())
-                    .orElseGet(() -> CurrencyRate.builder().code(entry.getKey()).build());
-            rate.setRateToUsd(entry.getValue());
-            currencyRateRepository.save(rate);
-            upserted++;
-        }
-        return upserted;
+        // Single SELECT for the whole table instead of one findById per code
+        // (the currency_rates table is small and bounded by ISO codes). Existing
+        // managed entities are mutated in place to preserve @UpdateTimestamp
+        // semantics; unknown codes are inserted.
+        Map<String, CurrencyRate> existingByCode = currencyRateRepository.findAll().stream()
+                .collect(Collectors.toMap(CurrencyRate::getCode, Function.identity(), (a, b) -> a, HashMap::new));
+
+        List<CurrencyRate> toSave = new ArrayList<>(latest.size());
+        latest.forEach((code, rate) -> {
+            CurrencyRate entity = existingByCode.getOrDefault(code, CurrencyRate.builder().code(code).build());
+            entity.setRateToUsd(rate);
+            toSave.add(entity);
+        });
+
+        currencyRateRepository.saveAll(toSave);
+        return toSave.size();
     }
 }

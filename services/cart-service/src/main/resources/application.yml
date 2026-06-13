@@ -15,6 +15,18 @@ spring:
         initial-interval: 1000
         multiplier: 1.1
         max-interval: 2000
+    # Feign client timeouts — without these a slow/hung user-service would block
+    # cart threads on the abandoned-cart email resolution indefinitely.
+    # Spring Cloud 2023.0.x (OpenFeign 4.x) binds the spring.cloud.openfeign.* prefix.
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: ${FEIGN_DEFAULT_CONNECT_TIMEOUT_MS:2000}
+            readTimeout: ${FEIGN_DEFAULT_READ_TIMEOUT_MS:5000}
+          user-service:
+            connectTimeout: ${USER_SERVICE_CONNECT_TIMEOUT_MS:2000}
+            readTimeout: ${USER_SERVICE_READ_TIMEOUT_MS:3000}
 
 management:
   endpoints:

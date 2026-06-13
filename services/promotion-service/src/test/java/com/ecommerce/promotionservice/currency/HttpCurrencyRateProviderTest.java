@@ -125,6 +125,6 @@ class HttpCurrencyRateProviderTest {
     }
 
     private static HttpCurrencyRateProvider provider(String url) {
-        return new HttpCurrencyRateProvider(RestClient.builder(), url);
+        return new HttpCurrencyRateProvider(RestClient.builder(), url, 2000, 5000);
     }
 }
