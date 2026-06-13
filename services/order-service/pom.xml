@@ -46,6 +46,16 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
         </dependency>
+        <!-- Client-side load balancing for WebClient `lb://` service resolution. -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+        <!-- WebClient (reactive) for the subscription scheduler's price lookup. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
 
         <!-- Security -->
         <dependency>
@@ -194,6 +204,13 @@
             <groupId>io.grpc</groupId>
             <artifactId>grpc-testing</artifactId>
             <version>1.58.0</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- WireMock for the WebClient price-lookup integration test. -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.9.1</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -1,6 +1,8 @@
 package com.ecommerce.orderservice.saga.rma;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -13,6 +15,24 @@ public interface ReturnRepository extends JpaRepository<Return, String> {
     Optional<Return> findByRmaNumber(String rmaNumber);
 
     List<Return> findByUserId(String userId);
+
+    /**
+     * Load a single return with its {@code lines} eagerly fetched in one query.
+     * Used by paths that need the lines after the persistence context closes
+     * (refund saga / inspection, single-return GET) now that {@code lines} is
+     * {@code LAZY} — avoids {@code LazyInitializationException}.
+     */
+    @Query("SELECT r FROM Return r LEFT JOIN FETCH r.lines WHERE r.id = :id")
+    Optional<Return> findByIdWithLines(@Param("id") String id);
+
+    /**
+     * List a user's returns with {@code lines} fetched in a single query.
+     * Replaces the N+1 that the previous {@code EAGER} mapping caused on the
+     * listing path (one extra select per row). {@code DISTINCT} collapses the
+     * join cartesian product back to one row per return.
+     */
+    @Query("SELECT DISTINCT r FROM Return r LEFT JOIN FETCH r.lines WHERE r.userId = :userId")
+    List<Return> findByUserIdWithLines(@Param("userId") String userId);
 
     List<Return> findByOrderIdAndStatusIn(String orderId, List<ReturnStatus> statuses);
 

@@ -70,7 +70,7 @@ class RmaControllerTest {
                 .content(objectMapper.writeValueAsString(Map.of("orderId", "order-1", "reason", "size"))))
             .andExpect(status().is4xxClientError());
 
-        verify(orchestrator, never()).requestReturn(anyString(), any(), any(), any());
+        verify(orchestrator, never()).requestReturn(anyString(), any(), any(), any(), any());
     }
 
     @Test
@@ -80,7 +80,7 @@ class RmaControllerTest {
         Return rma = Return.builder()
             .id("rma-1").rmaNumber("RMA-XYZ").orderId("order-1")
             .status(ReturnStatus.AWAITING_SHIPMENT).build();
-        when(orchestrator.requestReturn(eq("order-1"), any(), eq("size"), any())).thenReturn(rma);
+        when(orchestrator.requestReturn(eq("order-1"), any(), eq("size"), any(), any())).thenReturn(rma);
 
         mockMvc.perform(post("/api/returns").with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
@@ -93,6 +93,34 @@ class RmaControllerTest {
 
     @Test
     @WithMockUser(authorities = "SCOPE_user")
+    @DisplayName("requestReturn_withLines_passesLineRequests")
+    void requestReturn_withLines_passesLineRequests() throws Exception {
+        Return rma = Return.builder()
+            .id("rma-2").rmaNumber("RMA-LINES").orderId("order-1")
+            .status(ReturnStatus.AWAITING_SHIPMENT).build();
+        when(orchestrator.requestReturn(eq("order-1"), any(), any(), any(), any())).thenReturn(rma);
+
+        String body = objectMapper.writeValueAsString(Map.of(
+            "orderId", "order-1",
+            "reason", "partial",
+            "lines", List.of(Map.of("orderItemId", "item-1", "quantity", 2, "reason", "broken"))));
+
+        mockMvc.perform(post("/api/returns").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isAccepted());
+
+        org.mockito.ArgumentCaptor<List<RmaOrchestrator.LineRequest>> linesCaptor =
+            org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(orchestrator).requestReturn(eq("order-1"), any(), eq("partial"),
+            linesCaptor.capture(), any());
+        org.assertj.core.api.Assertions.assertThat(linesCaptor.getValue()).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(linesCaptor.getValue().get(0).orderItemId())
+            .isEqualTo("item-1");
+    }
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_user")
     @DisplayName("requestReturn_blankOrderId_returns400")
     void requestReturn_blankOrderId_returns400() throws Exception {
         mockMvc.perform(post("/api/returns").with(csrf())
@@ -100,14 +128,14 @@ class RmaControllerTest {
                 .content(objectMapper.writeValueAsString(Map.of("orderId", "", "reason", "x"))))
             .andExpect(status().isBadRequest());
 
-        verify(orchestrator, never()).requestReturn(anyString(), any(), any(), any());
+        verify(orchestrator, never()).requestReturn(anyString(), any(), any(), any(), any());
     }
 
     @Test
     @WithMockUser(authorities = "SCOPE_user")
     @DisplayName("requestReturn_orchestratorThrowsRmaException_returns400")
     void requestReturn_orchestratorThrowsRmaException_returns400() throws Exception {
-        when(orchestrator.requestReturn(anyString(), any(), any(), any()))
+        when(orchestrator.requestReturn(anyString(), any(), any(), any(), any()))
             .thenThrow(new RmaException("Return window has expired"));
 
         mockMvc.perform(post("/api/returns").with(csrf())
@@ -216,7 +244,7 @@ class RmaControllerTest {
                 .content(objectMapper.writeValueAsString(Map.of("outcome", "APPROVED"))))
             .andExpect(status().isForbidden());
 
-        verify(orchestrator, never()).inspect(anyString(), any(), any(), any(), any());
+        verify(orchestrator, never()).inspect(anyString(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -225,7 +253,7 @@ class RmaControllerTest {
     void inspect_admin_returnsUpdatedRma() throws Exception {
         Return rma = Return.builder()
             .id("rma-1").rmaNumber("RMA-1").status(ReturnStatus.COMPLETED).outcome("APPROVED").build();
-        when(orchestrator.inspect(eq("rma-1"), eq("APPROVED"), eq("OPENED"), eq("ok"), any()))
+        when(orchestrator.inspect(eq("rma-1"), eq("APPROVED"), eq("OPENED"), eq("ok"), any(), any()))
             .thenReturn(rma);
 
         mockMvc.perform(post("/api/returns/rma-1/inspect").with(csrf())
@@ -235,6 +263,38 @@ class RmaControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("COMPLETED"))
             .andExpect(jsonPath("$.outcome").value("APPROVED"));
+    }
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_admin")
+    @DisplayName("inspect_admin_passesRestockingFee")
+    void inspect_admin_passesRestockingFee() throws Exception {
+        Return rma = Return.builder()
+            .id("rma-1").rmaNumber("RMA-1").status(ReturnStatus.COMPLETED).outcome("APPROVED").build();
+        when(orchestrator.inspect(eq("rma-1"), eq("APPROVED"), any(), any(),
+            eq(new java.math.BigDecimal("15.00")), any())).thenReturn(rma);
+
+        mockMvc.perform(post("/api/returns/rma-1/inspect").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(
+                    Map.of("outcome", "APPROVED", "restockingFeePercent", "15.00"))))
+            .andExpect(status().isOk());
+
+        verify(orchestrator).inspect(eq("rma-1"), eq("APPROVED"), any(), any(),
+            eq(new java.math.BigDecimal("15.00")), any());
+    }
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_admin")
+    @DisplayName("inspect_restockingFeeOver100_returns400")
+    void inspect_restockingFeeOver100_returns400() throws Exception {
+        mockMvc.perform(post("/api/returns/rma-1/inspect").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(
+                    Map.of("outcome", "APPROVED", "restockingFeePercent", "150"))))
+            .andExpect(status().isBadRequest());
+
+        verify(orchestrator, never()).inspect(anyString(), any(), any(), any(), any(), any());
     }
 
     @Test
