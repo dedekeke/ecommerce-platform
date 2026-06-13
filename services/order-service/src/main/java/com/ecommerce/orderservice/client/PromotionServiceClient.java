@@ -151,7 +151,10 @@ public class PromotionServiceClient {
      * open or the call fails. Checkout proceeds at the undiscounted price.
      */
     private BigDecimal loyaltyDiscountFallback(String userId, Throwable t) {
-        log.error("Promotion Service unavailable for loyalty lookup. User: {}, Error: {}",
+        // Loyalty is a non-critical enhancement: a miss simply means no tier
+        // discount and checkout proceeds. Log at WARN, not ERROR, so this
+        // expected degradation does not pollute error dashboards / alerting.
+        log.warn("Promotion Service unavailable for loyalty lookup. User: {}, Error: {}",
             userId, t.getMessage());
         return BigDecimal.ZERO;
     }

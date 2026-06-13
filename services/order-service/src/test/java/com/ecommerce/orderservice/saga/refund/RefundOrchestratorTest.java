@@ -36,8 +36,14 @@ class RefundOrchestratorTest {
 
     @BeforeEach
     void setUp() {
-        orchestrator = new RefundOrchestrator(sagaRepository, validateStep, reversePaymentStep,
+        orchestrator = new RefundOrchestrator(sagaRepository, null, validateStep, reversePaymentStep,
             restoreInventoryStep, updateOrderStep, notifyRefundStep);
+        // The async runner normally dispatches run() off-thread; in this unit
+        // test we wire a real runner around the orchestrator so runAsync()
+        // invokes run() synchronously (no Spring proxy → no async hop), keeping
+        // the existing "assert COMPLETED after startRefund" assertions valid.
+        RefundSagaRunner runner = new RefundSagaRunner(orchestrator);
+        org.springframework.test.util.ReflectionTestUtils.setField(orchestrator, "sagaRunner", runner);
         lenient().when(sagaRepository.save(any(RefundSagaState.class)))
             .thenAnswer(inv -> inv.getArgument(0));
         lenient().when(reversePaymentStep.hasCompensation()).thenReturn(true);

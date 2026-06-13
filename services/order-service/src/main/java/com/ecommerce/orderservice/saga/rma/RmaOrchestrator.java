@@ -342,11 +342,14 @@ public class RmaOrchestrator {
     }
 
     public Optional<Return> findById(String rmaId) {
-        return returnRepository.findById(rmaId);
+        // Fetch lines eagerly: the single-return GET serializes them and the
+        // persistence context is closed by the time Jackson runs (lines is LAZY).
+        return returnRepository.findByIdWithLines(rmaId);
     }
 
     public List<Return> findByUser(String userId) {
-        return returnRepository.findByUserId(userId);
+        // Single JOIN FETCH query — avoids the N+1 the old EAGER mapping caused.
+        return returnRepository.findByUserIdWithLines(userId);
     }
 
     /**

@@ -106,4 +106,35 @@ class ReturnLinePersistenceIntegrationTest {
     void repository_findByReturnRequestId_returnsEmpty_forUnknownId() {
         assertThat(returnLineRepository.findByReturnRequestId("nope")).isEqualTo(List.of());
     }
+
+    @Test
+    @DisplayName("findByIdWithLines_should_eagerlyFetchLines_afterContextCleared")
+    void findByIdWithLines_should_eagerlyFetchLines_afterContextCleared() {
+        Return rma = baseReturn();
+        rma.addLine(line("item-1", 2, new BigDecimal("30.00"), true));
+        Return saved = returnRepository.save(rma);
+        entityManager.flush();
+        entityManager.clear();
+
+        Return reloaded = returnRepository.findByIdWithLines(saved.getId()).orElseThrow();
+        // Cleared context = detached entity; lines must already be initialized.
+        assertThat(reloaded.getLines()).hasSize(1);
+        assertThat(reloaded.approvedLinesTotal()).isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    @DisplayName("findByUserIdWithLines_should_returnDistinctRowsWithLines")
+    void findByUserIdWithLines_should_returnDistinctRowsWithLines() {
+        Return rma = baseReturn();
+        rma.addLine(line("item-1", 1, new BigDecimal("5.00"), true));
+        rma.addLine(line("item-2", 2, new BigDecimal("7.50"), false));
+        returnRepository.save(rma);
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Return> result = returnRepository.findByUserIdWithLines("user-1");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getLines()).hasSize(2);
+    }
 }

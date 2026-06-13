@@ -6,17 +6,14 @@ import com.ecommerce.orderservice.saga.refund.step.ReversePaymentStep;
 import com.ecommerce.orderservice.saga.refund.step.UpdateOrderStep;
 import com.ecommerce.orderservice.saga.refund.step.ValidateRefundStep;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Orchestration saga that coordinates a customer refund.
@@ -59,11 +56,16 @@ import java.util.concurrent.CompletableFuture;
 public class RefundOrchestrator {
 
     private final RefundSagaRepository sagaRepository;
+    private final RefundSagaRunner sagaRunner;
     private final Map<RefundSagaStep, SagaStep> stepsById;
     private final List<RefundSagaStep> stepOrder;
 
     public RefundOrchestrator(
         RefundSagaRepository sagaRepository,
+        // @Lazy breaks the orchestrator <-> runner cycle: the runner depends on
+        // the orchestrator (to call run()), and the orchestrator dispatches via
+        // the runner's @Async proxy. Lazy resolution defers wiring until first use.
+        @Lazy RefundSagaRunner sagaRunner,
         ValidateRefundStep validateStep,
         ReversePaymentStep reversePaymentStep,
         RestoreInventoryStep restoreInventoryStep,
@@ -71,6 +73,7 @@ public class RefundOrchestrator {
         NotifyRefundStep notifyRefundStep
     ) {
         this.sagaRepository = sagaRepository;
+        this.sagaRunner = sagaRunner;
         this.stepsById = new EnumMap<>(RefundSagaStep.class);
         this.stepsById.put(RefundSagaStep.VALIDATE, validateStep);
         this.stepsById.put(RefundSagaStep.REVERSE_PAYMENT, reversePaymentStep);
@@ -112,7 +115,9 @@ public class RefundOrchestrator {
             .refundAmountOverride(refundAmountOverride)
             .restockingFeePercent(restockingFeePercent)
             .build();
-        runAsync(ctx);
+        // Dispatch through the dedicated @Async bean so the saga actually runs
+        // off-thread (a self-invocation would bypass the proxy and run inline).
+        sagaRunner.runAsync(ctx);
         return state;
     }
 
@@ -126,14 +131,9 @@ public class RefundOrchestrator {
         }
     }
 
-    @Async
-    @Transactional(propagation = Propagation.NEVER)
-    public CompletableFuture<RefundSagaState> runAsync(RefundSagaContext ctx) {
-        return CompletableFuture.completedFuture(run(ctx));
-    }
-
     /**
-     * Synchronous variant — used by the recovery scheduler and by tests.
+     * Synchronous saga execution. Invoked off-thread by {@link RefundSagaRunner}
+     * for the live path, and directly by the recovery scheduler and tests.
      */
     public RefundSagaState run(RefundSagaContext ctx) {
         RefundSagaState state = ctx.getState();

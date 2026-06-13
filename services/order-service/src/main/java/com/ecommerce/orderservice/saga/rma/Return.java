@@ -91,7 +91,7 @@ public class Return {
      * order item; partial returns carry the returned subset.
      */
     @OneToMany(mappedBy = "returnRequest", cascade = CascadeType.ALL,
-        orphanRemoval = true, fetch = FetchType.EAGER)
+        orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<ReturnLine> lines = new ArrayList<>();
 

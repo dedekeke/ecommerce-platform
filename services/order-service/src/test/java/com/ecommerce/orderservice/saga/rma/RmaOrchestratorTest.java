@@ -441,20 +441,22 @@ class RmaOrchestratorTest {
     // ---------- look-ups ----------
 
     @Test
-    @DisplayName("findById_should_delegateToRepository")
-    void findById_should_delegateToRepository() {
+    @DisplayName("findById_should_fetchLinesEagerly")
+    void findById_should_fetchLinesEagerly() {
         Return rma = Return.builder().id("rma-1").build();
-        when(returnRepository.findById("rma-1")).thenReturn(Optional.of(rma));
+        when(returnRepository.findByIdWithLines("rma-1")).thenReturn(Optional.of(rma));
 
         assertThat(orchestrator.findById("rma-1")).contains(rma);
+        verify(returnRepository, never()).findById("rma-1");
     }
 
     @Test
-    @DisplayName("findByUser_should_delegateToRepository")
-    void findByUser_should_delegateToRepository() {
-        when(returnRepository.findByUserId("user-1"))
+    @DisplayName("findByUser_should_useJoinFetchToAvoidN1")
+    void findByUser_should_useJoinFetchToAvoidN1() {
+        when(returnRepository.findByUserIdWithLines("user-1"))
             .thenReturn(List.of(Return.builder().id("a").build()));
 
         assertThat(orchestrator.findByUser("user-1")).hasSize(1);
+        verify(returnRepository, never()).findByUserId("user-1");
     }
 }

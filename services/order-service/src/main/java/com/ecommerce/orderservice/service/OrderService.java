@@ -136,11 +136,19 @@ public class OrderService {
             : subtotal;
         BigDecimal loyaltyDiscount = calculateLoyaltyDiscount(userId, postPromotionSubtotal);
 
-        // Calculate tax
-        BigDecimal tax = subtotal.multiply(BigDecimal.valueOf(taxRate))
+        // CHOSEN BEHAVIOR: tax is levied on the post-discount taxable amount,
+        // i.e. (postPromotionSubtotal - loyaltyDiscount) floored at 0, NOT on
+        // the gross subtotal. Promo + loyalty discounts therefore reduce the
+        // taxable base, so the customer is not taxed on money they never paid.
+        // (Tax-on-discounted-subtotal is a jurisdiction-dependent policy —
+        // flagged for product confirmation.)
+        BigDecimal taxableAmount = postPromotionSubtotal.subtract(loyaltyDiscount)
+            .max(BigDecimal.ZERO);
+        BigDecimal tax = taxableAmount.multiply(BigDecimal.valueOf(taxRate))
             .setScale(2, RoundingMode.HALF_UP);
 
-        // Calculate shipping cost
+        // Shipping is assessed on the gross subtotal (free-shipping threshold
+        // is a merchandising decision, intentionally independent of discounts).
         BigDecimal shippingCost = calculateShippingCost(subtotal);
 
         BigDecimal discountTotal = (discountAmount != null ? discountAmount : BigDecimal.ZERO)

@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS return_lines (
     return_id       VARCHAR(36)  NOT NULL REFERENCES returns(id) ON DELETE CASCADE,
     order_item_id   VARCHAR(128) NOT NULL,
     product_id      VARCHAR(128),
-    quantity        INT          NOT NULL,
+    quantity        INT          NOT NULL CHECK (quantity > 0),
     unit_price      NUMERIC(10, 2),
     reason          TEXT,
     approved        BOOLEAN      NOT NULL DEFAULT FALSE

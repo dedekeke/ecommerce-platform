@@ -142,8 +142,11 @@ class OrderServiceTest {
         Order order = orderService.createOrder(userId, orderItems, shippingAddress, null);
 
         assertEquals(0, BigDecimal.valueOf(5.00).compareTo(order.getLoyaltyDiscount()));
-        // subtotal 50 - loyalty 5 + tax 4 + shipping 0 (free over 50) = 49
-        assertEquals(0, BigDecimal.valueOf(49.00).compareTo(order.getTotal()));
+        // Tax is computed on the post-discount taxable amount (45 = 50 - 5),
+        // so tax = 45 * 0.08 = 3.60.
+        assertEquals(0, BigDecimal.valueOf(3.60).compareTo(order.getTax()));
+        // subtotal 50 - loyalty 5 + tax 3.60 + shipping 0 (free over 50) = 48.60
+        assertEquals(0, BigDecimal.valueOf(48.60).compareTo(order.getTotal()));
     }
 
     @Test
@@ -175,8 +178,11 @@ class OrderServiceTest {
         Order order = orderService.createOrder(userId, orderItems, shippingAddress, "SAVE10");
 
         assertEquals(0, BigDecimal.valueOf(4.00).compareTo(order.getLoyaltyDiscount()));
-        // 50 - 10 (promo) - 4 (loyalty) + 4 (tax) + 0 (shipping) = 40
-        assertEquals(0, BigDecimal.valueOf(40.00).compareTo(order.getTotal()));
+        // Tax base = postPromotionSubtotal - loyalty = (50 - 10) - 4 = 36,
+        // so tax = 36 * 0.08 = 2.88.
+        assertEquals(0, BigDecimal.valueOf(2.88).compareTo(order.getTax()));
+        // 50 - 10 (promo) - 4 (loyalty) + 2.88 (tax) + 0 (shipping) = 38.88
+        assertEquals(0, BigDecimal.valueOf(38.88).compareTo(order.getTotal()));
     }
 
     @Test
