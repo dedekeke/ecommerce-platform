@@ -117,10 +117,10 @@ public class AbandonedCartScanner {
         return CartAbandonedEvent.builder()
                 .cartId(String.valueOf(cart.getId()))
                 .userId(cart.getUserId())
-                // userEmail is intentionally null here — cart-service does not store
-                // shopper email. The notification-service consumer is responsible
-                // for resolving the email from user-service before sending.
-                .userEmail(null)
+                // userEmail is denormalised onto the cart on first add-to-cart
+                // (resolved from user-service). May be null if that lookup
+                // failed; notification-service skips events without an email.
+                .userEmail(cart.getUserEmail())
                 .totalAmount(cart.getTotalAmount())
                 .totalItems(cart.getTotalItems())
                 .lineItems(items)

@@ -54,6 +54,15 @@ public class Cart {
     private String userId;
 
     /**
+     * Shopper email, denormalised from user-service on first add-to-cart.
+     * Lets the AbandonedCartScanner emit cart.abandoned events with a
+     * recipient without each scan re-querying user-service. May be null if
+     * the lookup failed; the scanner/notification-service degrade gracefully.
+     */
+    @Column(name = "user_email", length = 255)
+    private String userEmail;
+
+    /**
      * Cart items
      */
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
