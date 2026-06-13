@@ -17,6 +17,12 @@
     <description>Service Discovery Server</description>
 
     <dependencies>
+        <!-- Shared logback base (single physical copy lives in common-logging) -->
+        <dependency>
+            <groupId>com.ecommerce</groupId>
+            <artifactId>common-logging</artifactId>
+        </dependency>
+
         <!-- Spring Cloud Netflix Eureka Server -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

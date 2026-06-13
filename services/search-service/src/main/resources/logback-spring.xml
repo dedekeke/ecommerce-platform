@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Service logging config. Delegates to the shared base shipped in common-library
+  (logback-includes/logging-base.xml). Keep service-specific overrides below the
+  include if ever needed; the shared base owns appenders + profile routing.
+-->
+<configuration>
+    <include resource="logback-includes/logging-base.xml"/>
+</configuration>

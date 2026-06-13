@@ -42,6 +42,7 @@
         <!-- Observability -->
         <micrometer-tracing.version>1.2.0</micrometer-tracing.version>
         <zipkin-reporter.version>2.16.4</zipkin-reporter.version>
+        <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
 
         <!-- Utilities -->
         <lombok.version>1.18.30</lombok.version>
@@ -65,6 +66,7 @@
     </properties>
 
     <modules>
+        <module>common-logging</module>
         <module>common-library</module>
         <module>infrastructure/eureka-server</module>
         <module>infrastructure/config-server</module>
@@ -169,6 +171,13 @@
                 <scope>import</scope>
             </dependency>
 
+            <!-- Structured JSON logging (Loki) -->
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback-encoder.version}</version>
+            </dependency>
+
             <!-- Utilities -->
             <dependency>
                 <groupId>org.projectlombok</groupId>
@@ -239,6 +248,13 @@
             <dependency>
                 <groupId>com.ecommerce</groupId>
                 <artifactId>common-library</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Common Logging (shared logback base resource) -->
+            <dependency>
+                <groupId>com.ecommerce</groupId>
+                <artifactId>common-logging</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

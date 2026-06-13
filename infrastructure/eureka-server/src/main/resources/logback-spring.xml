@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Eureka server logging config. Delegates to the shared base on the classpath
+  (logback-includes/logging-base.xml), provided by the `common-logging` module.
+  Do not copy the base in here - it lives in exactly one place.
+-->
+<configuration>
+    <include resource="logback-includes/logging-base.xml"/>
+</configuration>
