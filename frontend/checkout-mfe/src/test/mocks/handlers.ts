@@ -1,9 +1,25 @@
 import { http, HttpResponse } from 'msw'
-import type { CreateOrderPayload } from '../../api/types'
+import type { CreateOrderPayload, CreatePaymentIntentPayload } from '../../api/types'
 
 const API_BASE = 'http://localhost:8080/api'
 
 export const handlers = [
+  http.post(`${API_BASE}/payments/intents`, async ({ request }) => {
+    const body = (await request.json()) as CreatePaymentIntentPayload
+    if (!body.orderId || !body.amount) {
+      return HttpResponse.json({ message: 'Invalid payment intent payload' }, { status: 400 })
+    }
+    return HttpResponse.json(
+      {
+        paymentId: 1,
+        paymentIntentId: 'pi_test_123',
+        clientSecret: 'pi_test_123_secret_abc',
+        status: 'PENDING',
+      },
+      { status: 201 }
+    )
+  }),
+
   http.post(`${API_BASE}/orders`, async ({ request }) => {
     const body = (await request.json()) as CreateOrderPayload
     if (!body.userId || !body.items?.length) {
