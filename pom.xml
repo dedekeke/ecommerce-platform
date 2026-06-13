@@ -346,6 +346,9 @@
                     <version>${dependency-check-maven.version}</version>
                     <configuration>
                         <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
+                        <!-- dependency-check 9.x stores the NVD DB here; pin it so CI can
+                             cache it deterministically instead of cold-downloading. -->
+                        <dataDirectory>${user.home}/.m2/dependency-check-data</dataDirectory>
                         <suppressionFiles>
                             <suppressionFile>${maven.multiModuleProjectDirectory}/dependency-check-suppressions.xml</suppressionFile>
                         </suppressionFiles>
@@ -358,13 +361,8 @@
                         <nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>
                         <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
                     </configuration>
-                    <executions>
-                        <execution>
-                            <goals>
-                                <goal>check</goal>
-                            </goals>
-                        </execution>
-                    </executions>
+                    <!-- No <executions> here: execution binding lives solely in the
+                         `security` profile so no child module triggers a per-module check. -->
                 </plugin>
             </plugins>
         </pluginManagement>

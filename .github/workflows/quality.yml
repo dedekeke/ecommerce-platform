@@ -36,6 +36,7 @@ jobs:
   backend:
     name: Backend build, test & coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -56,12 +57,11 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
           cache: maven
-      - name: Build (skip tests)
-        run: mvn -B -ntp clean install -DskipTests
-      # JaCoCo prepare-agent + report are bound in the parent pom pluginManagement,
-      # so `test` already produces target/site/jacoco per module.
-      - name: Unit tests + JaCoCo
-        run: mvn -B -ntp test
+      # Single pass: compile, run tests, and emit JaCoCo reports. JaCoCo
+      # prepare-agent + report are bound in the parent pom pluginManagement,
+      # so `install` already produces target/site/jacoco per module.
+      - name: Build, test & JaCoCo
+        run: mvn -B -ntp clean install
       - name: Upload coverage reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -75,6 +75,7 @@ jobs:
   dependency-check:
     name: OWASP dependency-check
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -83,11 +84,14 @@ jobs:
           distribution: temurin
           cache: maven
       # Cache the NVD database between runs so the gate stays fast.
+      # Path must match <dataDirectory> pinned in pom.xml (dependency-check 9.x).
+      # Key is scoped to the plugin version (DB schema changes across majors),
+      # not pom hashes, so dependency edits don't invalidate the NVD cache.
       - name: Cache NVD data
         uses: actions/cache@v4
         with:
-          path: ~/.m2/repository/org/owasp/dependency-check-data
-          key: nvd-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          path: ~/.m2/dependency-check-data
+          key: nvd-${{ runner.os }}-dc9.2.0
           restore-keys: |
             nvd-${{ runner.os }}-
       # NVD_API_KEY is optional but strongly recommended to avoid rate limiting.
@@ -114,6 +118,7 @@ jobs:
   frontend:
     name: Frontend ${{ matrix.app }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -134,9 +139,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/${{ matrix.app }}/package.json
-      # Lockfiles are gitignored in this repo, so fall back to `npm install`.
+      # Lockfiles are gitignored in this repo (see .gitignore), so there is no
+      # package-lock.json to drive `npm ci`; use `npm install` directly.
       - name: Install
-        run: npm ci || npm install
+        run: npm install
+      # Dependency scan for the frontend (mirrors the backend OWASP gate).
+      # Fails the leg on high/critical advisories.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npm run lint --if-present
       - name: Test (React / vitest)

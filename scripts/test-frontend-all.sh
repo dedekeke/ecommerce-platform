@@ -7,7 +7,7 @@
 #
 # Usage:
 #   scripts/test-frontend-all.sh                # every MFE
-#   scripts/test-frontend-all.sh --affected     # only MFEs with staged git changes (pre-commit)
+#   scripts/test-frontend-all.sh --affected     # only MFEs with staged/unstaged/untracked changes
 #   scripts/test-frontend-all.sh --lint         # also run `npm run lint` where present
 #   scripts/test-frontend-all.sh --help
 #
@@ -37,10 +37,15 @@ BLUE=$'\e[34m'; GREEN=$'\e[32m'; RED=$'\e[31m'; YELLOW=$'\e[33m'; RESET=$'\e[0m'
 declare -a FAILED=()
 declare -a RAN=()
 
-# An MFE is "affected" if it has staged changes under its directory.
+# An MFE is "affected" if it has staged OR unstaged changes (incl. untracked)
+# under its directory.
 is_affected() {
   local rel="frontend/$1"
-  git -C "$ROOT" diff --cached --name-only 2>/dev/null | grep -q "^${rel}/"
+  {
+    git -C "$ROOT" diff --name-only 2>/dev/null          # unstaged tracked
+    git -C "$ROOT" diff --cached --name-only 2>/dev/null # staged
+    git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null # untracked
+  } | grep -q "^${rel}/"
 }
 
 has_script() { # has_script <dir> <script-name>
@@ -89,7 +94,7 @@ done
 
 echo
 if [[ ${#RAN[@]} -eq 0 ]]; then
-  echo "${YELLOW}No MFEs to test$( $AFFECTED && echo ' (no staged frontend changes)').${RESET}"
+  echo "${YELLOW}No MFEs to test$( $AFFECTED && echo ' (no changed frontend files)').${RESET}"
   exit 0
 fi
 echo "${BLUE}--- Frontend test summary (${#RAN[@]} suite(s)) ---${RESET}"
