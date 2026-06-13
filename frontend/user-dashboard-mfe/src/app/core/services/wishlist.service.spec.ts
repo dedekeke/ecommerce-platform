@@ -54,25 +54,18 @@ describe('WishlistService', () => {
     expect(count).toBe(1);
   });
 
-  it('should remove an item by id', (done) => {
+  it('should remove an item by id', () => {
     service.addItem({ productId: 'prod-1', productName: 'A', price: 1, currency: 'USD', inStock: true });
 
-    service.getItems().subscribe((items) => {
-      if (items.length === 1) {
-        service.removeItem(items[0].id);
-      }
-    });
+    const added = (service as unknown as { items$: { getValue: () => { id: string }[] } }).items$.getValue();
+    expect(added.length).toBe(1);
 
-    service.getItems().subscribe((items) => {
-      if (items.length === 0) {
-        done();
-      }
-    });
-
+    // Removing an unknown id is a no-op; removing the real id empties the list.
     service.removeItem('non-existent-id');
-    const items = (service as unknown as { items$: { getValue: () => unknown[] } }).items$.getValue();
-    expect(items.length).toBe(0);
-    done();
+    service.removeItem(added[0].id);
+
+    const remaining = (service as unknown as { items$: { getValue: () => unknown[] } }).items$.getValue();
+    expect(remaining.length).toBe(0);
   });
 
   it('should return true from isInWishlist for added product', () => {

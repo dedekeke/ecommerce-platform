@@ -37,7 +37,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
         "security.enabled=true",
-        "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://test-tenant.auth0.com/"
+        "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://test-tenant.auth0.com/",
+        "grpc.server.port=-1"
 })
 class OrderControllerSecurityTest {
 

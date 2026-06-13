@@ -25,7 +25,10 @@ describe('bootstrap function', () => {
       expect(typeof destroy).toBe('function');
       destroy();
     } finally {
-      document.body.removeChild(el);
+      // destroy() may already have detached the mount node; remove defensively.
+      if (el.parentNode) {
+        el.parentNode.removeChild(el);
+      }
     }
   });
 });
