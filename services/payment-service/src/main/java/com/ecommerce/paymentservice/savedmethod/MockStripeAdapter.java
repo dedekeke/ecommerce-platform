@@ -1,6 +1,7 @@
 package com.ecommerce.paymentservice.savedmethod;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -23,6 +24,7 @@ import java.time.LocalDate;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "payment.provider", havingValue = "mock", matchIfMissing = true)
 public class MockStripeAdapter implements PaymentProviderAdapter {
 
     static final String PROVIDER_NAME = "STRIPE";

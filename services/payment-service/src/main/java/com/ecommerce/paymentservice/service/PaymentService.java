@@ -4,7 +4,7 @@ import com.ecommerce.paymentservice.domain.Payment;
 import com.ecommerce.paymentservice.domain.PaymentMethod;
 import com.ecommerce.paymentservice.domain.PaymentStatus;
 import com.ecommerce.paymentservice.gateway.PaymentGatewayResponse;
-import com.ecommerce.paymentservice.gateway.PaymentGatewayService;
+import com.ecommerce.paymentservice.gateway.PaymentIntentProvider;
 import com.ecommerce.paymentservice.kafka.PaymentEvent;
 import com.ecommerce.paymentservice.kafka.PaymentEventPublisher;
 import com.ecommerce.paymentservice.repository.PaymentRepository;
@@ -22,15 +22,23 @@ import java.time.LocalDateTime;
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
-    private final PaymentGatewayService paymentGatewayService;
+    private final PaymentIntentProvider paymentProvider;
     private final PaymentEventPublisher eventPublisher;
 
     @Transactional
     public Payment createPaymentIntent(String orderId, String userId, BigDecimal amount, String currency) {
         log.info("Creating payment intent for order: {}", orderId);
 
+        // Idempotency guard: a retried checkout for the same order must reuse the existing pending
+        // intent rather than creating a second Stripe charge + payment row.
+        Payment existing = paymentRepository.findByOrderId(orderId).orElse(null);
+        if (existing != null && existing.getStatus() == PaymentStatus.PENDING) {
+            log.info("Reusing existing pending payment intent for order: {}", orderId);
+            return existing;
+        }
+
         // Call payment gateway to create payment intent
-        PaymentGatewayResponse gatewayResponse = paymentGatewayService.createPaymentIntent(
+        PaymentGatewayResponse gatewayResponse = paymentProvider.createPaymentIntent(
                 orderId, userId, amount, currency);
 
         // Create payment record
@@ -54,14 +62,14 @@ public class PaymentService {
 
         // Find payment by intent ID
         Payment payment = paymentRepository.findByPaymentIntentId(paymentIntentId)
-                .orElseThrow(() -> new RuntimeException("Payment not found for intent: " + paymentIntentId));
+                .orElseThrow(() -> new PaymentNotFoundException("Payment not found for intent: " + paymentIntentId));
 
         // Update status to processing
         payment.setStatus(PaymentStatus.PROCESSING);
         paymentRepository.save(payment);
 
         // Call payment gateway to confirm payment
-        PaymentGatewayResponse gatewayResponse = paymentGatewayService.confirmPayment(
+        PaymentGatewayResponse gatewayResponse = paymentProvider.confirmPayment(
                 paymentIntentId, paymentMethodId);
 
         // Update payment based on gateway response
@@ -88,15 +96,15 @@ public class PaymentService {
 
         // Find payment by intent ID
         Payment payment = paymentRepository.findByPaymentIntentId(paymentIntentId)
-                .orElseThrow(() -> new RuntimeException("Payment not found for intent: " + paymentIntentId));
+                .orElseThrow(() -> new PaymentNotFoundException("Payment not found for intent: " + paymentIntentId));
 
         // Validate payment can be refunded
         if (payment.getStatus() != PaymentStatus.COMPLETED) {
-            throw new RuntimeException("Payment cannot be refunded. Current status: " + payment.getStatus());
+            throw new InvalidPaymentStateException("Payment cannot be refunded. Current status: " + payment.getStatus());
         }
 
         // Call payment gateway to process refund
-        PaymentGatewayResponse gatewayResponse = paymentGatewayService.refundPayment(
+        PaymentGatewayResponse gatewayResponse = paymentProvider.refundPayment(
                 paymentIntentId, amount, reason);
 
         if (gatewayResponse.isSuccess()) {
