@@ -4,6 +4,10 @@ import com.ecommerce.paymentservice.domain.Payment;
 import com.ecommerce.paymentservice.domain.PaymentStatus;
 import com.ecommerce.paymentservice.grpc.proto.ConfirmPaymentRequest;
 import com.ecommerce.paymentservice.grpc.proto.ConfirmPaymentResponse;
+import com.ecommerce.paymentservice.grpc.proto.CreatePaymentIntentRequest;
+import com.ecommerce.paymentservice.grpc.proto.CreatePaymentIntentResponse;
+import com.ecommerce.paymentservice.grpc.proto.RefundPaymentRequest;
+import com.ecommerce.paymentservice.grpc.proto.RefundPaymentResponse;
 import com.ecommerce.paymentservice.service.PaymentService;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +32,12 @@ class PaymentGrpcServiceImplTest {
 
     @Mock
     private StreamObserver<ConfirmPaymentResponse> responseObserver;
+
+    @Mock
+    private StreamObserver<CreatePaymentIntentResponse> createResponseObserver;
+
+    @Mock
+    private StreamObserver<RefundPaymentResponse> refundResponseObserver;
 
     @InjectMocks
     private PaymentGrpcServiceImpl service;
@@ -81,10 +91,89 @@ class PaymentGrpcServiceImplTest {
         assertThat(response.getStatus()).isEqualTo(com.ecommerce.paymentservice.grpc.proto.PaymentStatus.COMPLETED);
     }
 
+    @Test
+    @DisplayName("should not leak raw exception detail into the gRPC createPaymentIntent response on exception")
+    void should_notLeakExceptionDetail_when_createPaymentIntentThrows() {
+        when(paymentService.createPaymentIntent(anyString(), anyString(), any(), anyString()))
+                .thenThrow(new RuntimeException(RAW_STRIPE_DETAIL));
+
+        service.createPaymentIntent(
+                CreatePaymentIntentRequest.newBuilder()
+                        .setOrderId("order-1")
+                        .setUserId("user-1")
+                        .setAmount(10.0)
+                        .setCurrency("USD")
+                        .build(),
+                createResponseObserver);
+
+        CreatePaymentIntentResponse response = captureCreateResponse();
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getMessage()).doesNotContain(RAW_STRIPE_DETAIL);
+        assertThat(response.getMessage()).doesNotContain("decline_code");
+        assertThat(response.getMessage()).doesNotContain("req_abc123");
+        assertThat(response.getMessage()).doesNotContain("pi_secret_internal");
+    }
+
+    @Test
+    @DisplayName("should not leak raw exception detail into the gRPC confirmPayment response on exception")
+    void should_notLeakExceptionDetail_when_confirmPaymentThrows() {
+        when(paymentService.confirmPayment(anyString(), any()))
+                .thenThrow(new RuntimeException(RAW_STRIPE_DETAIL));
+
+        service.confirmPayment(
+                ConfirmPaymentRequest.newBuilder().setPaymentIntentId(INTENT_ID).build(),
+                responseObserver);
+
+        ConfirmPaymentResponse response = captureResponse();
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getMessage()).doesNotContain(RAW_STRIPE_DETAIL);
+        assertThat(response.getMessage()).doesNotContain("decline_code");
+        assertThat(response.getMessage()).doesNotContain("req_abc123");
+        assertThat(response.getMessage()).doesNotContain("pi_secret_internal");
+        assertThat(response.getStatus()).isEqualTo(com.ecommerce.paymentservice.grpc.proto.PaymentStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("should not leak raw exception detail into the gRPC refundPayment response on exception")
+    void should_notLeakExceptionDetail_when_refundPaymentThrows() {
+        when(paymentService.refundPayment(anyString(), any(), anyString()))
+                .thenThrow(new RuntimeException(RAW_STRIPE_DETAIL));
+
+        service.refundPayment(
+                RefundPaymentRequest.newBuilder()
+                        .setPaymentIntentId(INTENT_ID)
+                        .setAmount(5.0)
+                        .setReason("requested_by_customer")
+                        .build(),
+                refundResponseObserver);
+
+        RefundPaymentResponse response = captureRefundResponse();
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getMessage()).doesNotContain(RAW_STRIPE_DETAIL);
+        assertThat(response.getMessage()).doesNotContain("decline_code");
+        assertThat(response.getMessage()).doesNotContain("req_abc123");
+        assertThat(response.getMessage()).doesNotContain("pi_secret_internal");
+    }
+
     private ConfirmPaymentResponse captureResponse() {
         ArgumentCaptor<ConfirmPaymentResponse> captor = ArgumentCaptor.forClass(ConfirmPaymentResponse.class);
         org.mockito.Mockito.verify(responseObserver).onNext(captor.capture());
         org.mockito.Mockito.verify(responseObserver).onCompleted();
+        return captor.getValue();
+    }
+
+    private CreatePaymentIntentResponse captureCreateResponse() {
+        ArgumentCaptor<CreatePaymentIntentResponse> captor =
+                ArgumentCaptor.forClass(CreatePaymentIntentResponse.class);
+        org.mockito.Mockito.verify(createResponseObserver).onNext(captor.capture());
+        org.mockito.Mockito.verify(createResponseObserver).onCompleted();
+        return captor.getValue();
+    }
+
+    private RefundPaymentResponse captureRefundResponse() {
+        ArgumentCaptor<RefundPaymentResponse> captor = ArgumentCaptor.forClass(RefundPaymentResponse.class);
+        org.mockito.Mockito.verify(refundResponseObserver).onNext(captor.capture());
+        org.mockito.Mockito.verify(refundResponseObserver).onCompleted();
         return captor.getValue();
     }
 }

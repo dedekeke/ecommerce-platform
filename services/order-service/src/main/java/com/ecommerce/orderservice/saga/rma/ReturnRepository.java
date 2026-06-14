@@ -38,19 +38,16 @@ public interface ReturnRepository extends JpaRepository<Return, String> {
 
     /**
      * Used by the recovery scheduler — picks up RMAs stuck in transient states
-     * (REQUESTED / NOTIFIED / INSPECTING). {@link ReturnStatus#AWAITING_SHIPMENT}
-     * is intentionally excluded since that state is supposed to last days.
-     */
-    List<Return> findByStatusInAndUpdatedAtBefore(List<ReturnStatus> statuses, LocalDateTime cutoff);
-
-    /**
-     * Recovery-scheduler variant of {@link #findByStatusInAndUpdatedAtBefore}
-     * that {@code JOIN FETCH}es {@code lines} in one query. The scheduler's
-     * read tx commits before {@code resume()} reaches {@code handleApproved()},
-     * detaching the entities; without the fetch, touching {@code rma.getLines()}
-     * for an INSPECTING/APPROVED partial return throws
-     * {@code LazyInitializationException} (now that {@code lines} is {@code LAZY}).
-     * {@code DISTINCT} collapses the join cartesian product to one row per return.
+     * (REQUESTED / NOTIFIED / INSPECTING) and {@code JOIN FETCH}es {@code lines}
+     * in one query. {@link ReturnStatus#AWAITING_SHIPMENT} is intentionally
+     * excluded since that state is supposed to last days.
+     *
+     * <p>The scheduler's read tx commits before {@code resume()} reaches
+     * {@code handleApproved()}, detaching the entities; without the fetch,
+     * touching {@code rma.getLines()} for an INSPECTING/APPROVED partial return
+     * throws {@code LazyInitializationException} (now that {@code lines} is
+     * {@code LAZY}). {@code DISTINCT} collapses the join cartesian product to
+     * one row per return.
      */
     @Query("SELECT DISTINCT r FROM Return r LEFT JOIN FETCH r.lines "
         + "WHERE r.status IN :statuses AND r.updatedAt < :cutoff")
