@@ -202,11 +202,11 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void testGetUserById_existingUser_shouldReturnProfile() throws Exception {
+    void testGetUserById_adminScope_shouldReturnProfile() throws Exception {
         mockMvc.perform(get("/api/users/" + testUser.getId())
                         .with(jwt()
                                 .jwt(jwt -> jwt.subject("auth0|admin"))
-                                .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 // id is serialized as a String in UserProfileResponse.
@@ -215,12 +215,50 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void testGetUserById_nonExistentUser_shouldReturnNotFound() throws Exception {
+    void testGetUserById_nonExistentUser_withAdminScope_shouldReturnNotFound() throws Exception {
         mockMvc.perform(get("/api/users/99999")
                         .with(jwt()
                                 .jwt(jwt -> jwt.subject("auth0|admin"))
-                                .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testGetUserById_nonAdminScope_shouldReturnForbidden() throws Exception {
+        // IDOR guard: an authenticated but non-admin caller must not be able to
+        // read another user's full profile by internal id.
+        mockMvc.perform(get("/api/users/" + testUser.getId())
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|attacker"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testGetUserById_selfServiceProfileScope_shouldReturnForbidden() throws Exception {
+        // read:profile is the self-service scope; it must not unlock the admin
+        // by-id lookup. Self reads must go through GET /api/users/me.
+        mockMvc.perform(get("/api/users/" + testUser.getId())
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject(auth0Id))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_read:profile"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testGetUserById_unauthenticated_shouldBeDenied() throws Exception {
+        // No bearer token: the request must never reach the handler. Under
+        // method security the @PreAuthorize interceptor denies the anonymous
+        // principal with 403; the URL-level entry point yields 401. Either way
+        // access to PII is refused, so we assert the request is rejected (not
+        // 2xx) rather than pinning a brittle exact code dependent on filter
+        // ordering.
+        mockMvc.perform(get("/api/users/" + testUser.getId()))
+                .andExpect(status().is4xxClientError())
+                .andExpect(result -> {
+                    int status = result.getResponse().getStatus();
+                    org.assertj.core.api.Assertions.assertThat(status).isIn(401, 403);
+                });
     }
 
     @Test
