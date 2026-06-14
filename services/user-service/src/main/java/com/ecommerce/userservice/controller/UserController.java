@@ -133,12 +133,19 @@ public class UserController {
     }
 
     /**
-     * Get user profile by ID (admin only - to be secured with @PreAuthorize later)
+     * Get user profile by ID (admin only).
+     *
+     * <p>Lookup by internal numeric id is an administrative operation that
+     * exposes the full {@link UserProfileResponse} (PII included), so it is
+     * gated to {@code SCOPE_admin}. Regular users must read their own profile
+     * via {@code GET /api/users/me}; inter-service callers use
+     * {@code GET /api/users/by-auth0/{sub}}.
      *
      * GET /api/users/{id}
      */
     @GetMapping("/{id}")
-    @Operation(summary = "Get user by ID", description = "Get a user's profile by their ID (admin only)")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
+    @Operation(summary = "Get user by ID", description = "Get a user's full profile by their internal ID (admin scope only)")
     public ResponseEntity<UserProfileResponse> getUserById(@PathVariable Long id) {
         log.debug("Getting user by ID: {}", id);
 
