@@ -71,10 +71,11 @@ describe('StripeCheckout', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/unable to start payment/i))
   })
 
-  it('should only ever call loadStripe with a non-empty publishable key', () => {
+  it('should lazy-load the Stripe SDK and only call loadStripe with a non-empty publishable key', async () => {
     createPaymentIntent.mockReturnValue(new Promise(() => {}))
     renderWithProviders(<StripeCheckout {...props} />)
-    expect(loadStripe).toHaveBeenCalledWith('pk_test_fake')
+    // loadStripe is reached via a dynamic import('@stripe/stripe-js'), so it resolves on a microtask.
+    await waitFor(() => expect(loadStripe).toHaveBeenCalledWith('pk_test_fake'))
     loadStripe.mock.calls.forEach((args) => expect(args[0]).toBeTruthy())
   })
 })

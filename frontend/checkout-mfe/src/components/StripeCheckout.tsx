@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Elements } from '@stripe/react-stripe-js'
-import { loadStripe, type Stripe } from '@stripe/stripe-js'
+import type { Stripe } from '@stripe/stripe-js'
 import Box from '@mui/material/Box'
 import Alert from '@mui/material/Alert'
 import Skeleton from '@mui/material/Skeleton'
@@ -8,12 +8,18 @@ import { createPaymentIntent } from '../api/paymentService'
 import { STRIPE_PUBLISHABLE_KEY } from '../config/payments'
 import StripePaymentForm from './StripePaymentForm'
 
-// Memoised at module scope so the SDK is fetched at most once. Guarded so loadStripe is never
-// called with an empty key (provider=mock) — that would throw inside the Stripe SDK.
+// The ~120KB Stripe JS SDK is loaded via a dynamic import so it lands in its own chunk and is only
+// fetched when the Stripe provider is actually active. Memoised at module scope so the SDK is
+// fetched at most once. Returns null (without importing) when there is no publishable key
+// (provider=mock) — loadStripe would otherwise throw on an empty key.
 let stripePromise: Promise<Stripe | null> | null = null
 const getStripe = (): Promise<Stripe | null> | null => {
   if (!STRIPE_PUBLISHABLE_KEY) return null
-  if (!stripePromise) stripePromise = loadStripe(STRIPE_PUBLISHABLE_KEY)
+  if (!stripePromise) {
+    stripePromise = import('@stripe/stripe-js').then(({ loadStripe }) =>
+      loadStripe(STRIPE_PUBLISHABLE_KEY)
+    )
+  }
   return stripePromise
 }
 
