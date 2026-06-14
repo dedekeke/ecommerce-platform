@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useExposeAuthToken } from './useExposeAuthToken'
 import * as auth0 from '@auth0/auth0-react'
-import { mockAuth0 } from '../test/mocks/auth0'
+import { mockAuth0, mockUser } from '../test/mocks/auth0'
 
 vi.mock('@auth0/auth0-react', () => ({
   useAuth0: vi.fn(),
@@ -14,16 +14,19 @@ describe('useExposeAuthToken', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     delete window.__getAuthToken
+    delete window.__getAuthUserId
   })
 
   afterEach(() => {
     delete window.__getAuthToken
+    delete window.__getAuthUserId
   })
 
-  function mockAuth(isAuthenticated: boolean) {
+  function mockAuth(isAuthenticated: boolean, user?: typeof mockUser) {
     vi.mocked(auth0.useAuth0).mockReturnValue(mockAuth0({
       isAuthenticated,
       isLoading: false,
+      user: isAuthenticated ? (user ?? mockUser) : undefined,
       getAccessTokenSilently: mockGetAccessTokenSilently,
     }))
   }
@@ -64,5 +67,25 @@ describe('useExposeAuthToken', () => {
     renderHook(() => useExposeAuthToken())
     const token = await window.__getAuthToken!()
     expect(token).toBeNull()
+  })
+
+  it('should expose the authenticated user sub via window.__getAuthUserId', () => {
+    mockAuth(true)
+    renderHook(() => useExposeAuthToken())
+    expect(window.__getAuthUserId).toBeTypeOf('function')
+    expect(window.__getAuthUserId!()).toBe(mockUser.sub)
+  })
+
+  it('should return null from window.__getAuthUserId when not authenticated', () => {
+    mockAuth(false)
+    renderHook(() => useExposeAuthToken())
+    expect(window.__getAuthUserId!()).toBeNull()
+  })
+
+  it('should remove window.__getAuthUserId on unmount', () => {
+    mockAuth(true)
+    const { unmount } = renderHook(() => useExposeAuthToken())
+    unmount()
+    expect(window.__getAuthUserId).toBeUndefined()
   })
 })

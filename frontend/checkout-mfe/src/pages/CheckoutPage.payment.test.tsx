@@ -60,11 +60,12 @@ describe('CheckoutPage — payment step provider selection', () => {
     expect(screen.queryByTestId('stripe-checkout')).not.toBeInTheDocument()
   })
 
-  it('should render StripeCheckout when Stripe is enabled', () => {
+  it('should render StripeCheckout when Stripe is enabled', async () => {
     isStripeEnabled.mockReturnValue(true)
     seedPaymentStep()
     renderWithProviders(<CheckoutPage />)
-    expect(screen.getByTestId('stripe-checkout')).toBeInTheDocument()
+    // StripeCheckout is lazy-loaded (React.lazy + Suspense), so it resolves asynchronously.
+    expect(await screen.findByTestId('stripe-checkout')).toBeInTheDocument()
     expect(screen.queryByText(/test mode — no real charges/i)).not.toBeInTheDocument()
   })
 
@@ -73,7 +74,7 @@ describe('CheckoutPage — payment step provider selection', () => {
     seedPaymentStep()
     const { default: userEvent } = await import('@testing-library/user-event')
     renderWithProviders(<CheckoutPage />)
-    await userEvent.click(screen.getByTestId('stripe-checkout'))
+    await userEvent.click(await screen.findByTestId('stripe-checkout'))
     expect(useCheckoutStore.getState().paymentMethodId).toBe('pi_confirmed_1')
   })
 })

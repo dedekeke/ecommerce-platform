@@ -79,8 +79,10 @@ public class PaymentGrpcServiceImpl extends PaymentServiceGrpc.PaymentServiceImp
                 responseBuilder.setMessage("Payment confirmed successfully");
                 responseBuilder.setTransactionId(payment.getTransactionId());
             } else {
-                responseBuilder.setMessage("Payment failed: " +
-                    (payment.getFailureReason() != null ? payment.getFailureReason() : "Unknown error"));
+                // Never echo the raw gateway/Stripe detail (held in payment.failureReason) back to the
+                // caller — it can carry decline codes, request ids and other internal context. The full
+                // reason stays on the entity/DB for operator debugging; clients get a generic message.
+                responseBuilder.setMessage("Payment could not be completed.");
             }
 
             ConfirmPaymentResponse response = responseBuilder.build();

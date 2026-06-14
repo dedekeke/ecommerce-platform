@@ -1,23 +1,27 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Container from '@mui/material/Container'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
+import Skeleton from '@mui/material/Skeleton'
 import { useCheckout } from '../hooks/useCheckout'
+import { useAuthUserId } from '../hooks/useAuthUserId'
 import { useCartStore, selectCartItems, selectCartTotal } from '../stores/cartStore'
 import { createOrder } from '../api/orderService'
 import { isStripeEnabled } from '../config/payments'
 import AddressForm from '../components/AddressForm'
 import PaymentMethodForm from '../components/PaymentMethodForm'
-import StripeCheckout from '../components/StripeCheckout'
 import OrderReview from '../components/OrderReview'
 import CheckoutStepper from '../components/CheckoutStepper'
 import type { ShippingAddress } from '../api/types'
 
-const STEPS = ['Shipping', 'Payment', 'Review']
+// Code-split the Stripe step: StripeCheckout statically pulls @stripe/stripe-js +
+// @stripe/react-stripe-js (~120KB). Lazy-loading keeps that SDK out of the main checkout bundle
+// and only fetches it when the Stripe provider is active and the user reaches the payment step.
+const StripeCheckout = lazy(() => import('../components/StripeCheckout'))
 
-const USER_ID = 'guest'
+const STEPS = ['Shipping', 'Payment', 'Review']
 
 const computeTotal = (subtotal: number) => {
   const tax = subtotal * 0.1
@@ -43,6 +47,7 @@ export default function CheckoutPage() {
 
   const cartItems = useCartStore(selectCartItems)
   const subtotal = useCartStore(selectCartTotal)
+  const userId = useAuthUserId()
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -64,7 +69,7 @@ export default function CheckoutPage() {
     setSubmitError(null)
     try {
       const order = await createOrder({
-        userId: USER_ID,
+        userId,
         items: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity, price: i.price })),
         shippingAddress: address,
         paymentMethodId,
@@ -108,13 +113,22 @@ export default function CheckoutPage() {
 
           {step === 1 &&
             (stripeEnabled ? (
-              <StripeCheckout
-                orderId={draftOrderId}
-                userId={USER_ID}
-                amount={computeTotal(subtotal)}
-                currency="USD"
-                onConfirmed={(paymentIntentId) => setPaymentMethod(paymentIntentId)}
-              />
+              <Suspense
+                fallback={
+                  <Box>
+                    <Skeleton variant="rounded" height={48} sx={{ mb: 2 }} aria-label="Loading payment" />
+                    <Skeleton variant="rounded" height={48} />
+                  </Box>
+                }
+              >
+                <StripeCheckout
+                  orderId={draftOrderId}
+                  userId={userId}
+                  amount={computeTotal(subtotal)}
+                  currency="USD"
+                  onConfirmed={(paymentIntentId) => setPaymentMethod(paymentIntentId)}
+                />
+              </Suspense>
             ) : (
               <PaymentMethodForm onPaymentMethodReady={setPaymentMethod} />
             ))}
