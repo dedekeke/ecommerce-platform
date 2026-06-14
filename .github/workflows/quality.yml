@@ -162,7 +162,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: frontend/${{ matrix.app }}/package.json
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
       # Angular MFEs run Karma against a real headless Chrome; install one and
       # expose it to Karma via CHROME_BIN. React MFEs use jsdom/happy-dom and
       # don't need a browser.
@@ -173,23 +173,51 @@ jobs:
       - name: Export CHROME_BIN (Angular)
         if: matrix.framework == 'angular'
         run: echo "CHROME_BIN=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
-      # Lockfiles are gitignored in this repo (see .gitignore), so there is no
-      # package-lock.json to drive `npm ci`; use `npm install` directly.
+      # Lockfiles are now committed; use `npm ci` for a byte-for-byte reproducible install.
       - name: Install
-        run: npm install
-      # Dependency scan for the frontend. Reported but NON-BLOCKING: lockfiles are
-      # gitignored repo-wide, so deps are re-resolved on every run and `npm audit`
-      # is non-deterministic — and several advisories are in unfixable transitive
-      # build-tooling deps (vite/esbuild/rollup) or test-only deps (happy-dom).
-      # Letting those permanently red-wall every PR adds no security value, so the
-      # advisories are surfaced as warnings. Re-enable blocking once lockfiles are
-      # committed and the audit is deterministic.
-      - name: Audit dependencies (report only)
-        run: npm audit --audit-level=high || echo "::warning title=npm audit findings::High/critical advisories present; review the log. Non-blocking until lockfiles are committed."
-      # Lint is reported but non-blocking: it was historically unenforced (most
-      # MFEs ship no eslint.config.js) and the test suites are the gate of record.
-      - name: Lint (report only)
-        run: npm run lint --if-present || echo "::warning title=Lint findings::Lint reported issues; see log. Non-blocking."
+        run: npm ci
+      # ── Dependency audit ──────────────────────────────────────────────────────
+      # Gate level: --audit-level=critical (BLOCKING for all packages).
+      #
+      # Why not --audit-level=high?
+      # React MFEs (shell-app, product-catalog-mfe, cart-mfe, checkout-mfe):
+      #   Two HIGH advisories remain in build-only tooling (esbuild via vite,
+      #   GHSA-67mh-4wv8-2f99 / GHSA-vg6x-rcgg-rjx6). These affect the Vite dev
+      #   server's ability to serve files to arbitrary origins, not shipped code.
+      #   Fix requires vite@8 (semver-major); tracked as a follow-up upgrade.
+      # Angular MFEs (user-dashboard-mfe, admin-dashboard-mfe):
+      #   30 HIGH advisories — all transitive through @angular-devkit/build-angular
+      #   @18.x (webpack 5, rollup, serialize-javascript, sockjs, etc.). None are
+      #   in runtime code. Fix requires Angular 18→21+ major upgrade; tracked as
+      #   a separate migration task. Zero CRITICAL advisories confirmed.
+      #
+      # The CRITICAL gate blocks any new critical-severity finding immediately.
+      - name: Audit dependencies (blocking at critical)
+        run: npm audit --audit-level=critical
+      # ── Lint ──────────────────────────────────────────────────────────────────
+      # cart-mfe, user-dashboard-mfe, admin-dashboard-mfe: BLOCKING (0 violations).
+      # shell-app: NON-BLOCKING — pre-existing violations in react-hooks/set-state-
+      #   in-effect (AngularMFEWrapper.tsx, MicroFrontendLoader.tsx) and
+      #   react-refresh/only-export-components (main.tsx). These require non-trivial
+      #   refactoring. TODO: fix before next major shell-app release.
+      # product-catalog-mfe: NON-BLOCKING — pre-existing react-hooks/set-state-in-
+      #   effect in useCategories, useCurrencyRates, useProduct; react-hooks/refs in
+      #   useProducts. TODO: refactor to useReducer / move side-effects out of render.
+      # checkout-mfe: NON-BLOCKING — pre-existing react-hooks/set-state-in-effect in
+      #   AddressForm, PaymentMethodForm, StripeCheckout, ConfirmationPage. TODO:
+      #   consolidate validation into useReducer or react-hook-form.
+      - name: Lint (shell-app — report only, pre-existing violations)
+        if: matrix.app == 'shell-app'
+        run: npm run lint --if-present || echo "::warning title=Lint[${{ matrix.app }}]::Pre-existing violations (react-hooks/set-state-in-effect, react-refresh/only-export-components). Non-blocking; see TODO in quality.yml."
+      - name: Lint (product-catalog-mfe — report only, pre-existing violations)
+        if: matrix.app == 'product-catalog-mfe'
+        run: npm run lint --if-present || echo "::warning title=Lint[${{ matrix.app }}]::Pre-existing violations (react-hooks/set-state-in-effect, react-hooks/refs). Non-blocking; see TODO in quality.yml."
+      - name: Lint (checkout-mfe — report only, pre-existing violations)
+        if: matrix.app == 'checkout-mfe'
+        run: npm run lint --if-present || echo "::warning title=Lint[${{ matrix.app }}]::Pre-existing violations (react-hooks/set-state-in-effect). Non-blocking; see TODO in quality.yml."
+      - name: Lint (blocking — cart-mfe, Angular MFEs)
+        if: matrix.app != 'shell-app' && matrix.app != 'product-catalog-mfe' && matrix.app != 'checkout-mfe'
+        run: npm run lint --if-present
       - name: Test (React / vitest)
         if: matrix.framework == 'react'
         run: npm test --if-present -- --run

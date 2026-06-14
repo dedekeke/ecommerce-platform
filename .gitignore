@@ -81,10 +81,12 @@ build/
 .next/
 out/
 
-# Frontend dependencies
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
+# Frontend dependencies — lockfiles MUST be committed for frontend/ packages
+# so that CI can use `npm ci` for deterministic installs. Only ignore them for
+# non-frontend directories (e.g. generated tooling scripts at the repo root).
+/package-lock.json
+/yarn.lock
+/pnpm-lock.yaml
 
 # ============================================
 # Operating System
