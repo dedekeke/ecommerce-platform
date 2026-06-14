@@ -102,10 +102,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: frontend/${{ matrix.app }}/package.json
-      # Lockfiles are gitignored repo-wide, so use `npm install` (not `npm ci`,
-      # which requires a committed package-lock.json). Mirrors quality.yml.
-      - run: npm install
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
+      - run: npm ci
       - run: npm run lint --if-present
       - run: npm test --if-present -- --run
 
@@ -129,13 +127,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: frontend/${{ matrix.app }}/package.json
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
       # Karma needs a real headless Chrome; install one and expose CHROME_BIN.
       - uses: browser-actions/setup-chrome@v1
         id: setup-chrome
       - run: echo "CHROME_BIN=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
-      # Lockfiles are gitignored repo-wide, so use `npm install` (not `npm ci`).
-      - run: npm install
+      - run: npm ci
       # ChromeHeadlessNoSandbox launcher (karma.conf.js) — CI runs as root, so
       # Chrome's sandbox must be disabled.
       - run: npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox --no-progress

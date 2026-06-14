@@ -4,7 +4,6 @@ import { Router, provideRouter } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { MatDialog } from '@angular/material/dialog';
 import { ProductAdminService } from '../../core/services/product-admin.service';
 import { of } from 'rxjs';
 import { Product, PagedProducts } from '../../core/models/product.model';

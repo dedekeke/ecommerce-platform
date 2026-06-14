@@ -93,8 +93,9 @@ describe('DataTableComponent', () => {
     fixture.componentRef.setInput('loading', false);
     fixture.detectChanges();
 
-    let pageEvent: unknown;
+    let pageEvent: unknown = undefined;
     fixture.componentInstance.pageChange.subscribe((e) => (pageEvent = e));
+    void pageEvent; // captured for future assertion; paginator interaction not simulated in this test
 
     const paginator = fixture.nativeElement.querySelector('mat-paginator');
     expect(paginator).toBeTruthy();
