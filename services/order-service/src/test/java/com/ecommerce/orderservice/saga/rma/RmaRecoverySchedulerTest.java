@@ -43,7 +43,7 @@ class RmaRecoverySchedulerTest {
     void should_resumeStuckReturns_olderThanFiveMinutes() {
         Return a = Return.builder().id("a").rmaNumber("RMA-A").status(ReturnStatus.REQUESTED).build();
         Return b = Return.builder().id("b").rmaNumber("RMA-B").status(ReturnStatus.INSPECTING).build();
-        when(returnRepository.findByStatusInAndUpdatedAtBefore(anyList(), any(LocalDateTime.class)))
+        when(returnRepository.findByStatusInAndUpdatedAtBeforeWithLines(anyList(), any(LocalDateTime.class)))
             .thenReturn(List.of(a, b));
 
         scheduler.recoverStuckRmas();
@@ -51,14 +51,14 @@ class RmaRecoverySchedulerTest {
         verify(orchestrator, times(1)).resume(a);
         verify(orchestrator, times(1)).resume(b);
         ArgumentCaptor<LocalDateTime> cutoffCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
-        verify(returnRepository).findByStatusInAndUpdatedAtBefore(anyList(), cutoffCaptor.capture());
+        verify(returnRepository).findByStatusInAndUpdatedAtBeforeWithLines(anyList(), cutoffCaptor.capture());
         assertThat(cutoffCaptor.getValue()).isEqualTo(LocalDateTime.now(clock).minusMinutes(5));
     }
 
     @Test
     @DisplayName("should_doNothing_when_noStuckReturns")
     void should_doNothing_when_noStuckReturns() {
-        when(returnRepository.findByStatusInAndUpdatedAtBefore(anyList(), any(LocalDateTime.class)))
+        when(returnRepository.findByStatusInAndUpdatedAtBeforeWithLines(anyList(), any(LocalDateTime.class)))
             .thenReturn(List.of());
 
         scheduler.recoverStuckRmas();
@@ -71,7 +71,7 @@ class RmaRecoverySchedulerTest {
     void should_continueRecovery_when_individualResumeThrows() {
         Return a = Return.builder().id("a").rmaNumber("RMA-A").status(ReturnStatus.REQUESTED).build();
         Return b = Return.builder().id("b").rmaNumber("RMA-B").status(ReturnStatus.NOTIFIED).build();
-        when(returnRepository.findByStatusInAndUpdatedAtBefore(anyList(), any(LocalDateTime.class)))
+        when(returnRepository.findByStatusInAndUpdatedAtBeforeWithLines(anyList(), any(LocalDateTime.class)))
             .thenReturn(List.of(a, b));
         when(orchestrator.resume(a)).thenThrow(new RuntimeException("first failed"));
 

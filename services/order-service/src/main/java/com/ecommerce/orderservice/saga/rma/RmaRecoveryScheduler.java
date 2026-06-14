@@ -38,7 +38,9 @@ public class RmaRecoveryScheduler {
     @Scheduled(fixedDelayString = "${rma.saga.recovery-interval-ms:300000}")
     public void recoverStuckRmas() {
         LocalDateTime cutoff = LocalDateTime.now(clock).minus(STUCK_THRESHOLD);
-        List<Return> stuck = returnRepository.findByStatusInAndUpdatedAtBefore(
+        // JOIN FETCH the lines: this read tx commits before resume() reaches
+        // handleApproved(), which touches rma.getLines() on a detached entity.
+        List<Return> stuck = returnRepository.findByStatusInAndUpdatedAtBeforeWithLines(
             RECOVERABLE_STATUSES, cutoff);
         if (stuck.isEmpty()) {
             log.debug("RMA recovery: no stuck returns");
