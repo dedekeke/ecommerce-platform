@@ -23,12 +23,15 @@ interface ProductsState {
 }
 
 type ProductsAction =
+  | { type: 'FETCH_START' }
   | { type: 'FETCH_SUCCESS'; payload: { content: Product[]; totalElements: number; totalPages: number } }
   | { type: 'FETCH_ERROR'; payload: Error }
   | { type: 'REFETCH' }
 
 function reducer(state: ProductsState, action: ProductsAction): ProductsState {
   switch (action.type) {
+    case 'FETCH_START':
+      return { ...state, isLoading: true, isError: false, error: null }
     case 'REFETCH':
       return { ...state, isLoading: true, isError: false, error: null, fetchId: state.fetchId + 1 }
     case 'FETCH_SUCCESS':
@@ -60,6 +63,7 @@ export function useProducts(params: ProductSearchParams = {}): UseProductsResult
 
   useEffect(() => {
     let cancelled = false
+    dispatch({ type: 'FETCH_START' })
     const currentParams: ProductSearchParams = JSON.parse(paramsKey) as ProductSearchParams
     const run = async () => {
       try {

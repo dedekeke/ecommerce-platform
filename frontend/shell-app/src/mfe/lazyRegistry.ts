@@ -5,14 +5,15 @@ import { loadRemoteModule } from './moduleLoader'
 export const mfeCallbacks = new Map<MFEName, { onError: (e: Error) => void; onLoad?: () => void }>()
 
 export async function loadMFE(mfeName: MFEName): Promise<{ default: ComponentType<unknown> }> {
-  const cb = mfeCallbacks.get(mfeName)
   try {
     const module = await loadRemoteModule(mfeName)
-    cb?.onLoad?.()
+    // Re-read callbacks at settlement time so effects registered after the
+    // lazy factory was first invoked are always captured.
+    mfeCallbacks.get(mfeName)?.onLoad?.()
     return module as MFELoadResult
   } catch (err) {
     const loadError = err instanceof Error ? err : new Error('Failed to load module')
-    cb?.onError(loadError)
+    mfeCallbacks.get(mfeName)?.onError(loadError)
     throw loadError
   }
 }

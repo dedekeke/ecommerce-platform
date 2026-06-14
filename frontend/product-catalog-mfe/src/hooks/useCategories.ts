@@ -19,12 +19,15 @@ interface CategoriesState {
 }
 
 type CategoriesAction =
+  | { type: 'FETCH_START' }
   | { type: 'FETCH_SUCCESS'; payload: Category[] }
   | { type: 'FETCH_ERROR'; payload: Error }
   | { type: 'REFETCH' }
 
 function reducer(state: CategoriesState, action: CategoriesAction): CategoriesState {
   switch (action.type) {
+    case 'FETCH_START':
+      return { ...state, isLoading: true, isError: false, error: null }
     case 'REFETCH':
       return { ...state, isLoading: true, isError: false, error: null, fetchId: state.fetchId + 1 }
     case 'FETCH_SUCCESS':
@@ -45,6 +48,7 @@ export function useCategories(rootOnly = true): UseCategoriesResult {
 
   useEffect(() => {
     let cancelled = false
+    dispatch({ type: 'FETCH_START' })
     const run = async () => {
       try {
         const data = rootOnly

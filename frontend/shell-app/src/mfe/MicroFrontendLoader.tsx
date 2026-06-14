@@ -1,4 +1,4 @@
-import { Suspense, useState, useCallback } from 'react'
+import { Suspense, useState, useCallback, useLayoutEffect } from 'react'
 import { Box, Typography, Button, Paper, CircularProgress } from '@mui/material'
 import { Refresh as RefreshIcon, ErrorOutline as ErrorIcon } from '@mui/icons-material'
 import type { MFEName } from './types'
@@ -132,9 +132,11 @@ export function MicroFrontendLoader({
     [onError]
   )
 
-  // Register callbacks so the module-level factory in lazyRegistry can report
-  // back to this specific component instance.
-  mfeCallbacks.set(mfeName, { onError: handleError, onLoad })
+  // useLayoutEffect runs synchronously before the browser paints, ensuring
+  // callbacks are registered before the lazy module promise settles.
+  useLayoutEffect(() => {
+    mfeCallbacks.set(mfeName, { onError: handleError, onLoad })
+  }, [mfeName, handleError, onLoad])
 
   const handleRetry = useCallback(() => {
     clearModuleCache(mfeName)

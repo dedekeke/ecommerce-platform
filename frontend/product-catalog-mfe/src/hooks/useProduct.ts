@@ -19,6 +19,7 @@ interface ProductState {
 }
 
 type ProductAction =
+  | { type: 'FETCH_START' }
   | { type: 'FETCH_SUCCESS'; payload: Product }
   | { type: 'FETCH_ERROR'; payload: Error }
   | { type: 'FETCH_SKIP' }
@@ -26,6 +27,8 @@ type ProductAction =
 
 function reducer(state: ProductState, action: ProductAction): ProductState {
   switch (action.type) {
+    case 'FETCH_START':
+      return { ...state, isLoading: true, isError: false, error: null }
     case 'REFETCH':
       return { ...state, isLoading: true, isError: false, error: null, fetchId: state.fetchId + 1 }
     case 'FETCH_SUCCESS':
@@ -52,6 +55,7 @@ export function useProduct(productId: string | undefined): UseProductResult {
       return
     }
     let cancelled = false
+    dispatch({ type: 'FETCH_START' })
     const run = async () => {
       try {
         const data = await productService.getProductById(productId)

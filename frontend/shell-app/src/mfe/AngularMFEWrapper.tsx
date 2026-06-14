@@ -24,12 +24,15 @@ interface WrapperState {
 }
 
 type WrapperAction =
+  | { type: 'LOADING_RESET' }
   | { type: 'RETRY' }
   | { type: 'MOUNTED' }
   | { type: 'ERROR'; message: string }
 
 function wrapperReducer(state: WrapperState, action: WrapperAction): WrapperState {
   switch (action.type) {
+    case 'LOADING_RESET':
+      return { ...state, status: 'loading', errorMessage: '' }
     case 'RETRY':
       return { status: 'loading', errorMessage: '', retryKey: state.retryKey + 1 }
     case 'MOUNTED':
@@ -52,6 +55,7 @@ export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
   useEffect(() => {
     let destroyed = false
     let destroyAngular: (() => void) | undefined
+    dispatch({ type: 'LOADING_RESET' })
 
     async function loadAndBootstrap() {
       try {
