@@ -28,7 +28,37 @@ helm install vault hashicorp/vault \
 
 ## Wiring
 
-`vault-cluster-secret-store.yaml` registers a `ClusterSecretStore` that points at the in-cluster Vault. `*-externalsecret.yaml` files declare an `ExternalSecret` per service that materialises a Kubernetes `Secret` named `<svc>-secret` from a Vault path like `kv/data/<svc>`.
+`vault-cluster-secret-store.yaml` registers a `ClusterSecretStore` that points at the in-cluster Vault. `*-externalsecret.yaml` files declare an `ExternalSecret` per service that materialises a Kubernetes `Secret` named `<svc>-secret` from a Vault path like `services/<svc>`.
+
+### `remoteRef.key` convention (KV v2 — IMPORTANT)
+
+The SecretStore/ClusterSecretStore declares the KV engine **mount** and version:
+
+```yaml
+provider:
+  vault:
+    path: "kv"        # the KV v2 engine mount point
+    version: "v2"
+```
+
+Because the store already knows the mount is `kv` and the engine is KV **v2**, the
+ESO Vault provider transparently inserts the `data/` segment KV v2 requires. Therefore
+`remoteRef.key` MUST be the **logical path only** — no `kv/` mount prefix and no
+`data/` segment:
+
+| Correct                 | Wrong (double-prefix)           |
+|-------------------------|---------------------------------|
+| `services/api-gateway`  | `kv/data/services/api-gateway`  |
+| `auth0`                 | `kv/data/auth0`                 |
+| `postgres`              | `kv/data/postgres`              |
+
+Using `kv/data/...` makes ESO resolve the real read against `kv/data/data/...`,
+which 404s and leaves the ExternalSecret in `SecretSyncedError`.
+
+> Note: this is the **ESO** convention. The Vault **ACL policy** files
+> (`helm/vault/policies/*.hcl`) intentionally keep the literal `kv/data/<path>` form,
+> because Vault policy paths for a KV v2 engine address the physical `data/` API path.
+> The two layers differ on purpose.
 
 After applying:
 

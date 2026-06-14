@@ -117,6 +117,22 @@ jobs:
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
       - uses: azure/setup-helm@v4
       - uses: azure/setup-kubectl@v4
+      - uses: imranismail/setup-kustomize@v2
+      - name: Helm lint (prod values)
+        run: |
+          helm lint ./helm/ecommerce \
+            -f helm/ecommerce/values-prod.yaml \
+            --set global.imageRegistry=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
+            --set global.imageTag=${{ steps.ver.outputs.VERSION }} \
+            --set global.ingress.host=${{ secrets.BASE_DOMAIN }}
+      - name: Kustomize build (production overlay)
+        env:
+          IMAGE_REGISTRY: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}
+          BASE_DOMAIN: ${{ secrets.BASE_DOMAIN }}
+        run: |
+          envsubst < k8s/overlays/production/kustomization.yaml > k8s/overlays/production/kustomization.yaml.tmp
+          mv k8s/overlays/production/kustomization.yaml.tmp k8s/overlays/production/kustomization.yaml
+          kustomize build k8s/overlays/production | envsubst > /dev/null
       - name: Configure kubeconfig
         run: |
           mkdir -p ~/.kube

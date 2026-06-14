@@ -1,7 +1,7 @@
 global:
   imageTag: staging-latest
   ingress:
-    host: "staging.${BASE_DOMAIN}"  # rendered from env at deploy time; never hardcode the real domain
+    host: ""  # MUST be supplied at deploy time via --set global.ingress.host=staging.$BASE_DOMAIN; empty value trips the `required` guard in templates/ingress.yaml
 
 # 1 replica per service in staging
 api-gateway: { replicaCount: 1 }
