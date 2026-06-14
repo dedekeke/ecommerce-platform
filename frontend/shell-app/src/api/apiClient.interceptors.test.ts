@@ -20,7 +20,9 @@ describe('setupAuthInterceptor behaviour', () => {
   afterEach(() => {
     try {
       removeAuthInterceptor(interceptorId)
-    } catch {}
+    } catch {
+      // interceptor may already be removed; safe to ignore
+    }
   })
 
   it('attaches Bearer token when getAccessToken resolves a token', async () => {
@@ -82,7 +84,9 @@ describe('setupResponseInterceptor behaviour', () => {
   afterEach(() => {
     try {
       removeResponseInterceptor(interceptorId)
-    } catch {}
+    } catch {
+      // interceptor may already be removed; safe to ignore
+    }
   })
 
   it('passes through successful responses unchanged', async () => {

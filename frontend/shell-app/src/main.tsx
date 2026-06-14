@@ -1,11 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { ThemeProvider, CssBaseline } from '@mui/material'
-import { Auth0ProviderWithNavigate } from './providers/Auth0ProviderWithNavigate'
-import { ErrorBoundary } from './components/common'
-import { useColorMode } from './hooks/useColorMode'
-import App from './App.tsx'
+import ThemedApp from './ThemedApp'
 import './index.css'
 import './i18n/i18n'
 import { initNativeFederation } from './mfe/nativeFederation'
@@ -27,21 +23,6 @@ import { initNativeFederation } from './mfe/nativeFederation'
     // localStorage may be unavailable (e.g. private browsing quota exceeded)
   }
 })()
-
-function ThemedApp() {
-  const { muiTheme } = useColorMode()
-
-  return (
-    <ThemeProvider theme={muiTheme}>
-      <CssBaseline />
-      <Auth0ProviderWithNavigate>
-        <ErrorBoundary>
-          <App />
-        </ErrorBoundary>
-      </Auth0ProviderWithNavigate>
-    </ThemeProvider>
-  )
-}
 
 function mountApp() {
   createRoot(document.getElementById('root')!).render(

@@ -177,7 +177,7 @@ export interface CreateAddressRequest {
   isDefault?: boolean
 }
 
-export interface UpdateAddressRequest extends Partial<CreateAddressRequest> {}
+export type UpdateAddressRequest = Partial<CreateAddressRequest>
 
 // Promotion Types
 export interface Promotion {

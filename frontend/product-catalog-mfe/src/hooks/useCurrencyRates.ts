@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer } from 'react'
 import { apiClient } from '../api/apiClient'
 
 /**
@@ -38,6 +38,26 @@ async function fetchRates(): Promise<RateMap> {
   return inflight
 }
 
+interface RatesState {
+  rates: RateMap
+  isLoading: boolean
+  isError: boolean
+  error: Error | null
+}
+
+type RatesAction =
+  | { type: 'SUCCESS'; payload: RateMap }
+  | { type: 'ERROR'; payload: Error }
+
+function reducer(state: RatesState, action: RatesAction): RatesState {
+  switch (action.type) {
+    case 'SUCCESS':
+      return { rates: action.payload, isLoading: false, isError: false, error: null }
+    case 'ERROR':
+      return { ...state, isLoading: false, isError: true, error: action.payload }
+  }
+}
+
 /**
  * Fetches the static FX rate map from {@code /api/currency/rates} on first
  * mount and exposes a {@link RateMap}. The map is cached at module level so
@@ -46,39 +66,31 @@ async function fetchRates(): Promise<RateMap> {
  * Exposed for tests via {@link __resetCurrencyRatesCache}.
  */
 export function useCurrencyRates(): UseCurrencyRatesResult {
-  const [rates, setRates] = useState<RateMap>(cachedRates ?? {})
-  const [isLoading, setIsLoading] = useState(!cachedRates)
-  const [isError, setIsError] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
+  // Initialise synchronously from cache when available so consumers never see
+  // a loading flash on subsequent mounts within the same session.
+  const [state, dispatch] = useReducer(reducer, undefined, () => ({
+    rates: cachedRates ?? {},
+    isLoading: !cachedRates,
+    isError: false,
+    error: null,
+  }))
 
   useEffect(() => {
+    if (cachedRates) return
     let cancelled = false
-    if (cachedRates) {
-      setRates(cachedRates)
-      setIsLoading(false)
-      return
-    }
-    setIsLoading(true)
     fetchRates()
       .then((r) => {
-        if (!cancelled) {
-          setRates(r)
-          setIsLoading(false)
-        }
+        if (!cancelled) dispatch({ type: 'SUCCESS', payload: r })
       })
       .catch((err: Error) => {
-        if (!cancelled) {
-          setIsError(true)
-          setError(err)
-          setIsLoading(false)
-        }
+        if (!cancelled) dispatch({ type: 'ERROR', payload: err })
       })
     return () => {
       cancelled = true
     }
   }, [])
 
-  return { rates, isLoading, isError, error }
+  return { rates: state.rates, isLoading: state.isLoading, isError: state.isError, error: state.error }
 }
 
 /**

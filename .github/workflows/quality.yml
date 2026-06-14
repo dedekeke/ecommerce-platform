@@ -182,9 +182,15 @@ jobs:
       # Why not --audit-level=high?
       # React MFEs (shell-app, product-catalog-mfe, cart-mfe, checkout-mfe):
       #   Two HIGH advisories remain in build-only tooling (esbuild via vite,
-      #   GHSA-67mh-4wv8-2f99 / GHSA-vg6x-rcgg-rjx6). These affect the Vite dev
-      #   server's ability to serve files to arbitrary origins, not shipped code.
-      #   Fix requires vite@8 (semver-major); tracked as a follow-up upgrade.
+      #   locked at 0.27.7 via vite@7.3.5):
+      #   - GHSA-gv7w-rqvm-qjhr: esbuild Deno module binary integrity bypass
+      #     (only affects npm scripts that invoke esbuild via Deno; not triggered
+      #     by standard `vite build` or `vite dev` usage).
+      #   - GHSA-g7r4-m6w7-qqqr: esbuild dev-server arbitrary file read on
+      #     Windows (dev-server only, Windows-specific, not shipped code).
+      #   Fix requires esbuild ≥0.28.0 via vite@8 (semver-major); tracked as a
+      #   follow-up upgrade. Previously cited GHSA-67mh-4wv8-2f99 and
+      #   GHSA-vg6x-rcgg-rjx6 are patched in the current locked versions.
       # Angular MFEs (user-dashboard-mfe, admin-dashboard-mfe):
       #   30 HIGH advisories — all transitive through @angular-devkit/build-angular
       #   @18.x (webpack 5, rollup, serialize-javascript, sockjs, etc.). None are
@@ -195,28 +201,10 @@ jobs:
       - name: Audit dependencies (blocking at critical)
         run: npm audit --audit-level=critical
       # ── Lint ──────────────────────────────────────────────────────────────────
-      # cart-mfe, user-dashboard-mfe, admin-dashboard-mfe: BLOCKING (0 violations).
-      # shell-app: NON-BLOCKING — pre-existing violations in react-hooks/set-state-
-      #   in-effect (AngularMFEWrapper.tsx, MicroFrontendLoader.tsx) and
-      #   react-refresh/only-export-components (main.tsx). These require non-trivial
-      #   refactoring. TODO: fix before next major shell-app release.
-      # product-catalog-mfe: NON-BLOCKING — pre-existing react-hooks/set-state-in-
-      #   effect in useCategories, useCurrencyRates, useProduct; react-hooks/refs in
-      #   useProducts. TODO: refactor to useReducer / move side-effects out of render.
-      # checkout-mfe: NON-BLOCKING — pre-existing react-hooks/set-state-in-effect in
-      #   AddressForm, PaymentMethodForm, StripeCheckout, ConfirmationPage. TODO:
-      #   consolidate validation into useReducer or react-hook-form.
-      - name: Lint (shell-app — report only, pre-existing violations)
-        if: matrix.app == 'shell-app'
-        run: npm run lint --if-present || echo "::warning title=Lint[${{ matrix.app }}]::Pre-existing violations (react-hooks/set-state-in-effect, react-refresh/only-export-components). Non-blocking; see TODO in quality.yml."
-      - name: Lint (product-catalog-mfe — report only, pre-existing violations)
-        if: matrix.app == 'product-catalog-mfe'
-        run: npm run lint --if-present || echo "::warning title=Lint[${{ matrix.app }}]::Pre-existing violations (react-hooks/set-state-in-effect, react-hooks/refs). Non-blocking; see TODO in quality.yml."
-      - name: Lint (checkout-mfe — report only, pre-existing violations)
-        if: matrix.app == 'checkout-mfe'
-        run: npm run lint --if-present || echo "::warning title=Lint[${{ matrix.app }}]::Pre-existing violations (react-hooks/set-state-in-effect). Non-blocking; see TODO in quality.yml."
-      - name: Lint (blocking — cart-mfe, Angular MFEs)
-        if: matrix.app != 'shell-app' && matrix.app != 'product-catalog-mfe' && matrix.app != 'checkout-mfe'
+      # All React MFEs and Angular MFEs: BLOCKING (0 violations).
+      # react-hooks violations in shell-app, product-catalog-mfe, and checkout-mfe
+      # have been fixed (useReducer, useMemo derivation, module-level lazy components).
+      - name: Lint
         run: npm run lint --if-present
       - name: Test (React / vitest)
         if: matrix.framework == 'react'

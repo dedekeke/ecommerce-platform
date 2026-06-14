@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useReducer, useEffect, useCallback } from 'react'
 import { productService } from '../api'
 import type { Product, ProductSearchParams } from '../types'
 
@@ -12,70 +12,88 @@ interface UseProductsResult {
   refetch: () => void
 }
 
-export function useProducts(params: ProductSearchParams = {}): UseProductsResult {
-  const [products, setProducts] = useState<Product[]>([])
-  const [totalElements, setTotalElements] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isError, setIsError] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-  const [fetchTrigger, setFetchTrigger] = useState(0)
+interface ProductsState {
+  products: Product[]
+  totalElements: number
+  totalPages: number
+  isLoading: boolean
+  isError: boolean
+  error: Error | null
+  fetchId: number
+}
 
-  // Serialize params to detect changes
-  const paramsKey = JSON.stringify(params)
-  const paramsRef = useRef(params)
-  const prevParamsKeyRef = useRef<string>('')
+type ProductsAction =
+  | { type: 'FETCH_SUCCESS'; payload: { content: Product[]; totalElements: number; totalPages: number } }
+  | { type: 'FETCH_ERROR'; payload: Error }
+  | { type: 'REFETCH' }
 
-  // Update params ref when paramsKey changes
-  if (paramsKey !== prevParamsKeyRef.current) {
-    paramsRef.current = params
-    prevParamsKeyRef.current = paramsKey
+function reducer(state: ProductsState, action: ProductsAction): ProductsState {
+  switch (action.type) {
+    case 'REFETCH':
+      return { ...state, isLoading: true, isError: false, error: null, fetchId: state.fetchId + 1 }
+    case 'FETCH_SUCCESS':
+      return {
+        ...state,
+        products: action.payload.content,
+        totalElements: action.payload.totalElements,
+        totalPages: action.payload.totalPages,
+        isLoading: false,
+      }
+    case 'FETCH_ERROR':
+      return { ...state, products: [], isLoading: false, isError: true, error: action.payload }
   }
+}
+
+export function useProducts(params: ProductSearchParams = {}): UseProductsResult {
+  const [state, dispatch] = useReducer(reducer, {
+    products: [],
+    totalElements: 0,
+    totalPages: 0,
+    isLoading: true,
+    isError: false,
+    error: null,
+    fetchId: 0,
+  })
+
+  // Stable serialized key drives re-fetch when params change.
+  const paramsKey = JSON.stringify(params)
 
   useEffect(() => {
     let cancelled = false
-
-    const fetchProducts = async () => {
-      setIsLoading(true)
-      setIsError(false)
-      setError(null)
-
+    const currentParams: ProductSearchParams = JSON.parse(paramsKey) as ProductSearchParams
+    const run = async () => {
       try {
-        const response = await productService.getProducts(paramsRef.current)
-        if (!cancelled) {
-          setProducts(response.content)
-          setTotalElements(response.totalElements)
-          setTotalPages(response.totalPages)
-        }
+        const response = await productService.getProducts(currentParams)
+        if (!cancelled)
+          dispatch({
+            type: 'FETCH_SUCCESS',
+            payload: {
+              content: response.content,
+              totalElements: response.totalElements,
+              totalPages: response.totalPages,
+            },
+          })
       } catch (err) {
-        if (!cancelled) {
-          setIsError(true)
-          setError(err instanceof Error ? err : new Error('Failed to fetch products'))
-          setProducts([])
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
+        if (!cancelled)
+          dispatch({
+            type: 'FETCH_ERROR',
+            payload: err instanceof Error ? err : new Error('Failed to fetch products'),
+          })
       }
     }
+    void run()
+    return () => { cancelled = true }
+  }, [paramsKey, state.fetchId])
 
-    fetchProducts()
-
-    return () => {
-      cancelled = true
-    }
-  }, [paramsKey, fetchTrigger])
-
-  const refetch = () => setFetchTrigger((prev) => prev + 1)
+  const refetch = useCallback(() => dispatch({ type: 'REFETCH' }), [])
 
   return {
-    products,
-    totalElements,
-    totalPages,
-    isLoading,
-    isError,
-    error,
+    products: state.products,
+    totalElements: state.totalElements,
+    totalPages: state.totalPages,
+    isLoading: state.isLoading,
+    isError: state.isError,
+    error: state.error,
     refetch,
   }
 }
