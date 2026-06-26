@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material'
 import theme from '../theme'
+import { __resetMFELazyComponents } from './lazyRegistry'
 
 // Mock Auth0 — unauthenticated by default so ProtectedRoute redirects
 vi.mock('@auth0/auth0-react', () => ({
@@ -47,6 +48,7 @@ function renderApp(initialEntries: string[]) {
 describe('Checkout route integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    __resetMFELazyComponents('checkout')
   })
 
   it('should redirect unauthenticated users away from /checkout', async () => {

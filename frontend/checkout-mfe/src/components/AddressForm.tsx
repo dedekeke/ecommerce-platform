@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Box from '@mui/material/Box'
 import Grid from '@mui/material/Grid'
 import TextField from '@mui/material/TextField'
@@ -52,16 +52,18 @@ function validate(values: ShippingAddress): FormErrors {
 
 export default function AddressForm({ onValid, onChange, initialValues }: AddressFormProps) {
   const [values, setValues] = useState<ShippingAddress>(initialValues ?? DEFAULT_VALUES)
-  const [errors, setErrors] = useState<FormErrors>({})
   const [touched, setTouched] = useState<TouchedFields>({})
 
+  // Derive errors synchronously during render — no effect needed.
+  const errors = useMemo(() => validate(values), [values])
+  const isValid = Object.keys(errors).length === 0
+
+  // Notify parent of validity changes. This is a side-effect driven by derived
+  // state, so it belongs in an effect — but we only call the stable callback,
+  // never setState, avoiding cascading renders.
   useEffect(() => {
-    const errs = validate(values)
-    setErrors(errs)
-    if (Object.keys(errs).length === 0) {
-      onValid(values)
-    }
-  }, [values]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (isValid) onValid(values)
+  }, [isValid, values, onValid])
 
   const handleChange = (field: keyof ShippingAddress) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setValues((prev) => ({ ...prev, [field]: e.target.value }))

@@ -1,9 +1,10 @@
-import { Suspense, lazy, useState, useCallback, useMemo, type ComponentType } from 'react'
+import { Suspense, useState, useCallback, useLayoutEffect } from 'react'
 import { Box, Typography, Button, Paper, CircularProgress } from '@mui/material'
 import { Refresh as RefreshIcon, ErrorOutline as ErrorIcon } from '@mui/icons-material'
-import type { MFEName, MFELoadResult } from './types'
+import type { MFEName } from './types'
 import { getMFEConfig } from './registry'
-import { loadRemoteModule, clearModuleCache } from './moduleLoader'
+import { clearModuleCache } from './moduleLoader'
+import { mfeCallbacks, mfeComponents, makeLazy } from './lazyRegistry'
 import {
   PageSkeleton,
   ProductListSkeleton,
@@ -112,24 +113,6 @@ function ErrorFallback({ displayName, error, onRetry }: ErrorFallbackProps) {
   )
 }
 
-function createLazyComponent(
-  mfeName: MFEName,
-  onError?: (error: Error) => void,
-  onLoad?: () => void
-): React.LazyExoticComponent<ComponentType<unknown>> {
-  return lazy(async (): Promise<{ default: ComponentType<unknown> }> => {
-    try {
-      const module = await loadRemoteModule(mfeName)
-      onLoad?.()
-      return module as MFELoadResult
-    } catch (err) {
-      const loadError = err instanceof Error ? err : new Error('Failed to load module')
-      onError?.(loadError)
-      throw loadError
-    }
-  })
-}
-
 export function MicroFrontendLoader({
   mfeName,
   fallback,
@@ -141,12 +124,6 @@ export function MicroFrontendLoader({
   const [retryKey, setRetryKey] = useState(0)
   const config = getMFEConfig(mfeName)
 
-  const handleRetry = useCallback(() => {
-    clearModuleCache(mfeName)
-    setError(null)
-    setRetryKey((prev) => prev + 1)
-  }, [mfeName])
-
   const handleError = useCallback(
     (err: Error) => {
       setError(err)
@@ -155,11 +132,22 @@ export function MicroFrontendLoader({
     [onError]
   )
 
-  const LazyComponent = useMemo(
-    () => createLazyComponent(mfeName, handleError, onLoad),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mfeName, retryKey]
-  )
+  // useLayoutEffect runs synchronously before the browser paints, ensuring
+  // callbacks are registered before the lazy module promise settles.
+  useLayoutEffect(() => {
+    mfeCallbacks.set(mfeName, { onError: handleError, onLoad })
+  }, [mfeName, handleError, onLoad])
+
+  const handleRetry = useCallback(() => {
+    clearModuleCache(mfeName)
+    // Recreate the lazy component so the next Suspense mount gets a fresh
+    // promise rather than the previously cached (rejected) one.
+    mfeComponents[mfeName] = makeLazy(mfeName)
+    setError(null)
+    setRetryKey((prev) => prev + 1)
+  }, [mfeName])
+
+  const LazyComponent = mfeComponents[mfeName]
 
   if (error) {
     return (
@@ -182,3 +170,4 @@ export function MicroFrontendLoader({
     </Suspense>
   )
 }
+

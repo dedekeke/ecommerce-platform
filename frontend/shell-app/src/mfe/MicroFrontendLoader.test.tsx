@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MicroFrontendLoader } from './MicroFrontendLoader'
+import { __resetMFELazyComponents } from './lazyRegistry'
 
 const MockComponent = () => <div data-testid="mock-mfe">Mock MFE Content</div>
 
@@ -27,6 +28,9 @@ vi.mock('./moduleLoader', () => ({
 describe('MicroFrontendLoader', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Reset module-level lazy component instances so each test gets a fresh
+    // promise instead of the cached result from a previous test run.
+    __resetMFELazyComponents('productCatalog')
   })
 
   afterEach(() => {

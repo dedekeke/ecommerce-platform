@@ -1,5 +1,5 @@
 // Real Stripe integration is a Day 40 follow-up. All payment method IDs here are stubs for dev/test.
-import { useState, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Box from '@mui/material/Box'
 import FormControl from '@mui/material/FormControl'
 import FormControlLabel from '@mui/material/FormControlLabel'
@@ -60,20 +60,24 @@ interface PaymentMethodFormProps {
 export default function PaymentMethodForm({ onPaymentMethodReady }: PaymentMethodFormProps) {
   const [method, setMethod] = useState<PaymentMethod>('card')
   const [cardFields, setCardFields] = useState<CardFields>({ cardNumber: '', expiry: '', cvv: '' })
-  const [cardErrors, setCardErrors] = useState<CardErrors>({})
   const [touched, setTouched] = useState<TouchedCard>({})
 
+  // Derive errors synchronously during render — no effect needed.
+  const cardErrors = useMemo(() => validateCard(cardFields), [cardFields])
+  const cardIsValid = Object.keys(cardErrors).length === 0
+
+  // Notify parent when a valid payment method is ready. Calling a stable callback
+  // (not setState) from an effect is the correct pattern for synchronising with
+  // an external consumer.
   useEffect(() => {
     if (method === 'paypal') {
       onPaymentMethodReady(`mock_paypal_${Date.now()}`)
       return
     }
-    const errors = validateCard(cardFields)
-    setCardErrors(errors)
-    if (Object.keys(errors).length === 0) {
+    if (cardIsValid) {
       onPaymentMethodReady(`mock_card_${Date.now()}`)
     }
-  }, [method, cardFields]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [method, cardIsValid, onPaymentMethodReady])
 
   const handleCardField =
     (field: keyof CardFields) => (e: React.ChangeEvent<HTMLInputElement>) => {

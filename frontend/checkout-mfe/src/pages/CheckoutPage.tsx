@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Container from '@mui/material/Container'
@@ -84,7 +84,7 @@ export default function CheckoutPage() {
     }
   }
 
-  const handleAddressValid = (addr: ShippingAddress) => setAddress(addr)
+  const handleAddressValid = useCallback((addr: ShippingAddress) => setAddress(addr), [setAddress])
 
   return (
     <Box sx={{ bgcolor: 'background.default', minHeight: '100vh' }}>

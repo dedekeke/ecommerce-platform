@@ -1,8 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { UserAdminService } from './user-admin.service';
 import { AdminUser, PagedUsers } from '../models/user-admin.model';
+import { authInterceptor } from '../interceptors/auth.interceptor';
 
 const mockUser: AdminUser = {
   id: 'user-1',
@@ -70,5 +71,55 @@ describe('UserAdminService', () => {
     expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual({ role: 'ADMIN' });
     req.flush({ ...mockUser, role: 'ADMIN' });
+  });
+});
+
+// GET /api/users/{id} is admin-only (SCOPE_admin). The authInterceptor injects
+// the Bearer token supplied by window.__getAuthToken (set by the shell after
+// Auth0 authentication with the admin audience). The test below verifies that
+// getUserById issues the request with that header so the backend can enforce
+// the SCOPE_admin requirement.
+describe('UserAdminService — admin-scoped token (GET /api/users/{id})', () => {
+  const ADMIN_TOKEN = 'mock-admin-jwt.with.scope_admin';
+  let service: UserAdminService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    // Simulate the shell injecting an admin-scoped token.
+    window.__getAuthToken = () => ADMIN_TOKEN;
+
+    TestBed.configureTestingModule({
+      providers: [
+        UserAdminService,
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting(),
+      ],
+    });
+    service = TestBed.inject(UserAdminService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    delete window.__getAuthToken;
+    httpMock.verify();
+  });
+
+  it('should attach the admin Bearer token to GET /api/users/{id}', () => {
+    service.getUserById('user-1').subscribe();
+
+    const req = httpMock.expectOne('/api/users/user-1');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.headers.get('Authorization')).toBe(`Bearer ${ADMIN_TOKEN}`);
+    req.flush(mockUser);
+  });
+
+  it('should not attach Authorization header when no token is present', () => {
+    window.__getAuthToken = () => null;
+
+    service.getUserById('user-1').subscribe();
+
+    const req = httpMock.expectOne('/api/users/user-1');
+    expect(req.request.headers.has('Authorization')).toBeFalse();
+    req.flush(mockUser);
   });
 });

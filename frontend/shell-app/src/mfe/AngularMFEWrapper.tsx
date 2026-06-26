@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useReducer } from 'react'
 import { loadRemoteModule } from '@angular-architects/native-federation-runtime'
 import { Box, CircularProgress, Typography, Paper, Button } from '@mui/material'
 import { ErrorOutline as ErrorIcon, Refresh as RefreshIcon } from '@mui/icons-material'
@@ -17,19 +17,45 @@ interface AngularMFEWrapperProps {
 
 type WrapperStatus = 'loading' | 'mounted' | 'error'
 
+interface WrapperState {
+  status: WrapperStatus
+  errorMessage: string
+  retryKey: number
+}
+
+type WrapperAction =
+  | { type: 'LOADING_RESET' }
+  | { type: 'RETRY' }
+  | { type: 'MOUNTED' }
+  | { type: 'ERROR'; message: string }
+
+function wrapperReducer(state: WrapperState, action: WrapperAction): WrapperState {
+  switch (action.type) {
+    case 'LOADING_RESET':
+      return { ...state, status: 'loading', errorMessage: '' }
+    case 'RETRY':
+      return { status: 'loading', errorMessage: '', retryKey: state.retryKey + 1 }
+    case 'MOUNTED':
+      return { ...state, status: 'mounted' }
+    case 'ERROR':
+      return { ...state, status: 'error', errorMessage: action.message }
+  }
+}
+
 export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
   const config = getMFEConfig(mfeName)
   const mountId = `angular-mount-${mfeName}`
   const mountRef = useRef<HTMLDivElement | null>(null)
-  const [status, setStatus] = useState<WrapperStatus>('loading')
-  const [errorMessage, setErrorMessage] = useState<string>('')
-  const [retryKey, setRetryKey] = useState(0)
+  const [state, dispatch] = useReducer(wrapperReducer, {
+    status: 'loading',
+    errorMessage: '',
+    retryKey: 0,
+  })
 
   useEffect(() => {
     let destroyed = false
     let destroyAngular: (() => void) | undefined
-    setStatus('loading')
-    setErrorMessage('')
+    dispatch({ type: 'LOADING_RESET' })
 
     async function loadAndBootstrap() {
       try {
@@ -60,13 +86,12 @@ export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
         destroyAngular = await module.bootstrap(mountId)
 
         if (!destroyed) {
-          setStatus('mounted')
+          dispatch({ type: 'MOUNTED' })
         }
       } catch (err) {
         if (destroyed) return
         const message = err instanceof Error ? err.message : String(err)
-        setErrorMessage(message)
-        setStatus('error')
+        dispatch({ type: 'ERROR', message })
       }
     }
 
@@ -76,9 +101,9 @@ export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
       destroyed = true
       destroyAngular?.()
     }
-  }, [mfeName, config.basePath, config.exposedModule, config.remoteUrl, mountId, retryKey])
+  }, [mfeName, config.basePath, config.exposedModule, config.remoteUrl, mountId, state.retryKey])
 
-  if (status === 'error') {
+  if (state.status === 'error') {
     return (
       <Paper
         data-testid="angular-mfe-error"
@@ -100,13 +125,13 @@ export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
           Failed to load {config.displayName}
         </Typography>
         <Typography variant="body2" sx={{ mb: 3, opacity: 0.9 }}>
-          {errorMessage}
+          {state.errorMessage}
         </Typography>
         <Button
           variant="contained"
           color="inherit"
           startIcon={<RefreshIcon />}
-          onClick={() => setRetryKey((k) => k + 1)}
+          onClick={() => dispatch({ type: 'RETRY' })}
           sx={{ color: 'error.main', bgcolor: 'common.white' }}
         >
           Retry
@@ -117,7 +142,7 @@ export function AngularMFEWrapper({ mfeName }: AngularMFEWrapperProps) {
 
   return (
     <>
-      {status === 'loading' && (
+      {state.status === 'loading' && (
         <Box
           data-testid="angular-mfe-loading"
           aria-busy="true"

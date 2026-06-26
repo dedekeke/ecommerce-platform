@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useReducer } from 'react'
 import { Elements } from '@stripe/react-stripe-js'
 import type { Stripe } from '@stripe/stripe-js'
 import Box from '@mui/material/Box'
@@ -31,6 +31,24 @@ export interface StripeCheckoutProps {
   onConfirmed: (paymentIntentId: string) => void
 }
 
+interface IntentState {
+  clientSecret: string | null
+  error: string | null
+}
+
+type IntentAction =
+  | { type: 'SUCCESS'; clientSecret: string }
+  | { type: 'ERROR'; message: string }
+
+function intentReducer(_state: IntentState, action: IntentAction): IntentState {
+  switch (action.type) {
+    case 'SUCCESS':
+      return { clientSecret: action.clientSecret, error: null }
+    case 'ERROR':
+      return { clientSecret: null, error: action.message }
+  }
+}
+
 /**
  * Real Stripe checkout step. Creates a PaymentIntent on the backend to obtain a client_secret,
  * then renders Stripe Elements so the user can confirm the payment with Stripe.js. Enabled only
@@ -43,19 +61,20 @@ export default function StripeCheckout({
   currency,
   onConfirmed,
 }: StripeCheckoutProps) {
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const stripePromise = useMemo(() => getStripe(), [])
+  const [{ clientSecret, error }, dispatch] = useReducer(intentReducer, {
+    clientSecret: null,
+    error: null,
+  })
+  const stripeInstance = useMemo(() => getStripe(), [])
 
   useEffect(() => {
     let active = true
-    setError(null)
     createPaymentIntent({ orderId, userId, amount, currency })
       .then((res) => {
-        if (active) setClientSecret(res.clientSecret)
+        if (active) dispatch({ type: 'SUCCESS', clientSecret: res.clientSecret })
       })
       .catch(() => {
-        if (active) setError('Unable to start payment. Please try again.')
+        if (active) dispatch({ type: 'ERROR', message: 'Unable to start payment. Please try again.' })
       })
     return () => {
       active = false
@@ -67,7 +86,7 @@ export default function StripeCheckout({
     [clientSecret]
   )
 
-  if (!stripePromise) {
+  if (!stripeInstance) {
     return (
       <Alert severity="error" role="alert">
         Payment is not configured. Please contact support.
@@ -93,7 +112,7 @@ export default function StripeCheckout({
   }
 
   return (
-    <Elements stripe={stripePromise} options={options}>
+    <Elements stripe={stripeInstance} options={options}>
       <StripePaymentForm onConfirmed={onConfirmed} />
     </Elements>
   )

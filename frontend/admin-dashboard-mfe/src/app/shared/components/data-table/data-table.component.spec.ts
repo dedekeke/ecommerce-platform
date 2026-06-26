@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DataTableComponent, TableColumn } from './data-table.component';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { MatPaginator, PageEvent } from '@angular/material/paginator';
 
 type TestRow = Record<string, unknown> & { id: string; name: string; price: number };
 
@@ -93,11 +94,22 @@ describe('DataTableComponent', () => {
     fixture.componentRef.setInput('loading', false);
     fixture.detectChanges();
 
-    let pageEvent: unknown = undefined;
-    fixture.componentInstance.pageChange.subscribe((e) => (pageEvent = e));
-    void pageEvent; // captured for future assertion; paginator interaction not simulated in this test
+    const emitted: PageEvent[] = [];
+    fixture.componentInstance.pageChange.subscribe((e) => emitted.push(e));
 
-    const paginator = fixture.nativeElement.querySelector('mat-paginator');
-    expect(paginator).toBeTruthy();
+    // Trigger the paginator's page event directly via the Angular component instance.
+    const paginatorDe = fixture.debugElement.query(
+      (de) => de.componentInstance instanceof MatPaginator
+    );
+    expect(paginatorDe).toBeTruthy();
+
+    const paginatorInstance = paginatorDe.componentInstance as MatPaginator;
+    paginatorInstance.page.emit({ pageIndex: 1, pageSize: 10, length: 100 });
+    fixture.detectChanges();
+
+    expect(emitted.length).toBe(1);
+    expect(emitted[0].pageIndex).toBe(1);
+    expect(emitted[0].pageSize).toBe(10);
+    expect(emitted[0].length).toBe(100);
   });
 });
