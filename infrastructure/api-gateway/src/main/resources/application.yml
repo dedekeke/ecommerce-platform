@@ -8,21 +8,24 @@ spring:
       enabled: true
 
   # Security Configuration
+  #
+  # The gateway is a JWT RESOURCE SERVER only — it validates inbound bearer
+  # tokens and forwards them downstream (Spring Cloud Gateway relays the
+  # Authorization header by default). It is NOT an OAuth2 login client, so there
+  # is deliberately no spring.security.oauth2.client block: a client
+  # registration with a provider issuer-uri makes Spring perform blocking OIDC
+  # discovery at boot, which crashed the gateway whenever Auth0 was briefly
+  # unreachable at startup (Lore bug 1b8953dc). The resource-server decoder is
+  # built lazily from the JWK Set URI (see SecurityConfig#jwtDecoder) so the
+  # JWKS fetch only happens on first request, never at boot. issuer-uri stays
+  # for request-time issuer-claim validation; jwk-set-uri may be set explicitly
+  # to skip URL derivation.
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: ${AUTH0_ISSUER_URI}
-
-      client:
-        provider:
-          auth0:
-            issuer-uri: ${AUTH0_ISSUER_URI}
-        registration:
-          auth0:
-            client-id: ${AUTH0_CLIENT_ID}
-            client-secret: ${AUTH0_CLIENT_SECRET}
-            scope: openid,profile,email
+          jwk-set-uri: ${AUTH0_JWK_SET_URI:}
 
   # Cloud Configuration
   cloud:
@@ -64,9 +67,13 @@ spring:
             allowCredentials: true
             maxAge: 3600
 
-      # Default filters applied to all routes
+      # Default filters applied to all routes.
+      # No TokenRelay: it relays a token from an OAuth2AuthorizedClient, which a
+      # resource-server (JwtAuthenticationToken) principal never has — it was a
+      # no-op here, and the gateway forwards the inbound Authorization header to
+      # downstreams by default. Requiring it also dragged in the OAuth2 client
+      # auto-config that crashed boot when Auth0 was unreachable (bug 1b8953dc).
       default-filters:
-        - TokenRelay
         - name: Retry
           args:
             retries: 3

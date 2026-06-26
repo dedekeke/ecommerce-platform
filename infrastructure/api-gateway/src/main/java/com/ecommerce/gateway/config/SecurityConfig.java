@@ -38,6 +38,9 @@ public class SecurityConfig {
     @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}")
     private String issuer;
 
+    @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:}")
+    private String jwkSetUri;
+
     @Value("${auth0.audience:}")
     private String audience;
 
@@ -93,8 +96,25 @@ public class SecurityConfig {
     }
 
     /**
-     * JWT Decoder with custom validators for Auth0
-     * Only created when security is enabled
+     * JWT Decoder with custom validators for Auth0. Only created when security
+     * is enabled.
+     *
+     * <p>The decoder is built from the JWK Set URI rather than via
+     * {@code withIssuerLocation(issuer)}. The latter performs a blocking OIDC
+     * discovery HTTP call during bean construction (boot), so a transient Auth0
+     * outage at startup crashes the whole gateway. {@code withJwkSetUri(...)}
+     * defers the JWK fetch until the first token is decoded, so the gateway
+     * boots independently of issuer reachability (Lore bug 1b8953dc).
+     *
+     * <p>If {@code spring.security.oauth2.resourceserver.jwt.jwk-set-uri} is not
+     * explicitly configured we derive the standard JWKS endpoint from the
+     * issuer ({@code <issuer>/.well-known/jwks.json}) so existing configs that
+     * only set {@code issuer-uri} keep working without a boot-time call.
+     *
+     * <p>JWT validation is NOT weakened: the issuer claim is still enforced via
+     * {@link JwtValidators#createDefaultWithIssuer(String)} (which also applies
+     * the default timestamp checks) and the audience via {@link AudienceValidator},
+     * both at request time.
      */
     @Bean
     @ConditionalOnProperty(name = "security.enabled", havingValue = "true", matchIfMissing = true)
@@ -104,7 +124,7 @@ public class SecurityConfig {
         }
 
         NimbusReactiveJwtDecoder jwtDecoder = NimbusReactiveJwtDecoder
-            .withIssuerLocation(issuer)
+            .withJwkSetUri(resolveJwkSetUri())
             .build();
 
         OAuth2TokenValidator<Jwt> audienceValidator = new AudienceValidator(audience);
@@ -114,6 +134,14 @@ public class SecurityConfig {
         jwtDecoder.setJwtValidator(withIssuer);
 
         return jwtDecoder;
+    }
+
+    private String resolveJwkSetUri() {
+        if (jwkSetUri != null && !jwkSetUri.isBlank()) {
+            return jwkSetUri;
+        }
+        String base = issuer.endsWith("/") ? issuer.substring(0, issuer.length() - 1) : issuer;
+        return base + "/.well-known/jwks.json";
     }
 
     /**
