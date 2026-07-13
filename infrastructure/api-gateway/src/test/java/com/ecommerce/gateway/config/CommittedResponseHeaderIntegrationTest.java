@@ -86,8 +86,17 @@ class CommittedResponseHeaderIntegrationTest {
     @Autowired
     private WebTestClient webTestClient;
 
+    /**
+     * The gateway logs the offending {@link UnsupportedOperationException} through
+     * {@code HttpWebHandlerAdapter} ("... but ServerHttpResponse already committed").
+     * Scope the appender to that logger rather than ROOT so the assertion is precise
+     * and unaffected by unrelated application logging or parallel test execution.
+     */
+    private static final String COMMIT_LOGGER =
+            "org.springframework.web.server.adapter.HttpWebHandlerAdapter";
+
     private ListAppender<ILoggingEvent> logAppender;
-    private Logger rootLogger;
+    private Logger commitLogger;
 
     @BeforeAll
     static void startBackend() throws IOException {
@@ -107,15 +116,15 @@ class CommittedResponseHeaderIntegrationTest {
 
     @BeforeEach
     void attachLogAppender() {
-        rootLogger = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+        commitLogger = (Logger) LoggerFactory.getLogger(COMMIT_LOGGER);
         logAppender = new ListAppender<>();
         logAppender.start();
-        rootLogger.addAppender(logAppender);
+        commitLogger.addAppender(logAppender);
     }
 
     @AfterEach
     void detachLogAppender() {
-        rootLogger.detachAppender(logAppender);
+        commitLogger.detachAppender(logAppender);
     }
 
     @Test
@@ -140,11 +149,17 @@ class CommittedResponseHeaderIntegrationTest {
     void should_attachSecurityHeaders_on2xxResponse() {
         backend.enqueue(new MockResponse().setResponseCode(200).setBody("[]"));
 
+        // Assert headers that ONLY SecurityHeadersFilter sets. Content-Security-Policy
+        // and Permissions-Policy are never emitted by Spring Security's default header
+        // writer, so their presence proves the filter's beforeCommit hook ran against
+        // the committed 2xx response without throwing. X-Frame-Options / nosniff would
+        // NOT prove this — Spring Security emits those independently of this filter.
         webTestClient.get().uri("/api/products")
                 .exchange()
                 .expectStatus().isOk()
-                .expectHeader().valueEquals("X-Content-Type-Options", "nosniff")
-                .expectHeader().exists("X-Frame-Options");
+                .expectHeader().exists("Content-Security-Policy")
+                .expectHeader().exists("Permissions-Policy")
+                .expectHeader().valueEquals("X-XSS-Protection", "1; mode=block");
     }
 
     private boolean loggedUnsupportedOperationException() {
