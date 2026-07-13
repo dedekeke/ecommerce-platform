@@ -121,12 +121,14 @@ export const mockProducts: Product[] = [
 
 export const mockPaginatedProducts: PaginatedResponse<Product> = {
   content: mockProducts,
-  page: 0,
+  number: 0,
   size: 12,
   totalElements: mockProducts.length,
   totalPages: 1,
   first: true,
   last: true,
+  numberOfElements: mockProducts.length,
+  empty: mockProducts.length === 0,
 }
 
 export function createMockProduct(overrides: Partial<Product> = {}): Product {
@@ -144,11 +146,13 @@ export function createMockPaginatedResponse(
 ): PaginatedResponse<Product> {
   return {
     content: products,
-    page,
+    number: page,
     size,
     totalElements: products.length,
     totalPages: Math.ceil(products.length / size),
     first: page === 0,
     last: page >= Math.ceil(products.length / size) - 1,
+    numberOfElements: products.length,
+    empty: products.length === 0,
   }
 }
