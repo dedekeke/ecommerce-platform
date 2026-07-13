@@ -7,24 +7,16 @@ declare global {
   }
 }
 
-/** Prefix for the placeholder id used only when the visitor is genuinely unauthenticated. */
-export const ANONYMOUS_USER_PREFIX = 'anonymous-'
-
 /**
- * Resolves the user id to attach to a PaymentIntent.
+ * Resolves the authenticated user id for checkout from the shell accessor
+ * (`window.__getAuthUserId`, sourced from the Auth0 `sub` claim).
  *
- * Prefers the authenticated identity exposed by the shell (`window.__getAuthUserId`, sourced from
- * the Auth0 `sub` claim). When the visitor is genuinely unauthenticated — or the shell accessor is
- * unavailable (standalone dev) — it falls back to a clearly-marked, stable anonymous id so the
- * value reaching Stripe metadata is never the misleading hardcoded `'guest'`. In authenticated mode
- * the backend still overrides this with the JWT subject.
+ * Returns null when the visitor is unauthenticated or the accessor is unavailable (standalone
+ * dev). The shell already gates /checkout behind auth, so callers must treat null as "cannot
+ * place a real order" and block the flow — never substitute a placeholder id.
  */
-export function useAuthUserId(): string {
-  return useMemo(() => {
-    const authUserId = window.__getAuthUserId?.()
-    if (authUserId) return authUserId
-    return `${ANONYMOUS_USER_PREFIX}${crypto.randomUUID()}`
-  }, [])
+export function useAuthUserId(): string | null {
+  return useMemo(() => window.__getAuthUserId?.() ?? null, [])
 }
 
 export default useAuthUserId
