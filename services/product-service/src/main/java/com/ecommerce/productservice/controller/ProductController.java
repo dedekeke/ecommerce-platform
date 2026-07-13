@@ -1,5 +1,6 @@
 package com.ecommerce.productservice.controller;
 
+import com.ecommerce.productservice.dto.PageResponse;
 import com.ecommerce.productservice.dto.ProductRequest;
 import com.ecommerce.productservice.dto.ProductResponse;
 import com.ecommerce.productservice.mapper.ProductMapper;
@@ -49,7 +50,7 @@ public class ProductController {
 
     @GetMapping
     @Operation(summary = "Get all products", description = "Get all products with pagination, search, and filters")
-    public ResponseEntity<Page<ProductResponse>> getAllProducts(
+    public ResponseEntity<PageResponse<ProductResponse>> getAllProducts(
             @Parameter(description = "Search term for name/description")
             @RequestParam(required = false) String search,
 
@@ -106,7 +107,7 @@ public class ProductController {
         }
 
         Page<ProductResponse> response = products.map(productMapper::toResponse);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(PageResponse.from(response));
     }
 
     private Long resolveCategoryId(String categoryId) {
@@ -151,7 +152,7 @@ public class ProductController {
 
     @GetMapping("/featured")
     @Operation(summary = "Get featured products")
-    public ResponseEntity<Page<ProductResponse>> getFeaturedProducts(
+    public ResponseEntity<PageResponse<ProductResponse>> getFeaturedProducts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
@@ -160,7 +161,7 @@ public class ProductController {
         Pageable pageable = PageRequest.of(page, size);
         Page<Product> products = productService.getFeaturedProducts(pageable);
         Page<ProductResponse> response = products.map(productMapper::toResponse);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(PageResponse.from(response));
     }
 
     @PostMapping
