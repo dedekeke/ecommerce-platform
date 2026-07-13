@@ -12,7 +12,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Translates order REST API security errors into structured JSON responses. */
-@RestControllerAdvice(basePackages = "com.ecommerce.orderservice.controller")
+@RestControllerAdvice(basePackages = {
+    "com.ecommerce.orderservice.controller",
+    "com.ecommerce.orderservice.subscription",
+    "com.ecommerce.orderservice.saga"
+})
 @Slf4j
 public class OrderApiExceptionHandler {
 

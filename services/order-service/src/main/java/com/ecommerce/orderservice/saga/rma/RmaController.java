@@ -1,5 +1,6 @@
 package com.ecommerce.orderservice.saga.rma;
 
+import com.ecommerce.orderservice.security.UserIdentityResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -13,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,6 +45,7 @@ import java.util.Map;
 public class RmaController {
 
     private final RmaOrchestrator orchestrator;
+    private final UserIdentityResolver userIdentityResolver;
 
     @PostMapping
     @PreAuthorize("isAuthenticated()")
@@ -49,13 +53,16 @@ public class RmaController {
     public ResponseEntity<Return> requestReturn(
         @Valid @RequestBody RmaRequest body,
         @RequestHeader(value = "X-User-Id", required = false) String userId,
-        @RequestHeader(value = "X-User-Email", required = false) String userEmail
+        @RequestHeader(value = "X-User-Email", required = false) String userEmail,
+        @AuthenticationPrincipal Jwt jwt
     ) {
+        // The requesting user is the JWT subject — the X-User-Id header is never trusted.
+        String resolvedUserId = userIdentityResolver.resolveUserId(userId, jwt);
         log.info("REST: starting RMA saga for order {}", body.orderId());
         List<RmaOrchestrator.LineRequest> lines = body.lines() == null ? null : body.lines().stream()
             .map(l -> new RmaOrchestrator.LineRequest(l.orderItemId(), l.quantity(), l.reason()))
             .toList();
-        Return rma = orchestrator.requestReturn(body.orderId(), userId, body.reason(), lines, userEmail);
+        Return rma = orchestrator.requestReturn(body.orderId(), resolvedUserId, body.reason(), lines, userEmail);
         URI location = URI.create("/api/returns/" + rma.getId());
         return ResponseEntity.accepted().location(location).body(rma);
     }
@@ -63,9 +70,16 @@ public class RmaController {
     @GetMapping("/{rmaId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Look up a return by RMA id")
-    public ResponseEntity<Return> getReturn(@PathVariable String rmaId) {
+    public ResponseEntity<Return> getReturn(
+        @PathVariable String rmaId,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
         return orchestrator.findById(rmaId)
-            .map(ResponseEntity::ok)
+            .map(rma -> {
+                // IDOR guard: the RMA must belong to the caller (or the caller is admin).
+                userIdentityResolver.assertCanActFor(rma.getUserId(), jwt);
+                return ResponseEntity.ok(rma);
+            })
             .orElseGet(() -> ResponseEntity.notFound().build());
     }
 

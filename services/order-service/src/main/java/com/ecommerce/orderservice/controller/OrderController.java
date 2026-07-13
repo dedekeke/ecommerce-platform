@@ -2,7 +2,7 @@ package com.ecommerce.orderservice.controller;
 
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
-import com.ecommerce.orderservice.exception.UserMismatchException;
+import com.ecommerce.orderservice.security.UserIdentityResolver;
 import com.ecommerce.orderservice.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,7 +14,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -30,6 +29,7 @@ import java.util.Map;
 public class OrderController {
 
     private final OrderService orderService;
+    private final UserIdentityResolver userIdentityResolver;
 
     @PostMapping
     @Operation(summary = "Create order from cart")
@@ -37,7 +37,7 @@ public class OrderController {
         @RequestBody Map<String, Object> request,
         @AuthenticationPrincipal Jwt jwt
     ) {
-        String userId = resolveUserId((String) request.get("userId"), jwt);
+        String userId = userIdentityResolver.resolveUserId((String) request.get("userId"), jwt);
         log.info("REST: Create order for user {}", userId);
 
         // For now, create a simple order - full implementation would fetch from cart
@@ -52,7 +52,7 @@ public class OrderController {
         @RequestHeader(value = "X-User-Id", required = false) String userId,
         @AuthenticationPrincipal Jwt jwt
     ) {
-        String resolvedUserId = resolveUserId(userId, jwt);
+        String resolvedUserId = userIdentityResolver.resolveUserId(userId, jwt);
         log.info("REST: Get order {} for user {}", orderId, resolvedUserId);
         Order order = orderService.getOrder(orderId, resolvedUserId);
         return ResponseEntity.ok(order);
@@ -60,9 +60,14 @@ public class OrderController {
 
     @GetMapping("/number/{orderNumber}")
     @Operation(summary = "Get order by order number")
-    public ResponseEntity<Order> getOrderByNumber(@PathVariable String orderNumber) {
+    public ResponseEntity<Order> getOrderByNumber(
+        @PathVariable String orderNumber,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
         log.info("REST: Get order by number {}", orderNumber);
         Order order = orderService.getOrderByNumber(orderNumber);
+        // IDOR guard: the order number is guessable, so verify ownership after lookup.
+        userIdentityResolver.assertCanActFor(order.getUserId(), jwt);
         return ResponseEntity.ok(order);
     }
 
@@ -74,7 +79,7 @@ public class OrderController {
         @RequestParam(defaultValue = "10") int size,
         @AuthenticationPrincipal Jwt jwt
     ) {
-        String resolvedUserId = resolveUserId(userId, jwt);
+        String resolvedUserId = userIdentityResolver.resolveUserId(userId, jwt);
         log.info("REST: Get orders for user {} (page: {}, size: {})", resolvedUserId, page, size);
         Page<Order> orders = orderService.getUserOrders(resolvedUserId, PageRequest.of(page, size));
         return ResponseEntity.ok(orders);
@@ -100,26 +105,9 @@ public class OrderController {
         @RequestParam(required = false) String reason,
         @AuthenticationPrincipal Jwt jwt
     ) {
-        String resolvedUserId = resolveUserId(userId, jwt);
+        String resolvedUserId = userIdentityResolver.resolveUserId(userId, jwt);
         log.info("REST: Cancel order {} for user {}", orderId, resolvedUserId);
         Order order = orderService.cancelOrder(orderId, resolvedUserId, reason);
         return ResponseEntity.ok(order);
-    }
-
-    /**
-     * The owning user is the JWT subject — never trusted from the request. A client-supplied
-     * userId (body / header / path) is only a correlation hint; if it disagrees with the token
-     * subject the request is rejected. When no JWT is present (security disabled for local dev)
-     * the supplied value is used as-is, mirroring payment-service.
-     */
-    private String resolveUserId(String clientUserId, Jwt jwt) {
-        if (jwt == null) {
-            return clientUserId;
-        }
-        String subject = jwt.getSubject();
-        if (StringUtils.hasText(clientUserId) && !clientUserId.equals(subject)) {
-            throw new UserMismatchException("Request userId does not match the authenticated user");
-        }
-        return subject;
     }
 }
