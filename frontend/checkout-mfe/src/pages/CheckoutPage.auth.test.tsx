@@ -62,6 +62,15 @@ describe('CheckoutPage — authentication gate', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('should not place an order when the session expires before submit', async () => {
+    seedReviewStep()
+    renderWithProviders(<CheckoutPage />)
+    window.__getAuthUserId = () => null
+    await userEvent.click(screen.getByRole('button', { name: /place order/i }))
+    expect(createOrder).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/sign in/i)
+  })
+
   it('should place the order with the Auth0 sub as userId, never "guest"', async () => {
     createOrder.mockResolvedValue({ id: 'order-123' })
     seedReviewStep()

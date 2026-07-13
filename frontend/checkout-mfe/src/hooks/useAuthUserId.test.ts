@@ -39,4 +39,22 @@ describe('useAuthUserId', () => {
     rerender()
     expect(result.current).toBe(first)
   })
+
+  it('should pick up the accessor when the shell installs it after mount (deep-link load)', () => {
+    delete window.__getAuthUserId
+    const { result, rerender } = renderHook(() => useAuthUserId())
+    expect(result.current).toBeNull()
+    window.__getAuthUserId = () => 'auth0|late-arrival'
+    rerender()
+    expect(result.current).toBe('auth0|late-arrival')
+  })
+
+  it('should reflect a session that expires between renders', () => {
+    window.__getAuthUserId = () => 'auth0|abc123'
+    const { result, rerender } = renderHook(() => useAuthUserId())
+    expect(result.current).toBe('auth0|abc123')
+    window.__getAuthUserId = () => null
+    rerender()
+    expect(result.current).toBeNull()
+  })
 })

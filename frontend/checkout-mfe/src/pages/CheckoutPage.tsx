@@ -84,11 +84,17 @@ export default function CheckoutPage() {
       return
     }
     if (!address || !paymentMethodId) return
+    // Re-read the live identity at submit time: the session may have expired since render.
+    const liveUserId = window.__getAuthUserId?.() ?? null
+    if (!liveUserId) {
+      setSubmitError('Your session has expired. Please sign in again to place the order.')
+      return
+    }
     setIsSubmitting(true)
     setSubmitError(null)
     try {
       const order = await createOrder({
-        userId,
+        userId: liveUserId,
         items: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity, price: i.price })),
         shippingAddress: address,
         paymentMethodId,
