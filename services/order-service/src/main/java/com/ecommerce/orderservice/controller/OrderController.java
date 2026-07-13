@@ -2,6 +2,7 @@ package com.ecommerce.orderservice.controller;
 
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
+import com.ecommerce.orderservice.dto.PageResponse;
 import com.ecommerce.orderservice.security.UserIdentityResolver;
 import com.ecommerce.orderservice.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -73,7 +74,7 @@ public class OrderController {
 
     @GetMapping("/user/{userId}")
     @Operation(summary = "Get all orders for a user")
-    public ResponseEntity<Page<Order>> getUserOrders(
+    public ResponseEntity<PageResponse<Order>> getUserOrders(
         @PathVariable String userId,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "10") int size,
@@ -82,7 +83,7 @@ public class OrderController {
         String resolvedUserId = userIdentityResolver.resolveUserId(userId, jwt);
         log.info("REST: Get orders for user {} (page: {}, size: {})", resolvedUserId, page, size);
         Page<Order> orders = orderService.getUserOrders(resolvedUserId, PageRequest.of(page, size));
-        return ResponseEntity.ok(orders);
+        return ResponseEntity.ok(PageResponse.from(orders));
     }
 
     @PutMapping("/{orderId}/status")
