@@ -43,8 +43,8 @@ RUN mvn dependency:go-offline -pl infrastructure/eureka-server -am || true
 
 # `-am` builds eureka-server plus its upstream reactor deps only, so only those
 # modules need sources; sibling services stay pom-only in the reactor.
+# eureka-server -> common-logging is the only upstream source dependency.
 COPY common-logging ./common-logging
-COPY common-library ./common-library
 COPY infrastructure/eureka-server ./infrastructure/eureka-server
 
 RUN mvn clean package -pl infrastructure/eureka-server -am -DskipTests && \
