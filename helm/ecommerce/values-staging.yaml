@@ -3,9 +3,18 @@ global:
   ingress:
     host: ""  # MUST be supplied at deploy time via --set global.ingress.host=staging.$BASE_DOMAIN; empty value trips the `required` guard in templates/ingress.yaml
 
-# 1 replica per service in staging
-api-gateway: { replicaCount: 1 }
-user-service: { replicaCount: 1 }
+# 1 replica per service in staging; HPAs disabled (matches the existing staging
+# policy for product/order/payment). cart-service must be listed explicitly because
+# the default values now enable its HPA, which staging overrides back off here.
+api-gateway:
+  replicaCount: 1
+  hpa: { enabled: false }
+user-service:
+  replicaCount: 1
+  hpa: { enabled: false }
+cart-service:
+  replicaCount: 1
+  hpa: { enabled: false }
 product-service:
   replicaCount: 1
   hpa: { enabled: false }

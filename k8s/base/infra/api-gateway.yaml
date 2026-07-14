@@ -45,7 +45,7 @@ spec:
           # ZGC for the gateway — sub-millisecond GC pauses for the latency-critical path.
           env:
             - name: JAVA_TOOL_OPTIONS
-              value: "-XX:+UseZGC -XX:+ZGenerational"
+              value: "-XX:MaxRAMPercentage=70.0 -XX:+UseZGC -XX:+ZGenerational"
           resources:
             requests:
               memory: "512Mi"

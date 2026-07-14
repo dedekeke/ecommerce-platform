@@ -1,4 +1,12 @@
 # JSON-style strategic merge patch — applied to every backend Deployment in staging.
+#
+# limits.memory is 768Mi (not 512Mi) because the base deployments now set
+# -XX:MaxRAMPercentage=70.0: at a 512Mi limit that reserves ~358Mi for heap and
+# leaves only ~154Mi for metaspace + thread stacks + JIT code cache + native
+# (Kafka/JDBC/HTTP) buffers, which risks OOMKills for the heavier Spring Boot
+# consumers. 768Mi keeps the heap ~538Mi with ~230Mi non-heap headroom while staying
+# well inside the staging quota (12 backends x 768Mi = 9Gi vs the 40Gi limits.memory
+# ResourceQuota; container max is 4Gi). Requests stay at 256Mi (scheduling floor).
 - op: replace
   path: /spec/template/spec/containers/0/resources
   value:
@@ -6,5 +14,5 @@
       memory: "256Mi"
       cpu: "100m"
     limits:
-      memory: "512Mi"
+      memory: "768Mi"
       cpu: "500m"

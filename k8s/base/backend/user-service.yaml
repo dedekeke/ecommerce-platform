@@ -19,7 +19,9 @@ metadata:
     app: user-service
     tier: backend
 spec:
-  replicas: 1
+  # Matches user-service-hpa minReplicas so a fresh apply starts at 2 (the HPA
+  # reconciles it up anyway, but this keeps the static manifest and GitOps diff honest).
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -49,7 +51,7 @@ spec:
           # G1GC — throughput-oriented; 200ms pause target.
           env:
             - name: JAVA_TOOL_OPTIONS
-              value: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16m -XX:InitiatingHeapOccupancyPercent=70 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled"
+              value: "-XX:MaxRAMPercentage=70.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16m -XX:InitiatingHeapOccupancyPercent=70 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled"
           resources:
             requests:
               memory: "512Mi"

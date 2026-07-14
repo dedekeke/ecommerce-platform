@@ -9,6 +9,28 @@ spec:
       name: payment-postgres-secret
       key: connection
 ---
+# KEDA ScaledObject for payment-service — the SINGLE autoscaling authority for this
+# Deployment. The CPU HorizontalPodAutoscaler that previously lived in
+# k8s/base/hpa.yaml (max 8) was removed to end a dual-autoscaler conflict; the cpu
+# trigger below reproduces that CPU behaviour so KEDA owns both the outbox-lag and
+# the CPU dimension.
+#
+# Scales 2->8 on the max of: unpublished outbox rows (>100) or 70% CPU.
+#
+# CONNECTION-BUDGET GUARD: maxReplicaCount 8 REQUIRES PR #103. The 8-replica ceiling
+# is only safe with the right-sized Hikari pools + pinned Postgres max_connections
+# from PR #103 (docs/db-connection-budget.md: DB_POOL_SIZE 5 x 8 = 40 conns).
+# payment-service on `develop` still hardcodes maximum-pool-size 20. The commit that
+# set this to 8 is isolated and labelled "REQUIRES #103" — if this branch is merged
+# before #103, drop/revert that commit to fall back to the safe ceiling of 4.
+#
+# minReplicaCount 2 preserves the HA floor the removed HPA guaranteed and keeps
+# payment-service-pdb (minAvailable 1) effective.
+#
+# KEDA quirk (v2.14.0): a cpu trigger combined with `fallback:` is flagged
+# "not supported" by CheckFallbackValid, but v2.14.0 swallows that webhook error and
+# the runtime fallback path only evaluates External metrics, so fallback still works
+# for the postgresql trigger and nothing breaks today. Revisit on KEDA upgrade.
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -19,12 +41,31 @@ spec:
     name: payment-service
   pollingInterval: 30
   cooldownPeriod: 300
-  minReplicaCount: 1
-  maxReplicaCount: 4
+  minReplicaCount: 2
+  maxReplicaCount: 8
   fallback:
     failureThreshold: 3
-    replicas: 1
+    replicas: 2
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 60
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 30
   triggers:
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "70"
     - type: postgresql
       metadata:
         query: "SELECT COUNT(*) FROM outbox_event WHERE published_at IS NULL"
