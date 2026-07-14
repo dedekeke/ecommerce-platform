@@ -32,6 +32,18 @@ env:
   NODE_VERSION: "22.12.0"
 
 jobs:
+  # ---- Fast config guard: no DEBUG/TRACE log levels in production profiles ----
+  # Verbose SQL / parameter-binding logging in prod is a scalability + security
+  # risk. Pure bash, no build — fails fast, ahead of the heavier jobs.
+  prod-log-levels:
+    name: Prod log-level guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard against DEBUG/TRACE in production profiles
+        run: bash scripts/check-prod-log-levels.sh
+
   # ---- Backend: build + unit tests with JaCoCo coverage ----
   backend:
     name: Backend build, test & coverage

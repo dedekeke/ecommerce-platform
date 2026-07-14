@@ -1,0 +1,9 @@
+# Production profile overrides (Scalability P1): log-level hardening.
+# Config Server exposes no Swagger UI; this file exists purely to pin log levels for prod.
+# The base profile defaults org.springframework.cloud.config and com.ecommerce.config to DEBUG.
+logging:
+  level:
+    root: WARN
+    com.ecommerce: INFO
+    org.springframework.cloud.config: INFO
+    org.springframework.security: WARN

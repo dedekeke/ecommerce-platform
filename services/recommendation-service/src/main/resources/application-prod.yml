@@ -6,3 +6,9 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# Log-level hardening for production (Scalability P1).
+logging:
+  level:
+    root: WARN
+    com.ecommerce: INFO

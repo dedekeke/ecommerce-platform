@@ -104,6 +104,9 @@ helm_lint() {
 # ---- Run ----
 echo "${BLUE}Local CI — backend=$DO_BACKEND frontend=$DO_FRONTEND infra=$DO_INFRA quick=$QUICK${RESET}"
 
+# Config guard — fast, always runs (matches quality.yml / ci.yml prod-log-levels job).
+step "Prod log-level guard" bash scripts/check-prod-log-levels.sh
+
 if $DO_BACKEND;  then
   step "Backend build (skip tests)" backend_build
   step "Backend unit tests"          backend_unit_tests

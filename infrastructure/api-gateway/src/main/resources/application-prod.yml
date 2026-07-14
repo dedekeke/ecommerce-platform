@@ -6,3 +6,15 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# Log-level hardening for production (Scalability P1).
+# Gateway is reactive (no Hibernate); pin the noisy routing/security/netty loggers
+# that default to DEBUG in the base profile.
+logging:
+  level:
+    root: WARN
+    com.ecommerce: INFO
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: INFO
+    org.springframework.web.reactive: INFO
+    reactor.netty: INFO

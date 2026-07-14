@@ -6,3 +6,11 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# Log-level hardening for production (Scalability P1).
+# org.springframework.mail is DEBUG in the base profile; pin it down for prod.
+logging:
+  level:
+    root: WARN
+    com.ecommerce: INFO
+    org.springframework.mail: WARN

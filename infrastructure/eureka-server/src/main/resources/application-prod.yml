@@ -1,0 +1,9 @@
+# Production profile overrides (Scalability P1): log-level hardening.
+# Eureka Server exposes no Swagger UI; this file exists purely to pin log levels for prod.
+# The base profile defaults com.ecommerce.eureka to DEBUG.
+logging:
+  level:
+    root: WARN
+    com.ecommerce: INFO
+    com.netflix.eureka: WARN
+    com.netflix.discovery: WARN
