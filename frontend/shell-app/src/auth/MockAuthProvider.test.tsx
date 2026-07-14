@@ -3,7 +3,8 @@ import { render, renderHook, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
 import type { ReactNode } from 'react'
-import { MockAuthProvider, MOCK_AUTH_TOKEN, MOCK_AUTH_USER } from './MockAuthProvider'
+import { MockAuthProvider } from './MockAuthProvider'
+import { installMockWindowAccessors, MOCK_AUTH_TOKEN, MOCK_AUTH_USER } from './mockIdentity'
 import { ProtectedRoute } from '../components/auth/ProtectedRoute'
 import { useExposeAuthToken } from '../hooks/useExposeAuthToken'
 
@@ -28,6 +29,18 @@ describe('MockAuthProvider', () => {
     expect(MOCK_AUTH_USER.email).toBe('e2e-test-user@example.com')
     expect(MOCK_AUTH_USER.name).toBe('E2E Test User')
     expect(MOCK_AUTH_TOKEN).toBe('e2e-mock-token')
+  })
+
+  it('should install window accessors synchronously (MFEs read them during first render)', async () => {
+    installMockWindowAccessors()
+    expect(window.__getAuthUserId!()).toBe('e2e|test-user')
+    await expect(window.__getAuthToken!()).resolves.toBe(MOCK_AUTH_TOKEN)
+  })
+
+  it('should tolerate re-install over the existing non-writable accessors', () => {
+    installMockWindowAccessors()
+    expect(() => installMockWindowAccessors()).not.toThrow()
+    expect(window.__getAuthUserId!()).toBe('e2e|test-user')
   })
 
   it('should report an authenticated, non-loading session to useAuth0 consumers', () => {
