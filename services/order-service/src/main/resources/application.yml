@@ -79,6 +79,17 @@ spring:
     virtual:
       enabled: true
 
+  # Dedicated scheduler pool. order-service runs several @Scheduled jobs
+  # (outbox relay, subscription poller, refund/RMA recovery, archival, and the
+  # abandoned/cleanup/report tasks). Spring's default scheduler is single-
+  # threaded, so a long-running or blocked job (e.g. the relay waiting on a slow
+  # broker) would delay every other job. A small fixed pool decouples them.
+  task:
+    scheduling:
+      pool:
+        size: ${SCHEDULER_POOL_SIZE:4}
+      thread-name-prefix: order-sched-
+
 # Server Configuration
 server:
   port: 8084
