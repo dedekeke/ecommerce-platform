@@ -36,8 +36,15 @@ public class GatewayRoutesConfig {
     @Value("${GATEWAY_PAYMENT_RESPONSE_TIMEOUT:10000}")
     private int paymentResponseTimeoutMs;
 
+    /**
+     * Disabled by default (see application.yml "Route authority"): the
+     * declarative routes are the single source of truth so Retry + rate-limiting
+     * apply deterministically. This locator is retained as an opt-in fallback
+     * (set {@code gateway.programmatic-routes.enabled=true}) and is exercised
+     * directly by {@code GatewayRoutesConfigTest}.
+     */
     @Bean
-    @ConditionalOnProperty(name = "gateway.programmatic-routes.enabled", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(name = "gateway.programmatic-routes.enabled", havingValue = "true", matchIfMissing = false)
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         return builder.routes()
             // ---------------- User Service ----------------

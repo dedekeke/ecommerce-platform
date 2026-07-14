@@ -44,9 +44,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ul>
  *   <li>a downstream that never responds in time yields {@code 504 GATEWAY_TIMEOUT}
  *       instead of hanging (holding the gateway connection open);</li>
+ *   <li>a GET that times out is NOT retried (TimeoutException dropped from the
+ *       retryable set) — the downstream is hit exactly once, no
+ *       (retries+1)x amplification against an already-hung service;</li>
  *   <li>a POST to a route returning {@code 503} is NOT retried — the downstream
  *       is hit exactly once (no duplicate side-effects, no load amplification);</li>
- *   <li>a GET to the same route IS retried until it succeeds.</li>
+ *   <li>a GET returning {@code 503} then {@code 200} IS retried until it succeeds.</li>
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -115,6 +118,25 @@ class GatewayResilienceIntegrationTest {
     }
 
     @Test
+    void should_notRetryGet_when_downstreamTimesOut() {
+        int before = backend.getRequestCount();
+        // Route has GET retry enabled, but the downstream stalls past the
+        // response-timeout rather than returning a retryable 503.
+        backend.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setBody("late")
+                .setHeadersDelay(5, TimeUnit.SECONDS));
+
+        webTestClient.get().uri("/retry-test/orders")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
+
+        // TimeoutException is excluded from the retryable set → exactly one hit,
+        // no (retries+1)x amplification against a hung downstream.
+        assertThat(backend.getRequestCount() - before).isEqualTo(1);
+    }
+
+    @Test
     void should_notRetryPost_when_downstreamReturns503() {
         int before = backend.getRequestCount();
         backend.enqueue(new MockResponse().setResponseCode(503));
@@ -154,14 +176,19 @@ class GatewayResilienceIntegrationTest {
                     .route("timeout-test", r -> r
                             .path("/timeout-test/**")
                             .uri(backendUri))
-                    // Mirrors the production default-filter Retry policy: GET only.
+                    // Mirrors the production default-filter Retry policy:
+                    // GET only, 502/503 status retry, exceptions pinned to
+                    // IOException (TimeoutException dropped so a response-timeout
+                    // is NOT retried).
                     .route("retry-test", r -> r
                             .path("/retry-test/**")
-                            .filters(f -> f.retry(config -> config
-                                    .setRetries(3)
-                                    .setMethods(HttpMethod.GET)
-                                    .setStatuses(HttpStatus.SERVICE_UNAVAILABLE)
-                                    .setBackoff(Duration.ofMillis(1), Duration.ofMillis(5), 2, false)))
+                            .filters(f -> f.retry(config -> {
+                                config.setRetries(3);
+                                config.setMethods(HttpMethod.GET);
+                                config.setStatuses(HttpStatus.SERVICE_UNAVAILABLE);
+                                config.setExceptions(java.io.IOException.class);
+                                config.setBackoff(Duration.ofMillis(1), Duration.ofMillis(5), 2, false);
+                            }))
                             .uri(backendUri))
                     .build();
         }
