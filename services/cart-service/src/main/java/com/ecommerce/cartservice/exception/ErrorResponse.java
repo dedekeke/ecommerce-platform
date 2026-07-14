@@ -22,4 +22,6 @@ public class ErrorResponse {
     private String message;
     private String path;
     private List<String> errors;
+    /** When true, the client may safely retry the same request shortly. */
+    private Boolean retryable;
 }

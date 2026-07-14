@@ -27,12 +27,64 @@ spring:
           user-service:
             connectTimeout: ${USER_SERVICE_CONNECT_TIMEOUT_MS:2000}
             readTimeout: ${USER_SERVICE_READ_TIMEOUT_MS:3000}
+          # product-service sits on the add-to-cart / checkout funnel. Keep the
+          # read timeout tight so a brownout is caught quickly (and counted as a
+          # slow call by the circuit breaker) rather than blocking a request
+          # thread for the default 5s.
+          product-service:
+            connectTimeout: ${PRODUCT_SERVICE_CONNECT_TIMEOUT_MS:2000}
+            readTimeout: ${PRODUCT_SERVICE_READ_TIMEOUT_MS:2000}
+
+# Resilience4j — protects the product-service Feign call (via ProductServiceGateway).
+# Conventions mirror order-service: named "default" config + per-instance overrides,
+# every knob env-overridable. Values default to order-service's defaults.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: ${CB_DEFAULT_SLIDING_WINDOW_SIZE:10}
+        minimumNumberOfCalls: ${CB_DEFAULT_MIN_CALLS:5}
+        failureRateThreshold: ${CB_DEFAULT_FAILURE_RATE:50}
+        slowCallRateThreshold: ${CB_DEFAULT_SLOW_CALL_RATE:80}
+        slowCallDurationThreshold: ${CB_DEFAULT_SLOW_CALL_DURATION:2s}
+        waitDurationInOpenState: ${CB_DEFAULT_WAIT_IN_OPEN:30s}
+        permittedNumberOfCallsInHalfOpenState: ${CB_DEFAULT_HALF_OPEN_CALLS:3}
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # Only genuine unavailability trips the breaker. A 4xx (e.g. product
+        # not found) is a valid product-service answer, not an outage.
+        recordExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - feign.RetryableException
+          - feign.FeignException.FeignServerException
+        ignoreExceptions:
+          - feign.FeignException.FeignClientException
+          - com.ecommerce.cartservice.exception.ProductNotAvailableException
+    instances:
+      product-service:
+        baseConfig: default
+        failureRateThreshold: ${PRODUCT_CB_FAILURE_RATE:50}
+        waitDurationInOpenState: ${PRODUCT_CB_WAIT_IN_OPEN:20s}
+
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: ${BULKHEAD_DEFAULT_MAX_CONCURRENT:25}
+        maxWaitDuration: ${BULKHEAD_DEFAULT_MAX_WAIT:0ms}
+    instances:
+      product-service:
+        baseConfig: default
+        maxConcurrentCalls: ${PRODUCT_BULKHEAD_MAX_CONCURRENT:20}
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics,prometheus
+  health:
+    circuitbreakers:
+      enabled: true
   endpoint:
     health:
       show-details: always

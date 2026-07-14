@@ -1,6 +1,6 @@
 package com.ecommerce.cartservice.service;
 
-import com.ecommerce.cartservice.client.ProductServiceClient;
+import com.ecommerce.cartservice.client.ProductServiceGateway;
 import com.ecommerce.cartservice.client.UserServiceClient;
 import com.ecommerce.cartservice.domain.Cart;
 import com.ecommerce.cartservice.domain.CartStatus;
@@ -40,7 +40,7 @@ class CartServiceEmailResolutionTest {
     private CartItemRepository cartItemRepository;
 
     @Mock
-    private ProductServiceClient productServiceClient;
+    private ProductServiceGateway productServiceGateway;
 
     @Mock
     private UserServiceClient userServiceClient;
@@ -82,7 +82,7 @@ class CartServiceEmailResolutionTest {
     @DisplayName("should_resolveAndStoreEmail_when_cartHasNone")
     void should_resolveAndStoreEmail_when_cartHasNone() {
         Cart cart = activeCart(null);
-        when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(validProduct());
+        when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(validProduct());
         when(cartRepository.findByUserIdAndStatus(USER_ID, CartStatus.ACTIVE)).thenReturn(Optional.of(cart));
         when(cartItemRepository.findByCartIdAndProductId(cart.getId(), PRODUCT_ID)).thenReturn(Optional.empty());
         when(userServiceClient.getUserByAuth0Id(USER_ID))
@@ -98,7 +98,7 @@ class CartServiceEmailResolutionTest {
     @DisplayName("should_leaveEmailNull_when_userServiceFails")
     void should_leaveEmailNull_when_userServiceFails() {
         Cart cart = activeCart(null);
-        when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(validProduct());
+        when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(validProduct());
         when(cartRepository.findByUserIdAndStatus(USER_ID, CartStatus.ACTIVE)).thenReturn(Optional.of(cart));
         when(cartItemRepository.findByCartIdAndProductId(cart.getId(), PRODUCT_ID)).thenReturn(Optional.empty());
         when(userServiceClient.getUserByAuth0Id(USER_ID)).thenThrow(new RuntimeException("user-service down"));
@@ -113,7 +113,7 @@ class CartServiceEmailResolutionTest {
     @DisplayName("should_notReResolve_when_emailAlreadyStored")
     void should_notReResolve_when_emailAlreadyStored() {
         Cart cart = activeCart("existing@example.com");
-        when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(validProduct());
+        when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(validProduct());
         when(cartRepository.findByUserIdAndStatus(USER_ID, CartStatus.ACTIVE)).thenReturn(Optional.of(cart));
         when(cartItemRepository.findByCartIdAndProductId(cart.getId(), PRODUCT_ID)).thenReturn(Optional.empty());
         when(cartRepository.save(any(Cart.class))).thenAnswer(inv -> inv.getArgument(0));

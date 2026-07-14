@@ -1,6 +1,6 @@
 package com.ecommerce.cartservice.service;
 
-import com.ecommerce.cartservice.client.ProductServiceClient;
+import com.ecommerce.cartservice.client.ProductServiceGateway;
 import com.ecommerce.cartservice.client.UserServiceClient;
 import com.ecommerce.cartservice.domain.Cart;
 import com.ecommerce.cartservice.domain.CartItem;
@@ -9,6 +9,7 @@ import com.ecommerce.cartservice.dto.*;
 import com.ecommerce.cartservice.exception.CartNotFoundException;
 import com.ecommerce.cartservice.exception.CartItemNotFoundException;
 import com.ecommerce.cartservice.exception.ProductNotAvailableException;
+import com.ecommerce.cartservice.exception.ProductServiceUnavailableException;
 import com.ecommerce.cartservice.repository.CartItemRepository;
 import com.ecommerce.cartservice.repository.CartRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +35,7 @@ public class CartService {
 
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
-    private final ProductServiceClient productServiceClient;
+    private final ProductServiceGateway productServiceGateway;
     private final UserServiceClient userServiceClient;
 
     private static final int CART_EXPIRATION_DAYS = 30;
@@ -262,13 +263,17 @@ public class CartService {
 
     private ProductDto getProductOrThrow(String productId) {
         try {
-            ProductDto product = productServiceClient.getProductById(productId);
+            ProductDto product = productServiceGateway.getProductById(productId);
             if (product == null) {
                 log.error("Product not found: {}", productId);
                 throw new ProductNotAvailableException("Product not found: " + productId);
             }
             return product;
         } catch (ProductNotAvailableException e) {
+            throw e;
+        } catch (ProductServiceUnavailableException e) {
+            // product-service is down/brownout — do NOT degrade to a 400
+            // "not available"; fail fast so the API returns a retryable 503.
             throw e;
         } catch (Exception e) {
             log.error("Failed to fetch product: {}", productId, e);
