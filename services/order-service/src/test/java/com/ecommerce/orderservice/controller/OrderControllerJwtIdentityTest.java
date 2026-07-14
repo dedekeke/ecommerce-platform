@@ -162,10 +162,9 @@ class OrderControllerJwtIdentityTest {
         Page<Order> page = new PageImpl<>(List.of(orderOwnedBy(USER_A)));
         when(orderService.getUserOrders(eq(USER_A), any())).thenReturn(page);
 
-        // Reaching the service proves the identity check passed; the JSON serialization of
-        // Spring's PageImpl is a separate, pre-existing concern outside this security fix.
         mockMvc.perform(get("/api/orders/user/" + USER_A)
-                .with(jwt().jwt(j -> j.subject(USER_A))));
+                        .with(jwt().jwt(j -> j.subject(USER_A))))
+                .andExpect(status().isOk());
 
         verify(orderService).getUserOrders(eq(USER_A), any());
     }
@@ -216,8 +215,9 @@ class OrderControllerJwtIdentityTest {
         when(orderService.getUserOrders(eq(USER_B), any())).thenReturn(page);
 
         mockMvc.perform(get("/api/orders/user/" + USER_B)
-                .with(jwt().jwt(j -> j.subject("auth0|admin"))
-                        .authorities(new SimpleGrantedAuthority("SCOPE_admin"))));
+                        .with(jwt().jwt(j -> j.subject("auth0|admin"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
+                .andExpect(status().isOk());
 
         verify(orderService).getUserOrders(eq(USER_B), any());
     }

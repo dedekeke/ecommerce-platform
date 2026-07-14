@@ -80,7 +80,8 @@ class OrderControllerLocalDevIdentityTest {
                 .thenReturn(org.springframework.data.domain.Page.empty());
 
         // Reaching the service proves the client-supplied path userId is honoured in local dev.
-        mockMvc.perform(get("/api/orders/user/" + USER_A));
+        mockMvc.perform(get("/api/orders/user/" + USER_A))
+                .andExpect(status().isOk());
 
         verify(orderService).getUserOrders(eq(USER_A), any());
     }
