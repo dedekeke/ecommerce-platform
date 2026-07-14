@@ -70,6 +70,14 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Flyway — versioned schema migrations (mirrors product/cart-service).
+             Replaces Hibernate ddl-auto:update as the schema authority; JPA now
+             runs in validate mode against the Flyway-managed schema. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
         <!-- Kafka -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
