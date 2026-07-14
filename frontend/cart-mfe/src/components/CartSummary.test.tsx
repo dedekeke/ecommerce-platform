@@ -32,6 +32,11 @@ describe('CartSummary', () => {
     expect(screen.getByText('$49.00')).toBeInTheDocument()
   })
 
+  it('should expose the grand total via the cart-total testid for e2e assertions', () => {
+    renderWithProviders(<CartSummary subtotal={40} onCheckout={vi.fn()} />)
+    expect(screen.getByTestId('cart-total')).toHaveTextContent('$49.00')
+  })
+
   it('should calculate total as subtotal + tax with free shipping for orders $50+', () => {
     renderWithProviders(<CartSummary subtotal={100} onCheckout={vi.fn()} />)
     // 100 + 10 (tax) + 0 (free shipping) = 110

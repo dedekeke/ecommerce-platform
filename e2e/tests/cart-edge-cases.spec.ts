@@ -111,12 +111,15 @@ test.describe('Cart edge cases', () => {
     })
 
     await page.goto('/cart')
-    // Price renders in several places (line price, subtotal, total) — first() avoids strict-mode violations.
-    await expect(page.getByText('$20.00').first()).toBeVisible({ timeout: 8000 })
+    // Assert on the ORDER SUMMARY grand total (data-testid="cart-total" in
+    // cart-mfe CartSummary), not on any element that happens to show a price.
+    // Grand total = subtotal + 10% tax + $5 shipping (< $50 free-shipping threshold).
+    const grandTotal = page.getByTestId('cart-total')
+    await expect(grandTotal).toHaveText('$27.00', { timeout: 8000 }) // 20 + 2 + 5
 
     const increaseBtn = page.getByRole('button', { name: /increase quantity/i })
     await increaseBtn.click()
 
-    await expect(page.getByText('$40.00').first()).toBeVisible({ timeout: 5000 })
+    await expect(grandTotal).toHaveText('$49.00', { timeout: 5000 }) // 40 + 4 + 5
   })
 })
