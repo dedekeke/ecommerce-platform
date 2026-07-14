@@ -1,6 +1,6 @@
 package com.ecommerce.cartservice.service;
 
-import com.ecommerce.cartservice.client.ProductServiceClient;
+import com.ecommerce.cartservice.client.ProductServiceGateway;
 import com.ecommerce.cartservice.domain.Cart;
 import com.ecommerce.cartservice.domain.CartItem;
 import com.ecommerce.cartservice.domain.CartStatus;
@@ -11,6 +11,7 @@ import com.ecommerce.cartservice.dto.UpdateCartItemRequest;
 import com.ecommerce.cartservice.exception.CartItemNotFoundException;
 import com.ecommerce.cartservice.exception.CartNotFoundException;
 import com.ecommerce.cartservice.exception.ProductNotAvailableException;
+import com.ecommerce.cartservice.exception.ProductServiceUnavailableException;
 import com.ecommerce.cartservice.repository.CartItemRepository;
 import com.ecommerce.cartservice.repository.CartRepository;
 import feign.FeignException;
@@ -41,7 +42,7 @@ class CartServiceTest {
     private CartItemRepository cartItemRepository;
 
     @Mock
-    private ProductServiceClient productServiceClient;
+    private ProductServiceGateway productServiceGateway;
 
     @Mock
     private com.ecommerce.cartservice.client.UserServiceClient userServiceClient;
@@ -87,7 +88,7 @@ class CartServiceTest {
             ProductDto product = createValidProduct();
             Cart cart = createActiveCart();
 
-            when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(product);
+            when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(product);
             when(cartRepository.findByUserIdAndStatus(USER_ID, CartStatus.ACTIVE))
                     .thenReturn(Optional.of(cart));
             when(cartItemRepository.findByCartIdAndProductId(cart.getId(), PRODUCT_ID))
@@ -99,7 +100,7 @@ class CartServiceTest {
 
             // Then
             assertThat(result).isNotNull();
-            verify(productServiceClient).getProductById(PRODUCT_ID);
+            verify(productServiceGateway).getProductById(PRODUCT_ID);
             verify(cartRepository).save(any(Cart.class));
         }
 
@@ -111,13 +112,31 @@ class CartServiceTest {
             request.setProductId(PRODUCT_ID);
             request.setQuantity(1);
 
-            when(productServiceClient.getProductById(PRODUCT_ID))
+            when(productServiceGateway.getProductById(PRODUCT_ID))
                     .thenThrow(mock(FeignException.class));
 
             // When/Then
             assertThatThrownBy(() -> cartService.addItemToCart(USER_ID, request))
                     .isInstanceOf(ProductNotAvailableException.class)
                     .hasMessageContaining("Product not available");
+        }
+
+        @Test
+        @DisplayName("Should fail fast (not degrade to 400) when product-service is unavailable")
+        void shouldFailFastWhenProductServiceUnavailable() {
+            // Given the resilience gateway signals unavailability (breaker open / 5xx),
+            // the service must propagate it as-is so the API returns a retryable 503,
+            // rather than swallowing it into a misleading 400 "product not available".
+            AddToCartRequest request = new AddToCartRequest();
+            request.setProductId(PRODUCT_ID);
+            request.setQuantity(1);
+
+            when(productServiceGateway.getProductById(PRODUCT_ID))
+                    .thenThrow(new ProductServiceUnavailableException("Product service is temporarily unavailable."));
+
+            // When/Then
+            assertThatThrownBy(() -> cartService.addItemToCart(USER_ID, request))
+                    .isInstanceOf(ProductServiceUnavailableException.class);
         }
 
         @Test
@@ -128,7 +147,7 @@ class CartServiceTest {
             request.setProductId(PRODUCT_ID);
             request.setQuantity(1);
 
-            when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(null);
+            when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(null);
 
             // When/Then
             assertThatThrownBy(() -> cartService.addItemToCart(USER_ID, request))
@@ -147,7 +166,7 @@ class CartServiceTest {
             ProductDto product = createValidProduct();
             product.setStockQuantity(5); // Less than requested
 
-            when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(product);
+            when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(product);
 
             // When/Then
             assertThatThrownBy(() -> cartService.addItemToCart(USER_ID, request))
@@ -166,7 +185,7 @@ class CartServiceTest {
             ProductDto product = createValidProduct();
             product.setActive(false);
 
-            when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(product);
+            when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(product);
 
             // When/Then
             assertThatThrownBy(() -> cartService.addItemToCart(USER_ID, request))
@@ -185,7 +204,7 @@ class CartServiceTest {
             ProductDto product = createValidProduct();
             product.setStockQuantity(null);
 
-            when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(product);
+            when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(product);
 
             // When/Then
             assertThatThrownBy(() -> cartService.addItemToCart(USER_ID, request))
@@ -204,7 +223,7 @@ class CartServiceTest {
             ProductDto product = createValidProduct();
             product.setPrice(null);
 
-            when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(product);
+            when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(product);
 
             // When/Then
             assertThatThrownBy(() -> cartService.addItemToCart(USER_ID, request))
@@ -230,7 +249,7 @@ class CartServiceTest {
             existingItem.setQuantity(3);
             existingItem.setPriceSnapshot(product.getPrice());
 
-            when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(product);
+            when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(product);
             when(cartRepository.findByUserIdAndStatus(USER_ID, CartStatus.ACTIVE))
                     .thenReturn(Optional.of(cart));
             when(cartItemRepository.findByCartIdAndProductId(cart.getId(), PRODUCT_ID))
@@ -271,7 +290,7 @@ class CartServiceTest {
             cart.getItems().add(item);
 
             when(cartItemRepository.findById(itemId)).thenReturn(Optional.of(item));
-            when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(product);
+            when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(product);
             when(cartRepository.save(any(Cart.class))).thenReturn(cart);
 
             // When
@@ -318,7 +337,7 @@ class CartServiceTest {
             cart.getItems().add(item);
 
             when(cartItemRepository.findById(itemId)).thenReturn(Optional.of(item));
-            when(productServiceClient.getProductById(PRODUCT_ID)).thenReturn(product);
+            when(productServiceGateway.getProductById(PRODUCT_ID)).thenReturn(product);
 
             // When/Then
             assertThatThrownBy(() -> cartService.updateCartItem(USER_ID, itemId, request))
