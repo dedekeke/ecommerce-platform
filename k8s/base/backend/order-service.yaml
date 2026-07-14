@@ -49,7 +49,7 @@ spec:
           # ZGC for order-service — p99 GC pause sensitivity is high on the saga path.
           env:
             - name: JAVA_TOOL_OPTIONS
-              value: "-XX:+UseZGC -XX:+ZGenerational"
+              value: "-XX:MaxRAMPercentage=70.0 -XX:+UseZGC -XX:+ZGenerational"
           resources:
             requests:
               memory: "512Mi"

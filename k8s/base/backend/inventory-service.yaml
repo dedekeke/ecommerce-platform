@@ -49,7 +49,7 @@ spec:
           # G1GC — throughput-oriented; 200ms pause target.
           env:
             - name: JAVA_TOOL_OPTIONS
-              value: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16m -XX:InitiatingHeapOccupancyPercent=70 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled"
+              value: "-XX:MaxRAMPercentage=70.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16m -XX:InitiatingHeapOccupancyPercent=70 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled"
           resources:
             requests:
               memory: "512Mi"
