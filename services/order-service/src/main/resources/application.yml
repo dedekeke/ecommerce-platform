@@ -218,7 +218,9 @@ order:
   # until row count crosses the 50M partitioning trigger.
   archival:
     enabled: ${ORDER_ARCHIVAL_ENABLED:true}
-    cron: ${ORDER_ARCHIVAL_CRON:0 0 4 * * ?}
+    # 04:30 — staggered 30 min after processAbandonedOrders (04:00) so the two
+    # heavy table scans do not hammer the DB simultaneously on the shared pool.
+    cron: ${ORDER_ARCHIVAL_CRON:0 30 4 * * ?}
     cutoff-days: ${ORDER_ARCHIVAL_CUTOFF_DAYS:365}
     batch-size: ${ORDER_ARCHIVAL_BATCH_SIZE:1000}
 

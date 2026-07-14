@@ -140,15 +140,13 @@ public class OrderArchivalScheduler {
     }
 
     /**
-     * Daily run at {@code order.archival.cron} (default 04:00 UTC).
-     * The cron is intentionally offset from {@code OrderScheduledTasks}
-     * jobs (01:00 sales report, 03:00 cleanup, 04:00 abandoned) so the
-     * archival runs after the abandoned-order cancel has had a chance to
-     * land — abandoned orders that just got cancelled aren't archive
-     * candidates yet (created_at recent) but the temporal ordering keeps
-     * the analytics windows clean.
+     * Daily run at {@code order.archival.cron} (default 04:30 UTC).
+     * The cron is intentionally offset from the {@code OrderScheduledTasks}
+     * jobs (01:00 sales report, 03:00 cleanup, 04:00 abandoned) so archival
+     * runs after the abandoned-order cancel has landed and, crucially, does not
+     * contend with it for the shared scheduler pool + DB connections at 04:00.
      */
-    @Scheduled(cron = "${order.archival.cron:0 0 4 * * ?}")
+    @Scheduled(cron = "${order.archival.cron:0 30 4 * * ?}")
     @SchedulerLock(name = "order-archival",
         lockAtMostFor = "PT45M", lockAtLeastFor = "PT1M")
     public void scheduledRun() {

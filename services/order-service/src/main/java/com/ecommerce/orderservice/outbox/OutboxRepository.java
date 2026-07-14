@@ -30,9 +30,11 @@ public interface OutboxRepository extends JpaRepository<OutboxEvent, Long> {
      * instances polling concurrently grab disjoint batches instead of each
      * publishing the same rows. The lock is released when this method's own
      * short transaction commits — the batch is then published outside any DB
-     * transaction, and consumer-side {@code outbox-event-id} dedup absorbs the
-     * rare duplicate produced if another instance re-claims a row in the window
-     * between this commit and {@link #markPublished}.
+     * transaction. Because rows stay unpublished until {@link #markPublished}
+     * runs after the whole batch is sent, another instance can re-claim and
+     * re-publish a row during that interval (which can span the batch's Kafka
+     * sends under a slow broker); consumer-side {@code outbox-event-id} dedup is
+     * the safety net for those at-least-once duplicates.
      *
      * <p>{@code @Transactional} (read-write) is mandatory: PostgreSQL rejects
      * {@code SELECT ... FOR UPDATE} inside the read-only transaction Spring Data

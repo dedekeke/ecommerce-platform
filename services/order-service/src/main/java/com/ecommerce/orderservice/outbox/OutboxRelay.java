@@ -35,9 +35,16 @@ import java.util.concurrent.TimeoutException;
  * instances never publish the same row in the common case. Crucially, the DB
  * connection is <em>not</em> held across the blocking Kafka send — the claim
  * transaction commits first — so a slow broker cannot starve the Hikari pool.
- * The narrow window between the claim commit and {@code markPublished} (during
- * which another instance could re-claim a not-yet-marked row) is covered by the
- * existing consumer-side {@code outbox-event-id} dedup, the pattern's safety net.
+ *
+ * <p>A claimed row stays {@code published_at IS NULL} until {@code markPublished}
+ * runs <em>after</em> the whole batch has been sent, so between the claim commit
+ * and that final update another instance can re-claim and re-publish rows in the
+ * batch. This window is normally sub-second, but under a degraded broker it
+ * stretches across the batch's Kafka sends (up to {@code batch-size} ×
+ * {@value #KAFKA_SEND_TIMEOUT_SECONDS}s) — i.e. it is bounded but not "narrow".
+ * At-least-once delivery is therefore expected by design; the consumer-side
+ * {@code outbox-event-id} dedup is the safety net that makes it exactly-once for
+ * consumers.
  *
  * <p><b>Ordering.</b> A single claim is created-at ordered and published
  * sequentially (blocking on each send), and the Kafka key is the aggregate id

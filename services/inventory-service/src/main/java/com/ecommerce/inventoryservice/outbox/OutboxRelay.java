@@ -32,8 +32,9 @@ import java.util.concurrent.TimeoutException;
  *
  * <p><b>Replica safety.</b> {@code SKIP LOCKED} lets multiple service instances
  * run the relay concurrently, each claiming a disjoint set of rows, and the DB
- * connection is never held across the blocking Kafka send. Rare duplicates in
- * the claim-commit → mark window are absorbed by consumer-side
+ * connection is never held across the blocking Kafka send. Rows stay unpublished
+ * until the batch's sends complete, so duplicates are possible in that interval
+ * (bounded, not "narrow", under a slow broker) and are absorbed by consumer-side
  * {@code outbox-event-id} dedup. See order-service's copy for full design notes.
  *
  * <p>Disabled in test profile via {@code outbox.relay.enabled=false} so
