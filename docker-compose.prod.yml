@@ -297,6 +297,9 @@ services:
     <<: *default-restart
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8761/actuator/health"]
       <<: *healthcheck-defaults
@@ -319,6 +322,9 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       CONFIG_GIT_URI: ${CONFIG_GIT_URI}
       CONFIG_GIT_USERNAME: ${CONFIG_GIT_USERNAME}
@@ -350,6 +356,9 @@ services:
     environment:
       <<: *zgc-jvm
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -386,6 +395,9 @@ services:
     environment:
       <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/userdb
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
@@ -423,6 +435,9 @@ services:
     environment:
       <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/productdb
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
@@ -493,6 +508,9 @@ services:
     environment:
       <<: *zgc-jvm
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderdb
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
@@ -530,6 +548,9 @@ services:
     environment:
       <<: *zgc-jvm
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paymentdb
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
@@ -565,6 +586,9 @@ services:
     environment:
       <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/inventorydb
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
@@ -660,6 +684,9 @@ services:
     environment:
       <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
       SPRING_DATA_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/mediadb?authSource=admin
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
@@ -696,6 +723,9 @@ services:
     environment:
       <<: *g1gc-jvm
       SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/promotiondb
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
