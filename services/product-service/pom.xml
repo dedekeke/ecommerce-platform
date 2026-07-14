@@ -132,6 +132,19 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!--
+            H2 — in-memory DB for Docker-free JPA slice tests (e.g. the images
+            batch-fetch / N+1 regression test). Testcontainers MySQL still covers
+            the real-dialect repository integration tests; H2 lets the query-count
+            guard run in CI/local without a Docker daemon. Version managed by the
+            Spring Boot BOM.
+        -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final com.ecommerce.productservice.event.ProductEventPublisher eventPublisher;
+    private final ProductListingCache listingCache;
 
     /**
      * Get product by ID.
@@ -62,7 +64,7 @@ public class ProductService {
      */
     public Page<Product> getAllProducts(Pageable pageable) {
         log.debug("Fetching all products with pagination: {}", pageable);
-        return productRepository.findAll(pageable);
+        return listingCache.getAllProducts(pageable).toPage(pageable);
     }
 
     /**
@@ -70,7 +72,7 @@ public class ProductService {
      */
     public Page<Product> getActiveProducts(Pageable pageable) {
         log.debug("Fetching active products with pagination: {}", pageable);
-        return productRepository.findByActiveTrue(pageable);
+        return listingCache.getActiveProducts(pageable).toPage(pageable);
     }
 
     /**
@@ -94,7 +96,7 @@ public class ProductService {
      */
     public Page<Product> getProductsByCategory(Long categoryId, Pageable pageable) {
         log.debug("Fetching products by category ID: {}", categoryId);
-        return productRepository.findByCategoryId(categoryId, pageable);
+        return listingCache.getProductsByCategory(categoryId, pageable).toPage(pageable);
     }
 
     /**
@@ -140,14 +142,17 @@ public class ProductService {
      */
     public Page<Product> getFeaturedProducts(Pageable pageable) {
         log.debug("Fetching featured products");
-        return productRepository.findFeaturedProducts(pageable);
+        return listingCache.getFeaturedProducts(pageable).toPage(pageable);
     }
 
     /**
      * Create a new product.
      */
     @Transactional
-    @CacheEvict(value = "products", allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(value = "products", allEntries = true),
+        @CacheEvict(value = ProductListingCache.LISTINGS_CACHE, allEntries = true)
+    })
     public Product createProduct(Product product) {
         log.info("Creating new product: {}", product.getSku());
 
@@ -175,7 +180,10 @@ public class ProductService {
      * Update an existing product.
      */
     @Transactional
-    @CacheEvict(value = "products", key = "'id:' + #id")
+    @Caching(evict = {
+        @CacheEvict(value = "products", key = "'id:' + #id"),
+        @CacheEvict(value = ProductListingCache.LISTINGS_CACHE, allEntries = true)
+    })
     public Product updateProduct(Long id, Product productDetails) {
         log.info("Updating product with ID: {}", id);
 
@@ -209,7 +217,10 @@ public class ProductService {
      * Update product stock quantity.
      */
     @Transactional
-    @CacheEvict(value = "products", key = "'id:' + #id")
+    @Caching(evict = {
+        @CacheEvict(value = "products", key = "'id:' + #id"),
+        @CacheEvict(value = ProductListingCache.LISTINGS_CACHE, allEntries = true)
+    })
     public Product updateStockQuantity(Long id, int quantity) {
         log.info("Updating stock quantity for product ID: {} to {}", id, quantity);
 
@@ -223,7 +234,10 @@ public class ProductService {
      * Delete a product (soft delete by marking as inactive).
      */
     @Transactional
-    @CacheEvict(value = "products", key = "'id:' + #id")
+    @Caching(evict = {
+        @CacheEvict(value = "products", key = "'id:' + #id"),
+        @CacheEvict(value = ProductListingCache.LISTINGS_CACHE, allEntries = true)
+    })
     public void deleteProduct(Long id) {
         log.info("Deleting product with ID: {}", id);
 
@@ -236,7 +250,10 @@ public class ProductService {
      * Hard delete a product (permanent deletion).
      */
     @Transactional
-    @CacheEvict(value = "products", key = "'id:' + #id")
+    @Caching(evict = {
+        @CacheEvict(value = "products", key = "'id:' + #id"),
+        @CacheEvict(value = ProductListingCache.LISTINGS_CACHE, allEntries = true)
+    })
     public void hardDeleteProduct(Long id) {
         log.warn("Hard deleting product with ID: {}", id);
         productRepository.deleteById(id);

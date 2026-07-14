@@ -17,16 +17,19 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 /**
- * Spring config used ONLY by the cache-stampede test in the product-service
- * test sources. Lives in the {@code cachetestsupport} package — outside
- * {@code com.ecommerce.productservice} — so that @DataJpaTest /
- * @SpringBootTest slices that component-scan from the main app's base
- * package will NOT pick it up. The stampede test imports it explicitly via
- * @SpringJUnitConfig — that is the only entry point.
+ * Spring config for the product-listing cache tests. Lives in
+ * {@code cachetestsupport} (outside {@code com.ecommerce.productservice}) so no
+ * {@code @SpringBootTest} / slice component-scan picks it up; the listing-cache
+ * test imports it explicitly. Mirrors the layered (L1 Caffeine + L2 in-memory
+ * Redis stand-in) wiring of production so {@code @Cacheable}/{@code @CacheEvict}
+ * behave exactly as they would at runtime, with a mocked repository so we can
+ * assert DB hit counts.
  */
 @Configuration
 @EnableCaching
-public class CacheStampedeTestConfig {
+public class ProductListingCacheTestConfig {
+
+    private static final String[] NAMES = {"products", "product-listings"};
 
     @Bean
     public ProductRepository productRepository() {
@@ -45,14 +48,14 @@ public class CacheStampedeTestConfig {
 
     @Bean
     public CaffeineCacheManager caffeineCacheManager() {
-        CaffeineCacheManager mgr = new CaffeineCacheManager("products");
+        CaffeineCacheManager mgr = new CaffeineCacheManager(NAMES);
         mgr.setCaffeine(Caffeine.newBuilder().maximumSize(1_000));
         return mgr;
     }
 
     @Bean
     public CacheManager redisStandIn() {
-        return new ConcurrentMapCacheManager("products");
+        return new ConcurrentMapCacheManager(NAMES);
     }
 
     @Bean

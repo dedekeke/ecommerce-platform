@@ -39,6 +39,11 @@ spring:
           batch_size: 20
         order_inserts: true
         order_updates: true
+        # N+1 guard: Product.images is @ElementCollection(EAGER); without batching a
+        # 20-item page fires ~20 extra product_images SELECTs. This coalesces the
+        # collection initialisations into a single `... WHERE product_id IN (?,?,..)`.
+        # Applies to all profiles (docker/prod don't override jpa.properties).
+        default_batch_fetch_size: 100
 
   flyway:
     enabled: true
@@ -83,6 +88,13 @@ spring:
   threads:
     virtual:
       enabled: true
+
+# Product-cache tuning
+# Short TTL for the paginated listing caches (browse hot path). Kept low so a
+# create/update/delete plus TTL expiry bound how long a stale page can be served.
+# Env-tunable without a rebuild; all profiles inherit this default.
+product-cache:
+  listings-ttl-seconds: ${PRODUCT_LISTINGS_CACHE_TTL_SECONDS:45}
 
 # Server Configuration
 server:
