@@ -12,9 +12,9 @@ import { fail } from 'k6';
 // load   : realistic sustained traffic, ramp to a few hundred VUs.
 // stress : find the breaking point, ramp toward a thousand VUs.
 const PROFILES = {
-  smoke: { vus: 5, target: 5, duration: '1m', ramping: false },
-  load: { vus: 20, target: 200, duration: '9m', ramping: true },
-  stress: { vus: 50, target: 1000, duration: '23m', ramping: true },
+  smoke: { vus: 5, duration: '1m', ramping: false },
+  load: { target: 200, duration: '9m', ramping: true },
+  stress: { target: 1000, duration: '23m', ramping: true },
 };
 
 function intEnv(name, fallback) {
@@ -38,7 +38,7 @@ const profile = PROFILES[PROFILE];
 
 // Optional overrides. VUS overrides the ramp target (ramping profiles) or the
 // constant VU count (smoke). DURATION overrides the total scenario duration.
-const targetVus = intEnv('VUS', profile.target);
+const targetVus = intEnv('VUS', profile.ramping ? profile.target : profile.vus);
 const duration = __ENV.DURATION || profile.duration;
 
 // API versioning: the gateway exposes both `/api/<resource>` (legacy,
@@ -62,7 +62,7 @@ export function buildScenarios() {
     return {
       golden_path: {
         executor: 'constant-vus',
-        vus: intEnv('VUS', profile.vus),
+        vus: targetVus,
         duration,
       },
     };
@@ -105,11 +105,20 @@ function toSeconds(d) {
 
 // Thresholds are SLOs, not tuning knobs — kept constant across profiles so a
 // passing smoke run means the same thing as a passing load run.
+//
+// The per-step `http_req_duration{name:...}` entries pin the SLO to each
+// tagged request (tags are set in lib/checkout.js) so a regression shows up on
+// the exact step responsible instead of only in the aggregate trend.
 export const thresholds = {
   // Browse (catalog list + product detail) must stay snappy.
   browse_latency: ['p(95)<500'],
+  'http_req_duration{name:browse_products}': ['p(95)<500'],
+  'http_req_duration{name:product_detail}': ['p(95)<500'],
   // Full checkout chain (cart -> order -> payment intent) may be heavier.
   checkout_latency: ['p(95)<1500'],
+  'http_req_duration{name:add_to_cart}': ['p(95)<1500'],
+  'http_req_duration{name:create_order}': ['p(95)<1500'],
+  'http_req_duration{name:payment_intent}': ['p(95)<1500'],
   // Business error rate across all tracked requests.
   errors: ['rate<0.01'],
   // Guardrail on k6's own request-failure metric.

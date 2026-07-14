@@ -1,19 +1,21 @@
 // Flow helpers that map 1:1 onto the gateway routes exercised by the golden
-// path. Each helper records latency into the shared trends and flags business
-// errors, returning the parsed payload (or null) so callers can chain steps.
+// path. Each helper records latency into the shared trends, flags business
+// errors, and returns the parsed payload (or null) so callers can chain steps.
+// Each response body is parsed exactly once and reused.
 //
 // Route notes (verified against infrastructure/api-gateway application.yml and
 // SecurityConfig):
-//   - GET /api/products (+/{id})   : public, unversioned. The versioned
+//   - GET /api/products (+/{id})    : public, unversioned. The versioned
 //                                     /api/v1/products GET is NOT permitAll, so
 //                                     browse-only unauthenticated runs MUST use
 //                                     the unversioned path.
-//   - POST /api/[v1/]cart/items     : authenticated; owner = token subject.
-//   - POST /api/[v1/]orders         : authenticated; userId read from body.
+//   - POST /api/[v1/]cart/items      : authenticated; owner = token subject.
+//   - POST /api/[v1/]orders          : authenticated; userId read from body.
 //   - POST /api/[v1/]payments/intents: authenticated; owner = token subject.
 
 import http from 'k6/http';
 import { check } from 'k6';
+import exec from 'k6/execution';
 import { config } from './config.js';
 import { authHeaders, jsonHeaders, resolveUserId } from './auth.js';
 import {
@@ -48,12 +50,13 @@ export function browseProducts(authenticated) {
     headers: jsonHeaders(),
     tags: { name: 'browse_products' },
   });
+  const body = safeJson(res);
   const ok = check(res, {
     'products: status 200': (r) => r.status === 200,
-    'products: has body': (r) => !!r.body && r.body.length > 0,
+    'products: has content array': () => body !== null && Array.isArray(body.content),
   });
   record(res, browseLatency, ok, browseRequests);
-  return extractProductIds(res);
+  return extractProductIds(body);
 }
 
 // GET a single product detail page.
@@ -83,12 +86,14 @@ export function addToCart(productId, quantity) {
   return safeJson(res);
 }
 
-// POST create an order for the current user.
+// POST create an order for the current user. userEmail is unique per-VU so a
+// non-sandboxed notification-service does not fan out mail to one address.
 export function createOrder() {
+  const vu = exec.vu.idInInstance;
   const body = {
     userId: resolveUserId(),
-    userEmail: 'k6-loadtest@example.com',
-    userName: 'k6 Load Test',
+    userEmail: `loadtest+vu${vu}@example.invalid`,
+    userName: `k6 Load Test VU${vu}`,
     shippingAddress: {
       street: '1 Load Test Way',
       city: 'Testville',
@@ -101,31 +106,33 @@ export function createOrder() {
     headers: authHeaders(),
     tags: { name: 'create_order' },
   });
+  const order = safeJson(res);
   const ok = check(res, {
     'create order: status 201': (r) => r.status === 201,
-    'create order: returns id': (r) => !!(safeJson(r) || {}).id,
+    'create order: returns id': () => order !== null && !!order.id,
   });
   record(res, checkoutLatency, ok, checkoutRequests);
-  return safeJson(res);
+  return order;
 }
 
 // POST create a Stripe payment intent for the given order.
 export function createPaymentIntent(orderId, amount) {
   const body = {
     orderId: String(orderId),
-    amount: amount || 10.0,
+    amount,
     currency: 'usd',
   };
   const res = http.post(`${apiBase()}/payments/intents`, JSON.stringify(body), {
     headers: authHeaders(),
     tags: { name: 'payment_intent' },
   });
+  const intent = safeJson(res);
   const ok = check(res, {
     'payment intent: status 201': (r) => r.status === 201,
-    'payment intent: has clientSecret': (r) => !!(safeJson(r) || {}).clientSecret,
+    'payment intent: has clientSecret': () => intent !== null && !!intent.clientSecret,
   });
   record(res, checkoutLatency, ok, checkoutRequests);
-  return safeJson(res);
+  return intent;
 }
 
 // --- parsing helpers ------------------------------------------------------
@@ -139,8 +146,7 @@ function safeJson(res) {
 }
 
 // The catalog endpoint returns a Spring Data Page: { content: [ { id, ... } ] }.
-function extractProductIds(res) {
-  const body = safeJson(res);
+function extractProductIds(body) {
   if (!body || !Array.isArray(body.content)) {
     return [];
   }

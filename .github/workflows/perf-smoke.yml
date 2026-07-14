@@ -51,17 +51,38 @@ jobs:
           # For scheduled runs, fall back to the staging repo variable/secret.
           BASE_URL: ${{ github.event.inputs.base_url || vars.STAGING_GATEWAY_URL }}
           PROFILE: ${{ github.event.inputs.profile || 'smoke' }}
+          # Single token for a manual smoke run; a comma/newline-separated pool
+          # (secrets.PERF_AUTH_TOKENS) is preferred for load/stress so VUs map to
+          # distinct JWT subjects and don't collapse onto one rate-limit bucket.
           AUTH_TOKEN: ${{ github.event.inputs.auth_token || secrets.PERF_AUTH_TOKEN }}
+          AUTH_TOKENS: ${{ secrets.PERF_AUTH_TOKENS }}
+          # Pinned k6 image for reproducible runs.
+          K6_IMAGE: grafana/k6:0.52.0
         run: |
           if [ -z "${BASE_URL}" ]; then
             echo "::error::BASE_URL is empty — provide the base_url input (or set vars.STAGING_GATEWAY_URL for scheduled runs)."
             exit 1
           fi
+          mkdir -p "${GITHUB_WORKSPACE}/k6-results"
           echo "Running k6 profile='${PROFILE}' against '${BASE_URL}'"
           docker run --rm -i \
             -e BASE_URL="${BASE_URL}" \
             -e PROFILE="${PROFILE}" \
             -e AUTH_TOKEN="${AUTH_TOKEN}" \
+            -e AUTH_TOKENS="${AUTH_TOKENS}" \
             -v "${GITHUB_WORKSPACE}/performance-tests/k6:/scripts" \
+            -v "${GITHUB_WORKSPACE}/k6-results:/results" \
             --add-host=host.docker.internal:host-gateway \
-            grafana/k6 run /scripts/scenarios/golden-path.js
+            "${K6_IMAGE}" run \
+              --summary-export=/results/summary.json \
+              --out json=/results/results.json \
+              /scripts/scenarios/golden-path.js
+
+      - name: Upload k6 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-${{ github.run_id }}
+          path: k6-results/
+          if-no-files-found: warn
+          retention-days: 30
