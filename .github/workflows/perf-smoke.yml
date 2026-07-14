@@ -1,0 +1,88 @@
+name: Performance Smoke (k6)
+
+# Manually triggered load smoke test. It is deliberately NOT run on every PR:
+# the platform (gateway + downstream services) is not stood up in CI, so this
+# workflow only makes sense against a URL that is already live (staging or an
+# ephemeral env you point it at).
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Gateway base URL to test (e.g. https://staging-gateway.example.com)"
+        required: true
+        type: string
+      profile:
+        description: "k6 profile"
+        required: false
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+      auth_token:
+        description: "Optional bearer token to enable the full checkout flow (leave blank for browse-only)"
+        required: false
+        type: string
+
+  # ---------------------------------------------------------------------------
+  # Nightly regression against a live staging environment. Commented out on
+  # purpose: enable ONLY once a persistent staging gateway exists and its URL
+  # is provided via a repo variable (vars.STAGING_GATEWAY_URL) and, if the
+  # checkout flow is wanted, a token via secrets (secrets.PERF_AUTH_TOKEN).
+  #
+  # schedule:
+  #   - cron: "0 3 * * *"  # 03:00 UTC nightly
+
+concurrency:
+  group: perf-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  k6-smoke:
+    name: k6 smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run k6 golden-path
+        env:
+          # For scheduled runs, fall back to the staging repo variable/secret.
+          BASE_URL: ${{ github.event.inputs.base_url || vars.STAGING_GATEWAY_URL }}
+          PROFILE: ${{ github.event.inputs.profile || 'smoke' }}
+          # Single token for a manual smoke run; a comma/newline-separated pool
+          # (secrets.PERF_AUTH_TOKENS) is preferred for load/stress so VUs map to
+          # distinct JWT subjects and don't collapse onto one rate-limit bucket.
+          AUTH_TOKEN: ${{ github.event.inputs.auth_token || secrets.PERF_AUTH_TOKEN }}
+          AUTH_TOKENS: ${{ secrets.PERF_AUTH_TOKENS }}
+          # Pinned k6 image for reproducible runs.
+          K6_IMAGE: grafana/k6:0.52.0
+        run: |
+          if [ -z "${BASE_URL}" ]; then
+            echo "::error::BASE_URL is empty — provide the base_url input (or set vars.STAGING_GATEWAY_URL for scheduled runs)."
+            exit 1
+          fi
+          mkdir -p "${GITHUB_WORKSPACE}/k6-results"
+          echo "Running k6 profile='${PROFILE}' against '${BASE_URL}'"
+          docker run --rm -i \
+            -e BASE_URL="${BASE_URL}" \
+            -e PROFILE="${PROFILE}" \
+            -e AUTH_TOKEN="${AUTH_TOKEN}" \
+            -e AUTH_TOKENS="${AUTH_TOKENS}" \
+            -v "${GITHUB_WORKSPACE}/performance-tests/k6:/scripts" \
+            -v "${GITHUB_WORKSPACE}/k6-results:/results" \
+            --add-host=host.docker.internal:host-gateway \
+            "${K6_IMAGE}" run \
+              --summary-export=/results/summary.json \
+              --out json=/results/results.json \
+              /scripts/scenarios/golden-path.js
+
+      - name: Upload k6 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-${{ github.run_id }}
+          path: k6-results/
+          if-no-files-found: warn
+          retention-days: 30
