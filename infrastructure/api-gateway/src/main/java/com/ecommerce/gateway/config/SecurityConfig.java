@@ -66,10 +66,21 @@ public class SecurityConfig {
                     .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/webjars/**").permitAll()
                     .pathMatchers("/v3/api-docs", "/v3/api-docs/swagger-config").permitAll()
                     .pathMatchers("/aggregate/*/v3/api-docs/**").authenticated()
-                    .pathMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
-                    .pathMatchers(HttpMethod.GET, "/api/v1/categories", "/api/v1/categories/**").permitAll()
-                    .pathMatchers(HttpMethod.GET, "/api/search/**").permitAll()
-                    .pathMatchers(HttpMethod.GET, "/api/promotions/public/**").permitAll()
+                    // Public catalog browsing — kept identical across the unversioned
+                    // and /api/v1 routes. The gateway authorizes the ORIGINAL request
+                    // path (the v1 RewritePath filter runs later during routing), so
+                    // each versioned prefix must be listed explicitly or it falls
+                    // through to anyExchange().authenticated() (Lore 2b8c4227).
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/products", "/api/products/**",
+                        "/api/v1/products", "/api/v1/products/**").permitAll()
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/categories", "/api/categories/**",
+                        "/api/v1/categories", "/api/v1/categories/**").permitAll()
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/search/**", "/api/v1/search/**").permitAll()
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/promotions/public/**", "/api/v1/promotions/public/**").permitAll()
 
                     // GraphQL BFF endpoint — per-query auth is enforced inside the
                     // resolvers via @PreAuthorize. The HTTP layer must permit the
@@ -79,9 +90,12 @@ public class SecurityConfig {
 
                     // Admin endpoints require admin role
                     .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
-                    .pathMatchers(HttpMethod.POST, "/api/products/**").hasAuthority("SCOPE_admin")
-                    .pathMatchers(HttpMethod.PUT, "/api/products/**").hasAuthority("SCOPE_admin")
-                    .pathMatchers(HttpMethod.DELETE, "/api/products/**").hasAuthority("SCOPE_admin")
+                    // Product writes require admin on BOTH versions. The v1 route
+                    // previously fell through to anyExchange().authenticated(), so any
+                    // authenticated caller (not just admins) could mutate the catalog.
+                    .pathMatchers(HttpMethod.POST, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.PUT, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.DELETE, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
 
                     // All other endpoints require authentication
                     .anyExchange().authenticated()
