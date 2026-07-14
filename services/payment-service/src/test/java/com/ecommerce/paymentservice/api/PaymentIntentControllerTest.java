@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -75,6 +76,39 @@ class PaymentIntentControllerTest {
                 .andExpect(jsonPath("$.paymentIntentId").value("pi_123"))
                 .andExpect(jsonPath("$.clientSecret").value("pi_123_secret_abc"))
                 .andExpect(jsonPath("$.status").value("PENDING"));
+    }
+
+    @Test
+    @DisplayName("should never serialize failureReason into the API response")
+    void should_notSerializeFailureReason_inApiResponse() throws Exception {
+        Payment failed = Payment.builder()
+                .id(7L)
+                .orderId("order-1")
+                .userId("user-1")
+                .amount(new BigDecimal("42.00"))
+                .currency("USD")
+                .status(PaymentStatus.FAILED)
+                .paymentIntentId("pi_123")
+                .clientSecret("pi_123_secret_abc")
+                .failureReason("card_declined: insufficient_funds [request-id: req_abc123]")
+                .build();
+        when(paymentService.createPaymentIntent(eq("order-1"), eq("user-1"), any(), eq("USD")))
+                .thenReturn(failed);
+
+        String body = """
+                {"orderId":"order-1","userId":"user-1","amount":42.00,"currency":"USD"}""";
+
+        String json = mockMvc.perform(post("/api/payments/intents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.failureReason").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(json)
+                .doesNotContain("failureReason")
+                .doesNotContain("insufficient_funds")
+                .doesNotContain("req_abc123");
     }
 
     @Test

@@ -59,17 +59,42 @@ export default function CheckoutPage() {
     [stripeEnabled]
   )
 
+  const handleAddressValid = useCallback((addr: ShippingAddress) => setAddress(addr), [setAddress])
+
+  // The shell gates /checkout behind auth; a null userId means an anomalous state (standalone
+  // dev, expired session). Never place a real order without a real identity.
+  if (!userId) {
+    return (
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100vh' }}>
+        <Container maxWidth="md" sx={{ px: { xs: 3, md: 4 }, py: { xs: 3, md: 5 } }}>
+          <Typography variant="h4" fontWeight={700} sx={{ mb: { xs: 3, md: 4 } }}>
+            Checkout
+          </Typography>
+          <Alert severity="warning" role="alert">
+            Please sign in to complete checkout.
+          </Alert>
+        </Container>
+      </Box>
+    )
+  }
+
   const handleNext = async () => {
     if (!isLastStep) {
       goNext()
       return
     }
     if (!address || !paymentMethodId) return
+    // Re-read the live identity at submit time: the session may have expired since render.
+    const liveUserId = window.__getAuthUserId?.() ?? null
+    if (!liveUserId) {
+      setSubmitError('Your session has expired. Please sign in again to place the order.')
+      return
+    }
     setIsSubmitting(true)
     setSubmitError(null)
     try {
       const order = await createOrder({
-        userId,
+        userId: liveUserId,
         items: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity, price: i.price })),
         shippingAddress: address,
         paymentMethodId,
@@ -83,8 +108,6 @@ export default function CheckoutPage() {
       setIsSubmitting(false)
     }
   }
-
-  const handleAddressValid = useCallback((addr: ShippingAddress) => setAddress(addr), [setAddress])
 
   return (
     <Box sx={{ bgcolor: 'background.default', minHeight: '100vh' }}>
