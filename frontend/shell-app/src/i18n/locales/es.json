@@ -22,7 +22,8 @@
     "currency": "Moneda",
     "language": "Idioma",
     "shoppingCart": "carrito de compras",
-    "menu": "menú"
+    "menu": "menú",
+    "userMenu": "Menú de usuario"
   },
   "cart": {
     "title": "Tu carrito",

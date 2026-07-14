@@ -22,7 +22,8 @@
     "currency": "Tiền tệ",
     "language": "Ngôn ngữ",
     "shoppingCart": "giỏ hàng",
-    "menu": "menu"
+    "menu": "menu",
+    "userMenu": "Menu người dùng"
   },
   "cart": {
     "title": "Giỏ hàng của bạn",

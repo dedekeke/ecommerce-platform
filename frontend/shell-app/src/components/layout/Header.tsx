@@ -239,6 +239,9 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
               <IconButton
                 onClick={handleUserMenuOpen}
                 data-testid="user-menu-button"
+                aria-label={t('header.userMenu')}
+                aria-haspopup="menu"
+                aria-expanded={isMenuOpen || undefined}
                 sx={{ ml: 0.5 }}
               >
                 <Avatar
