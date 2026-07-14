@@ -28,7 +28,9 @@ management:
   tracing:
     enabled: true
     sampling:
-      probability: 1.0  # Sample 100% in dev, reduce to 0.1 (10%) in production
+      # Env-driven: defaults to 100% for dev; prod profiles lower it to 0.1 (10%)
+      # via TRACING_SAMPLING_PROBABILITY_PROD. See docs/TRACING_SETUP.md.
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
 
   # Zipkin Configuration
   zipkin:

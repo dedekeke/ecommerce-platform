@@ -1,9 +1,9 @@
 #!/bin/bash
 
 ##############################################################################
-# Production Log-Level Guard  (Scalability P1)
+# Production Config Guard  (Scalability P1 / Perf P2)
 #
-# Two checks:
+# Three checks (CHECK 3 also guards prod trace-sampling; see below):
 #
 #   CHECK 1 - No verbose levels in prod files.
 #     Fails if any application-prod.{yml,yaml,properties} (incl. sub-profile
@@ -146,6 +146,70 @@ done < <(find "$REPO_ROOT" \
   -print | sort)
 
 # ---------------------------------------------------------------------------
+# CHECK 3 - production trace sampling must be lowered from the base 100%.
+#
+# Full-rate (probability 1.0) tracing overwhelms the single Zipkin collector
+# and single-node Elasticsearch backend under load. Two sub-checks:
+#   3a. No prod file may pin sampling probability to 1.0 / 1 (direct footgun).
+#   3b. Every module whose base config declares a sampling probability must
+#       carry a prod override; otherwise prod silently inherits the base 100%
+#       rate (the exact drift this guards). Value-agnostic and quote-tolerant.
+# ---------------------------------------------------------------------------
+echo ""
+echo -e "${BLUE}[3/3] Checking production trace-sampling rate...${NC}"
+
+# Matches a sampling probability set to 1 or 1.0 after ':' (YAML) or '=' (props).
+SAMPLING_ONE_RE="probability[[:space:]]*[:=][[:space:]]*${Q}?1(\.0+)?${Q}?([[:space:]]|\$)"
+# Matches any sampling probability declaration (YAML nested key or properties key).
+SAMPLING_KEY_RE="(sampling\.probability[[:space:]]*=|^[[:space:]]*probability[[:space:]]*:)"
+
+# 3a - prod files must not hardcode a 100% sampling rate.
+for file in "${PROD_FILES[@]}"; do
+  rel="${file#"$REPO_ROOT"/}"
+  hits="$(sed -E 's/#.*$//' "$file" | grep -niE "$SAMPLING_ONE_RE" || true)"
+  if [ -n "$hits" ]; then
+    echo -e "${RED}FAIL${NC} $rel - trace sampling pinned at 100%:"
+    while IFS= read -r line; do
+      echo "    $line"
+    done <<< "$hits"
+    violations=$((violations + 1))
+  fi
+done
+
+# True if any prod file in $dir declares a sampling probability override.
+sampling_has_prod_override() {
+  local dir="$1" pf
+  for pf in "$dir"/application-prod.yml "$dir"/application-prod.yaml \
+            "$dir"/application-prod.properties "$dir"/application-prod-*.yml \
+            "$dir"/application-prod-*.yaml "$dir"/application-prod-*.properties; do
+    [ -f "$pf" ] || continue
+    if sed -E 's/#.*$//' "$pf" | grep -qiE "$SAMPLING_KEY_RE"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# 3b - base sampling declaration requires a prod override.
+while IFS= read -r base_file; do
+  sed -E 's/#.*$//' "$base_file" | grep -qiE "$SAMPLING_KEY_RE" || continue
+  dir="$(dirname "$base_file")"
+  rel="${base_file#"$REPO_ROOT"/}"
+  if sampling_has_prod_override "$dir"; then
+    echo -e "${GREEN}PASS${NC} $rel"
+  else
+    echo -e "${RED}FAIL${NC} $rel - base declares trace sampling but no prod override;"
+    echo -e "${RED}     prod would inherit the base rate. Add management.tracing.sampling${NC}"
+    echo -e "${RED}     .probability to this module's application-prod.* file.${NC}"
+    violations=$((violations + 1))
+  fi
+done < <(find "$REPO_ROOT" \
+  \( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/build/*' -o -path '*/test/*' \) -prune -o \
+  -type f -path '*/src/main/resources/*' \
+  \( -name 'application.yml' -o -name 'application.yaml' -o -name 'application.properties' \) \
+  -print | sort)
+
+# ---------------------------------------------------------------------------
 echo ""
 if [ "$violations" -gt 0 ]; then
   echo -e "${RED}$violations violation(s) found.${NC}"
@@ -154,4 +218,5 @@ if [ "$violations" -gt 0 ]; then
   exit 1
 fi
 
-echo -e "${GREEN}All ${#PROD_FILES[@]} prod file(s) clean and all base DEBUG/TRACE keys overridden.${NC}"
+echo -e "${GREEN}All ${#PROD_FILES[@]} prod file(s) clean: no verbose log levels, all base${NC}"
+echo -e "${GREEN}DEBUG/TRACE keys overridden, and trace sampling lowered from 100%.${NC}"

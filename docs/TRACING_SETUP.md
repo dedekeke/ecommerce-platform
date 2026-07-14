@@ -82,7 +82,8 @@ management:
   tracing:
     enabled: true
     sampling:
-      probability: 1.0  # 100% in dev, 0.1 (10%) in production
+      # Env-driven; 100% by default for dev, lowered to 0.1 in the prod profile.
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
@@ -260,20 +261,33 @@ All logs automatically include trace information:
 
 ### Sampling Strategy
 
-Control how many traces are collected:
+Control how many traces are collected. The rate is env-driven, so it is tuned
+per environment without code changes — never hardcode `1.0` in a `prod` file.
+
+| Env var | Consumed by | Default | Where to set |
+|---------|-------------|---------|--------------|
+| `TRACING_SAMPLING_PROBABILITY` | base `application.yml` (dev/default) | `1.0` | `.env` / `.env.template` / `.env.example` |
+| `TRACING_SAMPLING_PROBABILITY_PROD` | every `application-prod.*` | `0.1` | `production.env` / `production.env.example` |
 
 ```yaml
-management:
-  tracing:
-    sampling:
-      probability: 0.1  # Sample 10% of traces
+# base application.yml — 100% in dev, env-overridable
+management.tracing.sampling.probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+
+# application-prod.yml — 10% in prod, ops-overridable without redeploy
+management.tracing.sampling.probability: ${TRACING_SAMPLING_PROBABILITY_PROD:0.1}
 ```
 
 **Recommendations**:
 - **Development**: 1.0 (100%) - trace everything
 - **Staging**: 0.3 (30%) - balance visibility and overhead
-- **Production (low traffic)**: 0.1 (10%)
+- **Production (low traffic)**: 0.1 (10%) — the default; the single Zipkin
+  collector + single-node Elasticsearch backend cannot absorb full-rate spans
+  under load
 - **Production (high traffic)**: 0.01 (1%)
+
+> The `scripts/check-prod-log-levels.sh` guard (CHECK 3) fails CI if any
+> `application-prod.*` pins sampling to 100%, or if a base config declares a
+> sampling probability without a matching prod override.
 
 ### Reducing Overhead
 

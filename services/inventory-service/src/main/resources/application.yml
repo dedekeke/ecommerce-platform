@@ -116,7 +116,7 @@ management:
         enabled: true
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT}
