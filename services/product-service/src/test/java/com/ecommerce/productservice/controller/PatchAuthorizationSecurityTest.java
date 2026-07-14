@@ -152,7 +152,7 @@ class PatchAuthorizationSecurityTest {
 
     @Test
     void should_return403_when_nonAdminMovesCategory() throws Exception {
-        mockMvc.perform(patch("/api/v1/categories/1/move")
+        mockMvc.perform(patch("/api/categories/1/move")
                         .param("newParentId", "2")
                         .with(nonAdmin()))
                 .andExpect(status().isForbidden());
@@ -164,7 +164,7 @@ class PatchAuthorizationSecurityTest {
     void should_allowCategoryMove_when_adminScope() throws Exception {
         when(categoryService.moveCategory(1L, 2L)).thenReturn(new Category());
 
-        mockMvc.perform(patch("/api/v1/categories/1/move")
+        mockMvc.perform(patch("/api/categories/1/move")
                         .param("newParentId", "2")
                         .with(admin()))
                 .andExpect(status().isOk());
@@ -176,7 +176,7 @@ class PatchAuthorizationSecurityTest {
     void should_allowPublicRead_when_getCategoriesAnonymously() throws Exception {
         when(categoryService.getAllCategories()).thenReturn(Collections.emptyList());
 
-        mockMvc.perform(get("/api/v1/categories"))
+        mockMvc.perform(get("/api/categories"))
                 .andExpect(status().isOk());
     }
 }
