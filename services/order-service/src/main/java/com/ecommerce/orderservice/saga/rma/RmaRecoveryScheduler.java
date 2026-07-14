@@ -2,6 +2,7 @@ package com.ecommerce.orderservice.saga.rma;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -36,6 +37,8 @@ public class RmaRecoveryScheduler {
     private final Clock clock;
 
     @Scheduled(fixedDelayString = "${rma.saga.recovery-interval-ms:300000}")
+    @SchedulerLock(name = "order-rmaRecovery",
+        lockAtMostFor = "PT5M", lockAtLeastFor = "PT0S")
     public void recoverStuckRmas() {
         LocalDateTime cutoff = LocalDateTime.now(clock).minus(STUCK_THRESHOLD);
         // JOIN FETCH the lines: this read tx commits before resume() reaches

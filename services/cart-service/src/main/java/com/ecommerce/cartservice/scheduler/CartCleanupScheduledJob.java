@@ -6,6 +6,7 @@ import com.ecommerce.cartservice.repository.CartRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -38,6 +39,8 @@ public class CartCleanupScheduledJob {
     }
 
     @Scheduled(cron = "${cart.cleanup.expired-cron:0 0 2 * * ?}")
+    @SchedulerLock(name = "cart-cleanupExpiredCarts",
+        lockAtMostFor = "PT15M", lockAtLeastFor = "PT1M")
     public void cleanupExpiredCarts() {
         log.info("Starting expired cart cleanup job");
         long startTime = System.currentTimeMillis();
@@ -64,6 +67,8 @@ public class CartCleanupScheduledJob {
     }
 
     @Scheduled(cron = "${cart.cleanup.abandoned-cron:0 0 3 * * ?}")
+    @SchedulerLock(name = "cart-processAbandonedCarts",
+        lockAtMostFor = "PT15M", lockAtLeastFor = "PT1M")
     public void processAbandonedCarts() {
         log.info("Starting abandoned cart processing job");
         long startTime = System.currentTimeMillis();

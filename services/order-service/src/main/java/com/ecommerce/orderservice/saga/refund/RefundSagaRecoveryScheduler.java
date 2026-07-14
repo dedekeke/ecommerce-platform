@@ -2,6 +2,7 @@ package com.ecommerce.orderservice.saga.refund;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,8 @@ public class RefundSagaRecoveryScheduler {
     private final Clock clock;
 
     @Scheduled(fixedDelayString = "${refund.saga.recovery-interval-ms:300000}")
+    @SchedulerLock(name = "order-refundSagaRecovery",
+        lockAtMostFor = "PT5M", lockAtLeastFor = "PT0S")
     public void recoverStuckSagas() {
         LocalDateTime cutoff = LocalDateTime.now(clock).minus(STUCK_THRESHOLD);
         List<RefundSagaState> stuck = sagaRepository.findByStatusInAndUpdatedAtBefore(

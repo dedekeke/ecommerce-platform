@@ -9,6 +9,7 @@ import com.ecommerce.cartservice.repository.CartRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -61,6 +62,8 @@ public class AbandonedCartScanner {
     }
 
     @Scheduled(cron = "${cart.abandonment.scan-cron:0 0 3 * * ?}")
+    @SchedulerLock(name = "cart-abandonmentScan",
+        lockAtMostFor = "PT15M", lockAtLeastFor = "PT1M")
     public void scan() {
         log.info("Starting abandoned cart scan");
         long startedAt = System.currentTimeMillis();

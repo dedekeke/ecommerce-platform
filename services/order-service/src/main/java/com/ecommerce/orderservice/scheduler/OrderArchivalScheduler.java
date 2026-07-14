@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -148,6 +149,8 @@ public class OrderArchivalScheduler {
      * the analytics windows clean.
      */
     @Scheduled(cron = "${order.archival.cron:0 0 4 * * ?}")
+    @SchedulerLock(name = "order-archival",
+        lockAtMostFor = "PT45M", lockAtLeastFor = "PT1M")
     public void scheduledRun() {
         log.info("Starting scheduled task: Archive old orders (cutoff = {} days, batch = {})",
                 cutoffDays, batchSize);

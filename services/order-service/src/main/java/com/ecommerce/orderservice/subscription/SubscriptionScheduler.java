@@ -1,6 +1,7 @@
 package com.ecommerce.orderservice.subscription;
 
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -55,6 +56,8 @@ public class SubscriptionScheduler {
     }
 
     @Scheduled(fixedDelayString = "${subscription.scheduler-poll-ms:60000}")
+    @SchedulerLock(name = "order-subscriptionPoll",
+        lockAtMostFor = "PT5M", lockAtLeastFor = "PT0S")
     public void poll() {
         if (!enabled) {
             log.debug("Subscription scheduler disabled — skipping poll");
