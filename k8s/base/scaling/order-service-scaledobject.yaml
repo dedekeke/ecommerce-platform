@@ -4,16 +4,16 @@
 # behaviour is reproduced by the cpu trigger below so KEDA now owns both the
 # event-lag and the CPU dimension.
 #
-# Scales 2->4 on the max of: saga response event lag (>50 msgs) or 70% CPU.
+# Scales 2->8 on the max of: saga response event lag (>50 msgs) or 70% CPU.
 #
-# CONNECTION-BUDGET GUARD: maxReplicaCount is deliberately held at 4 here. Raising
-# it to 8 is only safe once the right-sized Hikari pools + pinned Postgres
-# max_connections from PR #103 (docs/db-connection-budget.md) land — order-service
-# on `develop` still hardcodes maximum-pool-size 20, so 8 replicas would open
-# 8 x 20 = 160 connections against a shared PostgreSQL with no ceiling. A dedicated
-# follow-up commit ("REQUIRES #103") bumps 4 -> 8; the merger must hold/drop that
-# commit until #103 is merged. At 4 this branch is safe on its own (4 <= the 4-cap
-# this ScaledObject already carried on develop, and below the removed HPA's max 8).
+# CONNECTION-BUDGET GUARD: maxReplicaCount 8 REQUIRES PR #103. The 8-replica ceiling
+# is only safe with the right-sized Hikari pools + pinned Postgres max_connections
+# from PR #103 (docs/db-connection-budget.md: DB_POOL_SIZE 12 x 8 = 96 conns under a
+# 200-conn ceiling). order-service on `develop` still hardcodes maximum-pool-size 20,
+# so at 8 replicas without #103 this opens 8 x 20 = 160 connections against a shared
+# PostgreSQL with no ceiling. The commit that set this to 8 is isolated and labelled
+# "REQUIRES #103" — if this branch is merged before #103, drop/revert that commit to
+# fall back to the safe ceiling of 4.
 #
 # minReplicaCount 2 preserves the HA floor the removed HPA guaranteed and keeps
 # order-service-pdb (minAvailable 1) effective. Env overlays may cap maxReplicaCount
@@ -49,7 +49,7 @@ spec:
   pollingInterval: 15
   cooldownPeriod: 300
   minReplicaCount: 2
-  maxReplicaCount: 4
+  maxReplicaCount: 8
   fallback:
     failureThreshold: 3
     replicas: 2

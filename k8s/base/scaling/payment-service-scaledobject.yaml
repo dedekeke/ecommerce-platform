@@ -15,14 +15,14 @@ spec:
 # trigger below reproduces that CPU behaviour so KEDA owns both the outbox-lag and
 # the CPU dimension.
 #
-# Scales 2->4 on the max of: unpublished outbox rows (>100) or 70% CPU.
+# Scales 2->8 on the max of: unpublished outbox rows (>100) or 70% CPU.
 #
-# CONNECTION-BUDGET GUARD: maxReplicaCount is deliberately held at 4 here. Raising
-# it to 8 is only safe once the right-sized Hikari pools + pinned Postgres
-# max_connections from PR #103 (docs/db-connection-budget.md) land — payment-service
-# on `develop` still hardcodes maximum-pool-size 20. A dedicated follow-up commit
-# ("REQUIRES #103") bumps 4 -> 8; the merger must hold/drop that commit until #103 is
-# merged. At 4 this branch is safe on its own.
+# CONNECTION-BUDGET GUARD: maxReplicaCount 8 REQUIRES PR #103. The 8-replica ceiling
+# is only safe with the right-sized Hikari pools + pinned Postgres max_connections
+# from PR #103 (docs/db-connection-budget.md: DB_POOL_SIZE 5 x 8 = 40 conns).
+# payment-service on `develop` still hardcodes maximum-pool-size 20. The commit that
+# set this to 8 is isolated and labelled "REQUIRES #103" — if this branch is merged
+# before #103, drop/revert that commit to fall back to the safe ceiling of 4.
 #
 # minReplicaCount 2 preserves the HA floor the removed HPA guaranteed and keeps
 # payment-service-pdb (minAvailable 1) effective.
@@ -42,7 +42,7 @@ spec:
   pollingInterval: 30
   cooldownPeriod: 300
   minReplicaCount: 2
-  maxReplicaCount: 4
+  maxReplicaCount: 8
   fallback:
     failureThreshold: 3
     replicas: 2
