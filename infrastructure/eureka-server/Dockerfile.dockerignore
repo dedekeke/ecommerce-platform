@@ -1,0 +1,45 @@
+# Dockerfile-specific ignore for infrastructure/eureka-server/Dockerfile.
+# Patterns are relative to the build context root (the repository root, per
+# docker-compose.yml). Scoped to this Dockerfile so sibling runtime images that
+# copy prebuilt target/ jars are unaffected. Keeps the eureka context tiny: the
+# multi-stage build compiles from source and needs no host build output.
+
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Frontend workspace (multi-GB node_modules / build output, never needed here)
+frontend
+**/node_modules
+**/dist
+
+# Host build output (image rebuilds from source)
+**/target
+*.jar
+*.war
+*.class
+
+# Never ship env-specific config / secrets into build layers
+.env
+.env.*
+*.properties.local
+
+# IDE / OS / logs / scratch
+.idea
+.vscode
+*.iml
+.DS_Store
+*.log
+logs
+
+# Docs & CI (not required at build time)
+docs
+*.md
+.github
+.gitlab-ci.yml
+
+# Test / coverage artifacts
+**/jacoco.exec
+security-reports
+e2e
