@@ -27,6 +27,15 @@ public class GatewayRoutesConfig {
     @Value("${api.deprecation.sunset:Fri, 30 Apr 2027 23:59:59 GMT}")
     private String sunset;
 
+    /**
+     * Per-route response-timeout (ms) for payment routes, raised above the 5s
+     * global default because 3rd-party PSPs can be slower than internal
+     * services. Kept in sync with the declarative payment routes in
+     * application.yml so the override holds whichever route locator serves.
+     */
+    @Value("${GATEWAY_PAYMENT_RESPONSE_TIMEOUT:10000}")
+    private int paymentResponseTimeoutMs;
+
     @Bean
     @ConditionalOnProperty(name = "gateway.programmatic-routes.enabled", havingValue = "true", matchIfMissing = true)
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
@@ -132,6 +141,7 @@ public class GatewayRoutesConfig {
             )
 
             // ---------------- Payment Service ----------------
+            // Raised response-timeout: PSPs can be slower than internal services.
             .route("payment-service-prog", r -> r
                 .path("/api/payments/**")
                 .filters(f -> f
@@ -139,6 +149,7 @@ public class GatewayRoutesConfig {
                     .addResponseHeader("Deprecation", "true")
                     .addResponseHeader("Sunset", sunset)
                 )
+                .metadata("response-timeout", paymentResponseTimeoutMs)
                 .uri("lb://payment-service")
             )
             .route("payment-service-v1-prog", r -> r
@@ -148,6 +159,7 @@ public class GatewayRoutesConfig {
                     .addRequestHeader("X-API-Version", "v1")
                     .tokenRelay()
                 )
+                .metadata("response-timeout", paymentResponseTimeoutMs)
                 .uri("lb://payment-service")
             )
 

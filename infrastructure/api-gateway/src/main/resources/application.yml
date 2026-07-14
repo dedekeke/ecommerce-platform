@@ -43,6 +43,16 @@ spring:
           enabled: true
           lower-case-service-id: true
 
+      # Outbound HTTP client (gateway -> downstream services).
+      # response-timeout caps how long the gateway waits for a downstream
+      # response before returning 504 GATEWAY_TIMEOUT. Without it a hung
+      # downstream holds the gateway connection open indefinitely (only the
+      # Netty connect-phase was bounded via server.netty.connection-timeout).
+      # Env-overridable; individual routes may raise it via
+      # metadata.response-timeout (see payment-service).
+      httpclient:
+        response-timeout: ${GATEWAY_RESPONSE_TIMEOUT:5s}
+
       # Global CORS configuration
       globalcors:
         cors-configurations:
@@ -73,12 +83,16 @@ spring:
       # no-op here, and the gateway forwards the inbound Authorization header to
       # downstreams by default. Requiring it also dragged in the OAuth2 client
       # auto-config that crashed boot when Auth0 was unreachable (bug 1b8953dc).
+      # Retry is scoped to GET only. POST/PUT/PATCH/DELETE are not idempotent
+      # here (no idempotency-key support downstream), so retrying them on a
+      # partial failure risks duplicate side-effects (e.g. double order/payment
+      # creation) and amplifies load 4x during an outage. See PR notes.
       default-filters:
         - name: Retry
           args:
             retries: 3
             statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE
-            methods: GET,POST
+            methods: GET
             backoff:
               firstBackoff: 50ms
               maxBackoff: 500ms
@@ -234,10 +248,15 @@ spring:
                 redis-rate-limiter.requestedTokens: 1
 
         # ---------- Payment Service ----------
+        # Payment providers (3rd-party PSPs) can be slower than internal
+        # services, so these routes raise the response-timeout above the 5s
+        # global default. Value is in milliseconds, env-overridable.
         - id: payment-service
           uri: lb://payment-service
           predicates:
             - Path=/api/payments/**
+          metadata:
+            response-timeout: ${GATEWAY_PAYMENT_RESPONSE_TIMEOUT:10000}
           filters:
             - name: RequestRateLimiter
               args:
@@ -251,6 +270,8 @@ spring:
           uri: lb://payment-service
           predicates:
             - Path=/api/v1/payments/**
+          metadata:
+            response-timeout: ${GATEWAY_PAYMENT_RESPONSE_TIMEOUT:10000}
           filters:
             - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
             - AddRequestHeader=X-API-Version, v1
