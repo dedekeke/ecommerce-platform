@@ -10,6 +10,11 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.ReactiveSecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -166,17 +171,99 @@ class SecurityPolicyDriftTest {
         assertThat(runGet("/api/v1/recommendations").denied401()).isTrue();
     }
 
+    // --- Authenticated matrix: catalog writes require SCOPE_admin on both versions.
+    //     A non-admin JWT must be FORBIDDEN (403); an admin JWT must pass through.
+    //     PATCH is the red-first case: without a PATCH matcher it fell through to
+    //     authenticated(), so a non-admin could PATCH stock / move categories. ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/products/42",
+            "/api/v1/products/42",
+            "/api/products/42/stock",       // PATCH stock — the reported HIGH gap
+            "/api/v1/products/42/stock",
+            "/api/categories/7",
+            "/api/v1/categories/7",
+            "/api/v1/categories/7/move"     // PATCH move — the reported HIGH gap
+    })
+    void should_denyNonAdmin_when_catalogPatch(String path) {
+        AuthzResult result = run(MockServerHttpRequest.patch(path), nonAdminJwt());
+        assertThat(result.denied403())
+                .as("PATCH %s must require SCOPE_admin, not just authentication", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/products/42/stock", "/api/v1/categories/7/move"})
+    void should_permitAdmin_when_catalogPatch(String path) {
+        AuthzResult result = run(MockServerHttpRequest.patch(path), adminJwt());
+        assertThat(result.reachedBackend())
+                .as("PATCH %s must be allowed for SCOPE_admin", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/products/42", "/api/v1/products/42", "/api/categories/7", "/api/v1/categories/7"})
+    void should_denyNonAdmin_when_catalogPost(String path) {
+        assertThat(run(MockServerHttpRequest.post(path), nonAdminJwt()).denied403())
+                .as("POST %s must require SCOPE_admin", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/products/42", "/api/v1/products/42", "/api/categories/7", "/api/v1/categories/7"})
+    void should_denyNonAdmin_when_catalogPut(String path) {
+        assertThat(run(MockServerHttpRequest.put(path), nonAdminJwt()).denied403())
+                .as("PUT %s must require SCOPE_admin", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/products/42", "/api/v1/products/42", "/api/categories/7", "/api/v1/categories/7"})
+    void should_denyNonAdmin_when_catalogDelete(String path) {
+        assertThat(run(MockServerHttpRequest.delete(path), nonAdminJwt()).denied403())
+                .as("DELETE %s must require SCOPE_admin", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/products/42", "/api/v1/products/42", "/api/categories/7", "/api/v1/categories/7"})
+    void should_permitAdmin_when_catalogPost(String path) {
+        assertThat(run(MockServerHttpRequest.post(path), adminJwt()).reachedBackend())
+                .as("POST %s must be allowed for SCOPE_admin", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/products/42", "/api/v1/products/42", "/api/categories/7", "/api/v1/categories/7"})
+    void should_permitAdmin_when_catalogDelete(String path) {
+        assertThat(run(MockServerHttpRequest.delete(path), adminJwt()).reachedBackend())
+                .as("DELETE %s must be allowed for SCOPE_admin", path)
+                .isTrue();
+    }
+
+    @Test
+    void should_permitNonAdmin_when_catalogGet() {
+        // Reads stay public even for an authenticated non-admin (no privilege needed).
+        assertThat(run(MockServerHttpRequest.get("/api/v1/products/42"), nonAdminJwt()).reachedBackend())
+                .isTrue();
+    }
+
     // --- helpers ---
 
     private AuthzResult runGet(String path) {
-        return run(MockServerHttpRequest.get(path));
+        return run(MockServerHttpRequest.get(path), null);
     }
 
     private AuthzResult runPost(String path) {
-        return run(MockServerHttpRequest.post(path));
+        return run(MockServerHttpRequest.post(path), null);
     }
 
     private AuthzResult run(MockServerHttpRequest.BaseBuilder<?> builder) {
+        return run(builder, null);
+    }
+
+    private AuthzResult run(MockServerHttpRequest.BaseBuilder<?> builder, Authentication authentication) {
         MockServerWebExchange exchange = MockServerWebExchange.from(builder.build());
         AtomicBoolean reached = new AtomicBoolean(false);
 
@@ -187,17 +274,46 @@ class SecurityPolicyDriftTest {
             return Mono.empty();
         }, filters);
 
-        chain.filter(exchange).block();
+        Mono<Void> execution = chain.filter(exchange);
+        if (authentication != null) {
+            execution = execution.contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication));
+        }
+        execution.block();
 
         ServerHttpResponse response = exchange.getResponse();
         return new AuthzResult(reached.get(), response.getStatusCode());
     }
 
+    private static Authentication adminJwt() {
+        return jwt(new SimpleGrantedAuthority("SCOPE_admin"));
+    }
+
+    private static Authentication nonAdminJwt() {
+        return jwt(new SimpleGrantedAuthority("SCOPE_profile"));
+    }
+
+    private static Authentication jwt(SimpleGrantedAuthority... authorities) {
+        Jwt token = Jwt.withTokenValue("test-token")
+                .header("alg", "none")
+                .subject("user-123")
+                .claim("scope", "read")
+                .build();
+        return new JwtAuthenticationToken(token, List.of(authorities));
+    }
+
     private record AuthzResult(boolean reachedBackend, HttpStatusCode statusCode) {
         boolean denied401() {
+            return statusDenied(HttpStatus.UNAUTHORIZED);
+        }
+
+        boolean denied403() {
+            return statusDenied(HttpStatus.FORBIDDEN);
+        }
+
+        private boolean statusDenied(HttpStatus expected) {
             return !reachedBackend
                     && statusCode != null
-                    && statusCode.value() == HttpStatus.UNAUTHORIZED.value();
+                    && statusCode.value() == expected.value();
         }
     }
 }

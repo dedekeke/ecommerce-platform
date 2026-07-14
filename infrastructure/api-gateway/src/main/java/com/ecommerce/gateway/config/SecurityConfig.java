@@ -90,12 +90,19 @@ public class SecurityConfig {
 
                     // Admin endpoints require admin role
                     .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
-                    // Product writes require admin on BOTH versions. The v1 route
-                    // previously fell through to anyExchange().authenticated(), so any
-                    // authenticated caller (not just admins) could mutate the catalog.
+                    // Catalog writes require admin on BOTH versions. Any write method
+                    // not listed here would fall through to anyExchange().authenticated(),
+                    // letting a non-admin caller mutate the catalog (e.g. PATCH
+                    // /api/products/{id}/stock, PATCH /api/v1/categories/{id}/move).
+                    // PATCH is enumerated explicitly for exactly that reason.
                     .pathMatchers(HttpMethod.POST, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
                     .pathMatchers(HttpMethod.PUT, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.PATCH, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
                     .pathMatchers(HttpMethod.DELETE, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.POST, "/api/categories/**", "/api/v1/categories/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.PUT, "/api/categories/**", "/api/v1/categories/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.PATCH, "/api/categories/**", "/api/v1/categories/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.DELETE, "/api/categories/**", "/api/v1/categories/**").hasAuthority("SCOPE_admin")
 
                     // All other endpoints require authentication
                     .anyExchange().authenticated()
