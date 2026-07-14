@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  * REST controller for Category management.
  */
 @RestController
-@RequestMapping("/api/v1/categories")
+@RequestMapping("/api/categories")
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Categories", description = "Category hierarchy management")
@@ -37,7 +37,7 @@ public class CategoryController {
             @Parameter(description = "Include only active categories")
             @RequestParam(required = false, defaultValue = "false") boolean activeOnly
     ) {
-        log.info("GET /api/v1/categories - activeOnly: {}", activeOnly);
+        log.info("GET /api/categories - activeOnly: {}", activeOnly);
 
         List<Category> categories = activeOnly ?
             categoryService.getActiveCategories() :
@@ -58,7 +58,7 @@ public class CategoryController {
             @Parameter(description = "Include children in response")
             @RequestParam(required = false, defaultValue = "true") boolean includeChildren
     ) {
-        log.info("GET /api/v1/categories/root - activeOnly: {}, includeChildren: {}", activeOnly, includeChildren);
+        log.info("GET /api/categories/root - activeOnly: {}, includeChildren: {}", activeOnly, includeChildren);
 
         List<Category> categories = activeOnly ?
             categoryService.getActiveRootCategories() :
@@ -79,7 +79,7 @@ public class CategoryController {
             @Parameter(description = "Include children in response")
             @RequestParam(required = false, defaultValue = "true") boolean includeChildren
     ) {
-        log.info("GET /api/v1/categories/{} - includeChildren: {}", id, includeChildren);
+        log.info("GET /api/categories/{} - includeChildren: {}", id, includeChildren);
 
         Category category = categoryService.getCategoryById(id);
         CategoryResponse response = categoryMapper.toResponse(category, includeChildren);
@@ -94,7 +94,7 @@ public class CategoryController {
             @Parameter(description = "Include children in response")
             @RequestParam(required = false, defaultValue = "true") boolean includeChildren
     ) {
-        log.info("GET /api/v1/categories/slug/{} - includeChildren: {}", slug, includeChildren);
+        log.info("GET /api/categories/slug/{} - includeChildren: {}", slug, includeChildren);
 
         Category category = categoryService.getCategoryBySlug(slug);
         CategoryResponse response = categoryMapper.toResponse(category, includeChildren);
@@ -109,7 +109,7 @@ public class CategoryController {
             @Parameter(description = "Include only active categories")
             @RequestParam(required = false, defaultValue = "false") boolean activeOnly
     ) {
-        log.info("GET /api/v1/categories/{}/children - activeOnly: {}", id, activeOnly);
+        log.info("GET /api/categories/{}/children - activeOnly: {}", id, activeOnly);
 
         List<Category> children = activeOnly ?
             categoryService.getActiveCategoryChildren(id) :
@@ -128,7 +128,7 @@ public class CategoryController {
             @Parameter(description = "Parent category ID")
             @PathVariable Long id
     ) {
-        log.info("GET /api/v1/categories/{}/subcategories", id);
+        log.info("GET /api/categories/{}/subcategories", id);
 
         List<Category> subcategories = categoryService.getAllSubcategories(id);
         List<CategoryResponse> response = subcategories.stream()
@@ -144,7 +144,7 @@ public class CategoryController {
             @Parameter(description = "Search term")
             @RequestParam String name
     ) {
-        log.info("GET /api/v1/categories/search - name: {}", name);
+        log.info("GET /api/categories/search - name: {}", name);
 
         List<Category> categories = categoryService.searchCategories(name);
         List<CategoryResponse> response = categories.stream()
@@ -159,7 +159,7 @@ public class CategoryController {
     public ResponseEntity<CategoryResponse> createCategory(
             @Valid @RequestBody CategoryRequest request
     ) {
-        log.info("POST /api/v1/categories - name: {}, slug: {}", request.getName(), request.getSlug());
+        log.info("POST /api/categories - name: {}, slug: {}", request.getName(), request.getSlug());
 
         Category category = categoryMapper.toEntity(request);
         Category created = categoryService.createCategory(category);
@@ -175,7 +175,7 @@ public class CategoryController {
             @PathVariable Long id,
             @Valid @RequestBody CategoryRequest request
     ) {
-        log.info("PUT /api/v1/categories/{}", id);
+        log.info("PUT /api/categories/{}", id);
 
         Category category = categoryMapper.toEntity(request);
         Category updated = categoryService.updateCategory(id, category);
@@ -192,7 +192,7 @@ public class CategoryController {
             @Parameter(description = "New parent category ID (null for root level)")
             @RequestParam(required = false) Long newParentId
     ) {
-        log.info("PATCH /api/v1/categories/{}/move - newParentId: {}", id, newParentId);
+        log.info("PATCH /api/categories/{}/move - newParentId: {}", id, newParentId);
 
         Category moved = categoryService.moveCategory(id, newParentId);
         CategoryResponse response = categoryMapper.toResponse(moved);
@@ -206,7 +206,7 @@ public class CategoryController {
             @Parameter(description = "Category ID")
             @PathVariable Long id
     ) {
-        log.info("DELETE /api/v1/categories/{}", id);
+        log.info("DELETE /api/categories/{}", id);
 
         categoryService.deleteCategory(id);
         return ResponseEntity.noContent().build();

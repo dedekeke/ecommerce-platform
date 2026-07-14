@@ -78,13 +78,18 @@ public class ProductSecurityConfig {
                 .requestMatchers("/error").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
 
-                // Public read access to products and categories
+                // Public read access to products and categories.
+                // The service always receives the post-rewrite, unversioned paths:
+                // the gateway forwards /api/categories/** as-is and strips /v1 from
+                // /api/v1/categories/** before routing (RewritePath). Matchers must
+                // therefore key on /api/categories/** — the CategoryController mapping
+                // — or they silently stop protecting real traffic.
                 .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/categories", "/api/v1/categories/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/categories", "/api/categories/**").permitAll()
 
                 // Admin operations require authentication and admin scope.
                 // PATCH is enumerated alongside POST/PUT/DELETE so partial mutations
-                // (PATCH /api/products/{id}/stock, PATCH /api/v1/categories/{id}/move)
+                // (PATCH /api/products/{id}/stock, PATCH /api/categories/{id}/move)
                 // cannot fall through to plain authenticated(). This mirrors the gateway
                 // matchers from PR#108; the service layer is the real defense because
                 // internal callers (cart/order via load-balanced WebClient) BYPASS the gateway.
@@ -92,10 +97,10 @@ public class ProductSecurityConfig {
                 .requestMatchers(HttpMethod.PUT, "/api/products/**").hasAuthority("SCOPE_admin")
                 .requestMatchers(HttpMethod.PATCH, "/api/products/**").hasAuthority("SCOPE_admin")
                 .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasAuthority("SCOPE_admin")
-                .requestMatchers(HttpMethod.POST, "/api/v1/categories/**").hasAuthority("SCOPE_admin")
-                .requestMatchers(HttpMethod.PUT, "/api/v1/categories/**").hasAuthority("SCOPE_admin")
-                .requestMatchers(HttpMethod.PATCH, "/api/v1/categories/**").hasAuthority("SCOPE_admin")
-                .requestMatchers(HttpMethod.DELETE, "/api/v1/categories/**").hasAuthority("SCOPE_admin")
+                .requestMatchers(HttpMethod.POST, "/api/categories/**").hasAuthority("SCOPE_admin")
+                .requestMatchers(HttpMethod.PUT, "/api/categories/**").hasAuthority("SCOPE_admin")
+                .requestMatchers(HttpMethod.PATCH, "/api/categories/**").hasAuthority("SCOPE_admin")
+                .requestMatchers(HttpMethod.DELETE, "/api/categories/**").hasAuthority("SCOPE_admin")
 
                 // All other requests require authentication
                 .anyRequest().authenticated()
