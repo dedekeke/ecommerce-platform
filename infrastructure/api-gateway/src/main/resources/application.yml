@@ -43,6 +43,16 @@ spring:
           enabled: true
           lower-case-service-id: true
 
+      # Outbound HTTP client (gateway -> downstream services).
+      # response-timeout caps how long the gateway waits for a downstream
+      # response before returning 504 GATEWAY_TIMEOUT. Without it a hung
+      # downstream holds the gateway connection open indefinitely (only the
+      # Netty connect-phase was bounded via server.netty.connection-timeout).
+      # Env-overridable; individual routes may raise it via
+      # metadata.response-timeout (see payment-service).
+      httpclient:
+        response-timeout: ${GATEWAY_RESPONSE_TIMEOUT:5s}
+
       # Global CORS configuration
       globalcors:
         cors-configurations:
@@ -73,12 +83,26 @@ spring:
       # no-op here, and the gateway forwards the inbound Authorization header to
       # downstreams by default. Requiring it also dragged in the OAuth2 client
       # auto-config that crashed boot when Auth0 was unreachable (bug 1b8953dc).
+      # Retry is scoped to GET only. POST/PUT/PATCH/DELETE are not idempotent
+      # here (no idempotency-key support downstream), so retrying them on a
+      # partial failure risks duplicate side-effects (e.g. double order/payment
+      # creation) and amplifies load 4x during an outage. See PR notes.
+      #
+      # exceptions is pinned to IOException only, dropping the RetryConfig
+      # default TimeoutException. A response-timeout surfaces as a
+      # TimeoutException that NettyRoutingFilter maps to 504; leaving it
+      # retryable would re-hit a hung downstream up to (retries+1)x, turning one
+      # bounded 5s wait into ~20s and quadrupling load on an already-failing
+      # service. Retry now covers only fast-fail cases: connect/IO errors
+      # (IOException) and the 502/503 statuses below.
       default-filters:
         - name: Retry
           args:
             retries: 3
             statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE
-            methods: GET,POST
+            methods: GET
+            exceptions:
+              - java.io.IOException
             backoff:
               firstBackoff: 50ms
               maxBackoff: 500ms
@@ -183,7 +207,7 @@ spring:
         - id: cart-service
           uri: lb://cart-service
           predicates:
-            - Path=/api/cart/**
+            - Path=/api/cart/**,/api/carts/**
           filters:
             - name: RequestRateLimiter
               args:
@@ -196,7 +220,7 @@ spring:
         - id: cart-service-v1
           uri: lb://cart-service
           predicates:
-            - Path=/api/v1/cart/**
+            - Path=/api/v1/cart/**,/api/v1/carts/**
           filters:
             - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
             - AddRequestHeader=X-API-Version, v1
@@ -234,10 +258,15 @@ spring:
                 redis-rate-limiter.requestedTokens: 1
 
         # ---------- Payment Service ----------
+        # Payment providers (3rd-party PSPs) can be slower than internal
+        # services, so these routes raise the response-timeout above the 5s
+        # global default. Value is in milliseconds, env-overridable.
         - id: payment-service
           uri: lb://payment-service
           predicates:
             - Path=/api/payments/**
+          metadata:
+            response-timeout: ${GATEWAY_PAYMENT_RESPONSE_TIMEOUT:10000}
           filters:
             - name: RequestRateLimiter
               args:
@@ -251,6 +280,8 @@ spring:
           uri: lb://payment-service
           predicates:
             - Path=/api/v1/payments/**
+          metadata:
+            response-timeout: ${GATEWAY_PAYMENT_RESPONSE_TIMEOUT:10000}
           filters:
             - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
             - AddRequestHeader=X-API-Version, v1
@@ -449,6 +480,37 @@ spring:
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
 
+        # ---------- Admin routes ----------
+        # Ported from the (now-disabled) programmatic locator so the declarative
+        # table stays the single route authority. Access is gated by
+        # SecurityConfig (SCOPE_admin) + IpWhitelistFilter on /api/admin/**.
+        # RewritePath strips the /admin segment before forwarding.
+        - id: admin-products
+          uri: lb://product-service
+          predicates:
+            - Path=/api/admin/products/**
+            - Method=POST,PUT,DELETE
+          filters:
+            - RewritePath=/api/admin/(?<segment>.*), /api/${segment}
+        - id: admin-inventory
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/admin/inventory/**
+          filters:
+            - RewritePath=/api/admin/(?<segment>.*), /api/${segment}
+        - id: admin-orders
+          uri: lb://order-service
+          predicates:
+            - Path=/api/admin/orders/**
+          filters:
+            - RewritePath=/api/admin/(?<segment>.*), /api/${segment}
+        - id: admin-users
+          uri: lb://user-service
+          predicates:
+            - Path=/api/admin/users/**
+          filters:
+            - RewritePath=/api/admin/(?<segment>.*), /api/${segment}
+
         # ------------------------------------------------------------------
         # OpenAPI aggregation routes — proxy /aggregate/<svc>/v3/api-docs to
         # the corresponding service's /v3/api-docs endpoint. Used by Swagger
@@ -553,6 +615,20 @@ spring:
     redis:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT}
+
+# Route authority.
+# The declarative routes above (spring.cloud.gateway.routes) are the single
+# source of truth: only they receive default-filters (Retry) + RequestRateLimiter
+# and carry the response-timeout metadata. The programmatic RouteLocator in
+# GatewayRoutesConfig defines the same paths but, being built via
+# RouteLocatorBuilder, never inherits default-filters or RequestRateLimiter — so
+# leaving both active made the serving route (and thus whether Retry/rate-limiting
+# applied at all) depend on incidental Spring bean ordering. Disabled by default
+# to make routing deterministic; flip to true only if the declarative table is
+# unavailable.
+gateway:
+  programmatic-routes:
+    enabled: ${GATEWAY_PROGRAMMATIC_ROUTES_ENABLED:false}
 
 # Security Configuration
 # Defaults to true (secure-by-default). Override with SECURITY_ENABLED=false for local development only.
