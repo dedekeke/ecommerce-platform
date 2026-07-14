@@ -63,19 +63,39 @@ Notes:
 
 | Service | Pool (`DB_POOL_SIZE`) | min-idle | Max replicas | Worst-case conns |
 |---------|-----------------------|----------|--------------|------------------|
-| order-service     | 8 | 2 | 8 | 64 |
+| order-service     | 12 | 2 | 8 | 96 |
 | payment-service   | 5 | 2 | 8 | 40 |
 | inventory-service | 5 | 2 | 4 | 20 |
 | user-service      | 5 | 2 | 2 | 10 |
 | cart-service      | 5 | 2 | 2 | 10 |
-| **Subtotal (app)**|   |   |   | **144** |
+| **Subtotal (app)**|   |   |   | **176** |
 | Admin / migration / backup / superuser reserve | | | | 10 |
-| **Total required** | | | | **154** |
+| **Total required** | | | | **186** |
 | **Server ceiling (`POSTGRES_MAX_CONNECTIONS`)** | | | | **200** |
-| Headroom | | | | 46 |
+| Headroom | | | | 14 |
 
-order-service gets the largest pool (8): it is the checkout orchestrator, holding a DB
-connection across synchronous gRPC calls to cart/payment/inventory during the saga.
+order-service gets the largest pool (12): `OrderCreationSaga` is `@Transactional` and
+holds its DB connection across synchronous gRPC/REST calls to cart, promotion, payment
+and inventory plus a Kafka publish — the connection is pinned for the entire saga, so a
+thin pool would serialize checkouts under load.
+
+> **12 is a deliberately conservative default, not yet load-verified.** The CPU-based HPA
+> will not scale out on connection-bound saturation (a saga blocked waiting for a pool
+> permit is not CPU-hot), so we err on the side of a larger pool. The correct value should
+> be confirmed by the k6 load-test follow-up; until then `DB_POOL_SIZE` is env-overridable
+> for tuning without a rebuild. If it is later raised, re-check the subtotal below — at
+> pool 16 the Postgres subtotal would be 176 + 4x8 = 208, exceeding the 200 ceiling, so
+> `POSTGRES_MAX_CONNECTIONS` must be raised in lockstep.
+
+### KEDA scalers open connections outside Hikari
+
+The `inventory-service` and `payment-service` KEDA `ScaledObject`s use the **PostgreSQL
+scaler** (`inventory-service-outbox-lag`, `payment-service-outbox-lag`) to poll the outbox
+table. Each polling connection is opened by KEDA directly, **not** through the service's
+Hikari pool, so it is not counted in the pool math above. These are few and short-lived,
+but they draw from the same `max_connections` — the ~10 admin/monitoring reserve is sized
+to absorb them. If KEDA polling frequency or the number of postgres-scaler triggers grows,
+increase the reserve accordingly.
 
 ## MySQL budget
 
@@ -103,15 +123,25 @@ comfortable. MySQL's own default is 151; 150 keeps the intent explicit and env-d
   MySQL: `--max-connections=${MYSQL_MAX_CONNECTIONS}`.
   For k8s/helm (managed DBs), provision the managed instance `max_connections` to at
   least the Total-required figures above.
-- **Pool sizes** are Spring placeholders with per-service defaults, e.g.
-  `maximum-pool-size: ${DB_POOL_SIZE:8}` and `minimum-idle: ${DB_POOL_MIN_IDLE:2}`, in each
-  service's base `application.yml` (cart uses its `docker`/`local`/`prod` profiles, since
-  its datasource lives there). Because the `prod` profiles do not override the datasource,
-  the base/profile defaults apply in production too. Ops can override without a rebuild by
-  setting `DB_POOL_SIZE` / `DB_POOL_MIN_IDLE` in a service's `environment:` (per-service) or
-  in `.env` (applies to all services that load `.env` — use with care).
+- **Pool sizes** are Spring placeholders with per-service defaults, e.g. order uses
+  `maximum-pool-size: ${DB_POOL_SIZE:12}`, product `${DB_POOL_SIZE:8}`, the rest
+  `${DB_POOL_SIZE:5}`, all with `minimum-idle: ${DB_POOL_MIN_IDLE:2}`, in each service's
+  base `application.yml` (cart uses its `docker`/`local`/`prod` profiles, since its
+  datasource lives there). Because the `prod` profiles do not override the datasource, the
+  base/profile defaults apply in production too. Ops can override without a rebuild by
+  setting `DB_POOL_SIZE` / `DB_POOL_MIN_IDLE` in a service's `environment:` (per-service).
+  Setting them in an env file applies to every service that loads that file — in **dev**
+  compose (`docker-compose.yml`, `env_file: .env`) that is all services via `.env`; in
+  **prod** compose it is `production.env`. Prefer the per-service `environment:` override
+  to keep the budget intact.
 - `minimum-idle` was lowered from 5 to 2 so a large replica count does not pin a big
   baseline of idle connections on the shared instance.
+
+> **Env-file triplication (drift risk).** The three env samples — `.env.example`,
+> `.env.template`, `production.env.example` — now each carry `POSTGRES_MAX_CONNECTIONS` /
+> `MYSQL_MAX_CONNECTIONS`. They can drift out of sync. Consolidating them into a single
+> source of truth is a separate cleanup task (out of scope here); until then, update all
+> three together when changing a ceiling.
 
 ## Monitoring (already wired — not built here)
 

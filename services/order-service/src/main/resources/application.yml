@@ -12,9 +12,13 @@ spring:
     driver-class-name: org.postgresql.Driver
     hikari:
       # Env-overridable pool (docs/db-connection-budget.md); tune without rebuild.
-      # Largest pool: order is the checkout orchestrator, holding a connection
-      # across synchronous gRPC calls to cart/payment/inventory during the saga.
-      maximum-pool-size: ${DB_POOL_SIZE:8}
+      # Largest pool: OrderCreationSaga is @Transactional and holds this connection
+      # across synchronous gRPC/REST calls to cart/promotion/payment/inventory plus a
+      # Kafka publish, so a connection is pinned for the whole saga duration.
+      # 12 is a deliberately conservative default (not load-verified yet — see the
+      # k6 load-test follow-up); CPU-based HPA does not react to connection-bound
+      # saturation, so we do NOT run this pool thin. Budget still fits (12x8=96).
+      maximum-pool-size: ${DB_POOL_SIZE:12}
       minimum-idle: ${DB_POOL_MIN_IDLE:2}
       connection-timeout: 3000
       idle-timeout: 600000
