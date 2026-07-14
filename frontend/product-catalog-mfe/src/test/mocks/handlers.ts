@@ -41,12 +41,14 @@ export const handlers = [
 
     return HttpResponse.json({
       content: paged,
-      page,
+      number: page,
       size,
       totalElements: filtered.length,
       totalPages: Math.ceil(filtered.length / size),
       first: page === 0,
       last: page >= Math.ceil(filtered.length / size) - 1,
+      numberOfElements: paged.length,
+      empty: paged.length === 0,
     })
   }),
 
