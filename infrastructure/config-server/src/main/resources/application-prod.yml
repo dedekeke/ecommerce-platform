@@ -5,5 +5,8 @@ logging:
   level:
     root: WARN
     com.ecommerce: INFO
+    # Exact-key override: base sets com.ecommerce.config: DEBUG,
+    # which logback resolves independently of the com.ecommerce ancestor above.
+    com.ecommerce.config: INFO
     org.springframework.cloud.config: INFO
     org.springframework.security: WARN
