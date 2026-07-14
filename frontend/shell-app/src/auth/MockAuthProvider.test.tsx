@@ -3,8 +3,7 @@ import { render, renderHook, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
 import type { ReactNode } from 'react'
-import { MockAuthProvider } from './MockAuthProvider'
-import { MOCK_AUTH_TOKEN, MOCK_AUTH_USER } from './mockAuth'
+import { MockAuthProvider, MOCK_AUTH_TOKEN, MOCK_AUTH_USER } from './MockAuthProvider'
 import { ProtectedRoute } from '../components/auth/ProtectedRoute'
 import { useExposeAuthToken } from '../hooks/useExposeAuthToken'
 
@@ -22,6 +21,13 @@ describe('MockAuthProvider', () => {
     delete window.__getAuthToken
     delete window.__getAuthUserId
     vi.restoreAllMocks()
+  })
+
+  it('should pin the deterministic identity and dummy token values', () => {
+    expect(MOCK_AUTH_USER.sub).toBe('e2e|test-user')
+    expect(MOCK_AUTH_USER.email).toBe('e2e-test-user@example.com')
+    expect(MOCK_AUTH_USER.name).toBe('E2E Test User')
+    expect(MOCK_AUTH_TOKEN).toBe('e2e-mock-token')
   })
 
   it('should report an authenticated, non-loading session to useAuth0 consumers', () => {

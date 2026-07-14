@@ -21,11 +21,12 @@ export function assertMockAuthNotInBuild(
   }
 }
 
-export function mockAuthBuildGuard(): Plugin {
+/** `envDir` is injectable so tests can point the .env-file lookup at a fixture directory. */
+export function mockAuthBuildGuard(envDir: string = process.cwd()): Plugin {
   return {
     name: 'mock-auth-build-guard',
     config(_config, env) {
-      const fileEnv = loadEnv(env.mode, process.cwd(), 'VITE_')
+      const fileEnv = loadEnv(env.mode, envDir, 'VITE_')
       assertMockAuthNotInBuild(
         env.command,
         env.mode,

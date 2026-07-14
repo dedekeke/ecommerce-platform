@@ -10,20 +10,14 @@
  *  - build time: `mockAuthBuildGuard.ts` fails `vite build` outright when
  *    VITE_AUTH_MODE=mock is set (grep marker: MOCK_AUTH_PRODUCTION_GUARD).
  *
+ * The MockAuthProvider component AND the mock identity/token strings live in
+ * `MockAuthProvider.tsx`, reached only through a DEV-gated dynamic import in
+ * Auth0ProviderWithNavigate — production build graphs exclude that chunk
+ * entirely, so neither the code nor the strings ship.
+ *
  * Backends still validate Auth0 JWTs unless run with SECURITY_ENABLED=false —
  * see e2e/README.md.
  */
-
-/** Deterministic identity used by e2e specs; `sub` is what MFEs read via `window.__getAuthUserId`. */
-export const MOCK_AUTH_USER = {
-  sub: 'e2e|test-user',
-  email: 'e2e-test-user@example.com',
-  name: 'E2E Test User',
-  email_verified: true,
-} as const
-
-/** Static dummy bearer token — deliberately not JWT-shaped so it can never pass real validation. */
-export const MOCK_AUTH_TOKEN = 'e2e-mock-token'
 
 export interface MockAuthEnv {
   readonly DEV: boolean

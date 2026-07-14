@@ -6,7 +6,22 @@ import {
   type User,
 } from '@auth0/auth0-react'
 import { type ReactNode, useEffect, useMemo } from 'react'
-import { MOCK_AUTH_TOKEN, MOCK_AUTH_USER } from './mockAuth'
+
+/**
+ * Deterministic identity used by e2e specs; `sub` is what MFEs read via
+ * `window.__getAuthUserId`. Defined HERE (not in mockAuth.ts) so the strings
+ * exist only in this DEV-only, dynamically imported module and can never
+ * reach a production bundle.
+ */
+export const MOCK_AUTH_USER = {
+  sub: 'e2e|test-user',
+  email: 'e2e-test-user@example.com',
+  name: 'E2E Test User',
+  email_verified: true,
+} as const
+
+/** Static dummy bearer token — deliberately not JWT-shaped so it can never pass real validation. */
+export const MOCK_AUTH_TOKEN = 'e2e-mock-token'
 
 interface MockAuthProviderProps {
   children: ReactNode

@@ -98,7 +98,9 @@ describe('Auth0ProviderWithNavigate', () => {
       vi.stubEnv('VITE_AUTH_MODE', 'mock')
     })
 
-    it('should render children through MockAuthProvider without mounting Auth0Provider', () => {
+    // The mock provider is code-split behind a DEV-gated dynamic import, so
+    // assertions await the lazy chunk via findBy*.
+    it('should render children through MockAuthProvider without mounting Auth0Provider', async () => {
       render(
         <MemoryRouter>
           <Auth0ProviderWithNavigate>
@@ -107,12 +109,12 @@ describe('Auth0ProviderWithNavigate', () => {
         </MemoryRouter>
       )
 
-      expect(screen.getByText('Test Child')).toBeInTheDocument()
+      expect(await screen.findByText('Test Child')).toBeInTheDocument()
       expect(screen.queryByTestId('auth0-provider')).not.toBeInTheDocument()
       expect(mockedAuth0Provider).not.toHaveBeenCalled()
     })
 
-    it('should report the deterministic mock identity as authenticated', () => {
+    it('should report the deterministic mock identity as authenticated', async () => {
       function Probe() {
         const { isAuthenticated, user } = useAuth0()
         return <div>{isAuthenticated ? `sub:${user?.sub}` : 'anonymous'}</div>
@@ -126,7 +128,7 @@ describe('Auth0ProviderWithNavigate', () => {
         </MemoryRouter>
       )
 
-      expect(screen.getByText('sub:e2e|test-user')).toBeInTheDocument()
+      expect(await screen.findByText('sub:e2e|test-user')).toBeInTheDocument()
     })
   })
 

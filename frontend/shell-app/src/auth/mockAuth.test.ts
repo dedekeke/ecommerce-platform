@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isMockAuthMode, MOCK_AUTH_USER, MOCK_AUTH_TOKEN } from './mockAuth'
+import { isMockAuthMode } from './mockAuth'
 
 describe('isMockAuthMode', () => {
   it('should return true when running on the dev server with VITE_AUTH_MODE=mock', () => {
@@ -22,17 +22,5 @@ describe('isMockAuthMode', () => {
 
   it('should default to reading import.meta.env (mock inactive under vitest without the env var)', () => {
     expect(isMockAuthMode()).toBe(false)
-  })
-})
-
-describe('mock identity', () => {
-  it('should expose a deterministic test sub, email and name', () => {
-    expect(MOCK_AUTH_USER.sub).toBe('e2e|test-user')
-    expect(MOCK_AUTH_USER.email).toBe('e2e-test-user@example.com')
-    expect(MOCK_AUTH_USER.name).toBe('E2E Test User')
-  })
-
-  it('should expose a static dummy token that is clearly not a real JWT', () => {
-    expect(MOCK_AUTH_TOKEN).toBe('e2e-mock-token')
   })
 })

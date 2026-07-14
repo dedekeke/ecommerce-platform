@@ -1,7 +1,17 @@
 import { Auth0Provider, type AppState } from '@auth0/auth0-react'
 import { useNavigate } from 'react-router-dom'
-import { type ReactNode, useCallback } from 'react'
-import { isMockAuthMode, MockAuthProvider } from '../auth'
+import { lazy, Suspense, type ReactNode, useCallback } from 'react'
+import { isMockAuthMode } from '../auth'
+
+// DEV-gated dynamic import: `import.meta.env.DEV` is statically replaced at
+// build time, so this ternary folds to `null` in production and the mock-auth
+// chunk (component + identity/token strings) never enters the Rollup build
+// graph. Belt-and-braces with MOCK_AUTH_PRODUCTION_GUARD.
+const DevMockAuthGate = import.meta.env.DEV
+  ? lazy(() =>
+      import('../auth/MockAuthProvider').then((m) => ({ default: m.MockAuthProvider }))
+    )
+  : null
 
 interface Auth0ProviderWithNavigateProps {
   children: ReactNode
@@ -25,8 +35,14 @@ export const Auth0ProviderWithNavigate = ({ children }: Auth0ProviderWithNavigat
   // Local test auth mode (VITE_AUTH_MODE=mock, dev server only): bypass Auth0
   // entirely with a deterministic test identity. See src/auth/mockAuth.ts for
   // the runtime + build-time safety guards keeping this out of production.
-  if (isMockAuthMode()) {
-    return <MockAuthProvider>{children}</MockAuthProvider>
+  // Leading `import.meta.env.DEV` makes the whole branch statically dead in
+  // builds; dev-only path, so a brief Suspense fallback while the chunk loads is fine.
+  if (import.meta.env.DEV && DevMockAuthGate && isMockAuthMode()) {
+    return (
+      <Suspense fallback={null}>
+        <DevMockAuthGate>{children}</DevMockAuthGate>
+      </Suspense>
+    )
   }
 
   if (!domain || !clientId) {
