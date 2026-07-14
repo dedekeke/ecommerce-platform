@@ -43,7 +43,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         JpaRepositoriesAutoConfiguration.class,
         DataSourceAutoConfiguration.class
     })
-@Import({RmaControllerTest.TestJwtConfig.class, RmaController.class})
+@Import({RmaControllerTest.TestJwtConfig.class, RmaController.class,
+    com.ecommerce.orderservice.security.UserIdentityResolver.class})
 @TestPropertySource(properties = {
     "security.enabled=true",
     "spring.cloud.discovery.enabled=false",

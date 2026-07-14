@@ -1,11 +1,14 @@
 package com.ecommerce.orderservice.subscription;
 
+import com.ecommerce.orderservice.security.UserIdentityResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,18 +33,31 @@ import java.util.List;
 public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;
+    private final UserIdentityResolver userIdentityResolver;
 
     @PostMapping
     @Operation(summary = "Create a recurring subscription")
-    public ResponseEntity<Subscription> create(@Valid @RequestBody SubscriptionDtos.CreateSubscriptionRequest req) {
-        log.info("REST: Create subscription for user={} product={}", req.userId(), req.productId());
-        return ResponseEntity.status(201).body(subscriptionService.create(req));
+    public ResponseEntity<Subscription> create(
+        @Valid @RequestBody SubscriptionDtos.CreateSubscriptionRequest req,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        // The owning user is the JWT subject — the body userId is never trusted.
+        String ownerUserId = userIdentityResolver.resolveUserId(req.userId(), jwt);
+        SubscriptionDtos.CreateSubscriptionRequest bound = new SubscriptionDtos.CreateSubscriptionRequest(
+            ownerUserId, req.productId(), req.quantity(), req.intervalDays(),
+            req.paymentMethodId(), req.shippingAddressJson());
+        log.info("REST: Create subscription for user={} product={}", ownerUserId, bound.productId());
+        return ResponseEntity.status(201).body(subscriptionService.create(bound));
     }
 
     @GetMapping("/user/{userId}")
     @Operation(summary = "List subscriptions for a user")
-    public ResponseEntity<List<Subscription>> listForUser(@PathVariable String userId) {
-        return ResponseEntity.ok(subscriptionService.listForUser(userId));
+    public ResponseEntity<List<Subscription>> listForUser(
+        @PathVariable String userId,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        String resolvedUserId = userIdentityResolver.resolveUserId(userId, jwt);
+        return ResponseEntity.ok(subscriptionService.listForUser(resolvedUserId));
     }
 
     @PutMapping("/{id}/pause")

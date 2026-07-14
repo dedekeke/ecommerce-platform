@@ -11,6 +11,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -191,5 +192,71 @@ class OrderControllerJwtIdentityTest {
                 .andExpect(status().isOk());
 
         verify(orderService).cancelOrder(eq("order-123"), eq(USER_A), any());
+    }
+
+    // ---- admin acting on behalf of another user ----------------------------
+
+    @Test
+    void should_allowAdmin_when_createOrder_bodyUserId_differsFromAdminSub() throws Exception {
+        when(orderService.createOrderFromCart(eq(USER_B), any())).thenReturn(orderOwnedBy(USER_B));
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":\"" + USER_B + "\"}")
+                        .with(jwt().jwt(j -> j.subject("auth0|admin"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
+                .andExpect(status().isCreated());
+
+        verify(orderService).createOrderFromCart(eq(USER_B), any());
+    }
+
+    @Test
+    void should_allowAdmin_when_getUserOrders_pathUserId_differsFromAdminSub() throws Exception {
+        Page<Order> page = new PageImpl<>(List.of(orderOwnedBy(USER_B)));
+        when(orderService.getUserOrders(eq(USER_B), any())).thenReturn(page);
+
+        mockMvc.perform(get("/api/orders/user/" + USER_B)
+                .with(jwt().jwt(j -> j.subject("auth0|admin"))
+                        .authorities(new SimpleGrantedAuthority("SCOPE_admin"))));
+
+        verify(orderService).getUserOrders(eq(USER_B), any());
+    }
+
+    // ---- getOrderByNumber (IDOR) -------------------------------------------
+
+    @Test
+    void should_return200_when_getOrderByNumber_ownedByCaller() throws Exception {
+        when(orderService.getOrderByNumber("ORD-1")).thenReturn(orderOwnedBy(USER_A));
+
+        mockMvc.perform(get("/api/orders/number/ORD-1")
+                        .with(jwt().jwt(j -> j.subject(USER_A))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void should_return403_when_getOrderByNumber_ownedByAnotherUser() throws Exception {
+        when(orderService.getOrderByNumber("ORD-1")).thenReturn(orderOwnedBy(USER_B));
+
+        mockMvc.perform(get("/api/orders/number/ORD-1")
+                        .with(jwt().jwt(j -> j.subject(USER_A))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void should_allowAdmin_when_getOrderByNumber_ownedByAnotherUser() throws Exception {
+        when(orderService.getOrderByNumber("ORD-1")).thenReturn(orderOwnedBy(USER_B));
+
+        mockMvc.perform(get("/api/orders/number/ORD-1")
+                        .with(jwt().jwt(j -> j.subject("auth0|admin"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void should_return401_when_getOrderByNumber_unauthenticated() throws Exception {
+        mockMvc.perform(get("/api/orders/number/ORD-1"))
+                .andExpect(status().isUnauthorized());
+
+        verify(orderService, never()).getOrderByNumber(any());
     }
 }
