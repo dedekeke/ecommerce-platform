@@ -28,6 +28,17 @@ global:
       enabled: true
       secretName: ecommerce-tls
 
+# Shared subchart defaults, used only as a YAML anchor (this key is not a subchart
+# name, so Helm's value routing ignores it). Defined here — rather than on
+# user-service as before — so per-service keys like `hpa` can be set on individual
+# services without leaking through `<<: *svc-defaults` to unrelated services.
+commonServiceDefaults: &svc-defaults
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests: { memory: "256Mi", cpu: "100m" }
+    limits:   { memory: "512Mi", cpu: "500m" }
+
 api-gateway:
   enabled: true
   service:
@@ -39,18 +50,27 @@ api-gateway:
   resources:
     requests: { memory: "256Mi", cpu: "200m" }
     limits:   { memory: "512Mi", cpu: "500m" }
+  # Latency-critical entry point, no DB pool -> CPU HPA, min 2 / max 8 (mirrors kustomize).
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
 
-user-service: &svc-defaults
-  enabled: true
+user-service:
+  <<: *svc-defaults
   service:
     name: user-service
     port: 8081
   image:
     repository: user-service
-  replicaCount: 1
-  resources:
-    requests: { memory: "256Mi", cpu: "100m" }
-    limits:   { memory: "512Mi", cpu: "500m" }
+  # PostgreSQL co-tenant -> max pinned to the connection-budget ceiling (2); min 2
+  # removes the single-replica SPOF and makes user-service-pdb effective.
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 70
 
 product-service:
   <<: *svc-defaults
@@ -66,6 +86,13 @@ cart-service:
   <<: *svc-defaults
   service: { name: cart-service, port: 8083 }
   image: { repository: cart-service }
+  # PostgreSQL co-tenant -> max pinned to the connection-budget ceiling (2); min 2
+  # removes the single-replica SPOF and makes cart-service-pdb effective.
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 70
 
 order-service:
   <<: *svc-defaults

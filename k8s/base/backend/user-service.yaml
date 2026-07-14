@@ -19,7 +19,9 @@ metadata:
     app: user-service
     tier: backend
 spec:
-  replicas: 1
+  # Matches user-service-hpa minReplicas so a fresh apply starts at 2 (the HPA
+  # reconciles it up anyway, but this keeps the static manifest and GitOps diff honest).
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
