@@ -1,6 +1,7 @@
 package com.ecommerce.productservice.service;
 
 import cachetestsupport.ProductListingCacheTestConfig;
+import com.ecommerce.productservice.dto.ProductResponse;
 import com.ecommerce.productservice.model.Product;
 import com.ecommerce.productservice.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,8 +72,8 @@ class ProductListingCacheTest {
     void should_serveSecondListingReadFromCache_when_samePageRequestedTwice() {
         when(productRepository.findAll(any(Pageable.class))).thenReturn(singlePage());
 
-        Page<Product> first = productService.getAllProducts(PAGE);
-        Page<Product> second = productService.getAllProducts(PAGE);
+        Page<ProductResponse> first = productService.getAllProducts(PAGE);
+        Page<ProductResponse> second = productService.getAllProducts(PAGE);
 
         assertThat(first.getContent()).hasSize(1);
         assertThat(second.getContent()).hasSize(1);
@@ -85,7 +86,7 @@ class ProductListingCacheTest {
         when(productRepository.findAll(any(Pageable.class))).thenReturn(singlePage());
 
         productService.getAllProducts(PAGE);
-        Page<Product> cached = productService.getAllProducts(PAGE);
+        Page<ProductResponse> cached = productService.getAllProducts(PAGE);
 
         assertThat(cached.getNumber()).isEqualTo(0);
         assertThat(cached.getSize()).isEqualTo(20);

@@ -1,6 +1,5 @@
 package com.ecommerce.productservice.dto;
 
-import com.ecommerce.productservice.model.Product;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,14 +15,18 @@ import java.util.List;
 /**
  * Redis-serialization-safe snapshot of a paged product listing.
  *
- * <p>Spring Data's {@code PageImpl} has no no-arg constructor and fails to
- * round-trip through the JSON Redis serializer (the same reason
- * {@link PageResponse} exists for the HTTP layer). This holder is a plain,
- * <b>non-final</b> bean so the configured {@code GenericJackson2JsonRedisSerializer}
- * (default typing = {@code NON_FINAL}) writes an {@code @class} header and can
- * deserialize it back; the {@link Product} elements carry their own type
- * headers. Only {@code content} + the page coordinates are stored — enough to
- * rebuild an in-memory {@link Page} for the caller, never cached itself.
+ * <p>Holds already-mapped {@link ProductResponse} DTOs, not entities. Caching raw
+ * {@code Product} entities is unsafe: the polymorphic JSON serializer writes each
+ * value's runtime type into an {@code @class} header, and Hibernate runtime types
+ * (a {@code PersistentSet} for the EAGER {@code images}, a lazy {@code category}
+ * proxy) either fail to deserialize with no Session, or leak proxy artifacts. DTOs
+ * are plain POJOs computed once under the open session, so they round-trip cleanly
+ * and are independent of any Hibernate session on cache hit.
+ *
+ * <p>Spring Data's {@code PageImpl} is likewise not cached (no no-arg constructor);
+ * only {@code content} + {@code totalElements} are stored and {@link #toPage}
+ * rebuilds a page from the caller's live {@link Pageable}, preserving
+ * number/size/sort (same rationale as {@link PageResponse}).
  */
 @Data
 @NoArgsConstructor
@@ -31,20 +34,16 @@ import java.util.List;
 public class CachedProductPage implements Serializable {
 
     @Serial
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
 
-    private List<Product> content;
+    private List<ProductResponse> content;
     private long totalElements;
 
-    public static CachedProductPage of(Page<Product> page) {
-        return new CachedProductPage(new ArrayList<>(page.getContent()), page.getTotalElements());
+    public static CachedProductPage of(List<ProductResponse> content, long totalElements) {
+        return new CachedProductPage(new ArrayList<>(content), totalElements);
     }
 
-    /**
-     * Rebuilds a {@link Page} using the caller's original {@link Pageable} so the
-     * page number, size and sort are preserved for the response envelope.
-     */
-    public Page<Product> toPage(Pageable pageable) {
+    public Page<ProductResponse> toPage(Pageable pageable) {
         return new PageImpl<>(content, pageable, totalElements);
     }
 }

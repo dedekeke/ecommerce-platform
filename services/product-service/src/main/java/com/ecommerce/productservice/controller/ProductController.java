@@ -92,7 +92,7 @@ public class ProductController {
         Sort sort = Sort.by(sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC, safeSortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<Product> products;
+        Page<ProductResponse> products;
 
         if (search != null || resolvedCategoryId != null || minPrice != null || maxPrice != null) {
             // Advanced search
@@ -106,8 +106,7 @@ public class ProductController {
             products = productService.getAllProducts(pageable);
         }
 
-        Page<ProductResponse> response = products.map(productMapper::toResponse);
-        return ResponseEntity.ok(PageResponse.from(response));
+        return ResponseEntity.ok(PageResponse.from(products));
     }
 
     private Long resolveCategoryId(String categoryId) {
@@ -159,9 +158,8 @@ public class ProductController {
         log.info("GET /api/v1/products/featured");
 
         Pageable pageable = PageRequest.of(page, size);
-        Page<Product> products = productService.getFeaturedProducts(pageable);
-        Page<ProductResponse> response = products.map(productMapper::toResponse);
-        return ResponseEntity.ok(PageResponse.from(response));
+        Page<ProductResponse> products = productService.getFeaturedProducts(pageable);
+        return ResponseEntity.ok(PageResponse.from(products));
     }
 
     @PostMapping

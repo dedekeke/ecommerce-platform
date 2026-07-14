@@ -87,8 +87,12 @@ public class CacheConfig {
         return manager;
     }
 
-    @Bean
-    public RedisCacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
+    /**
+     * The exact ObjectMapper/serializer used for the L2 (Redis) payloads.
+     * Package-private so tests can round-trip cached values through the real
+     * production serialization config without booting Redis.
+     */
+    public GenericJackson2JsonRedisSerializer redisSerializer() {
         // SECURITY: type-allowlist validator restricts polymorphic deserialization to known
         // application packages, preventing Jackson gadget attacks via crafted Redis payloads.
         PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
@@ -109,7 +113,12 @@ public class CacheConfig {
             JsonTypeInfo.As.PROPERTY
         );
 
-        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(objectMapper);
+        return new GenericJackson2JsonRedisSerializer(objectMapper);
+    }
+
+    @Bean
+    public RedisCacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
+        GenericJackson2JsonRedisSerializer serializer = redisSerializer();
 
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
             .entryTtl(Duration.ofMinutes(30))

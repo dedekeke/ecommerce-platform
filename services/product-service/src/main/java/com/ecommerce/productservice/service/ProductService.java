@@ -1,5 +1,7 @@
 package com.ecommerce.productservice.service;
 
+import com.ecommerce.productservice.dto.ProductResponse;
+import com.ecommerce.productservice.mapper.ProductMapper;
 import com.ecommerce.productservice.model.Product;
 import com.ecommerce.productservice.repository.CategoryRepository;
 import com.ecommerce.productservice.repository.ProductRepository;
@@ -30,6 +32,7 @@ public class ProductService {
     private final CategoryRepository categoryRepository;
     private final com.ecommerce.productservice.event.ProductEventPublisher eventPublisher;
     private final ProductListingCache listingCache;
+    private final ProductMapper productMapper;
 
     /**
      * Get product by ID.
@@ -60,9 +63,10 @@ public class ProductService {
     }
 
     /**
-     * Get all products with pagination.
+     * Get all products with pagination. Served from the short-TTL listing cache
+     * as already-mapped DTOs (see {@link ProductListingCache}).
      */
-    public Page<Product> getAllProducts(Pageable pageable) {
+    public Page<ProductResponse> getAllProducts(Pageable pageable) {
         log.debug("Fetching all products with pagination: {}", pageable);
         return listingCache.getAllProducts(pageable).toPage(pageable);
     }
@@ -70,17 +74,18 @@ public class ProductService {
     /**
      * Get active products only.
      */
-    public Page<Product> getActiveProducts(Pageable pageable) {
+    public Page<ProductResponse> getActiveProducts(Pageable pageable) {
         log.debug("Fetching active products with pagination: {}", pageable);
         return listingCache.getActiveProducts(pageable).toPage(pageable);
     }
 
     /**
-     * Get available products (active and in stock).
+     * Get available products (active and in stock). Uncached; mapped within this
+     * read-only transaction so the returned DTOs are session-independent.
      */
-    public Page<Product> getAvailableProducts(Pageable pageable) {
+    public Page<ProductResponse> getAvailableProducts(Pageable pageable) {
         log.debug("Fetching available products with pagination: {}", pageable);
-        return productRepository.findAvailable(pageable);
+        return productRepository.findAvailable(pageable).map(productMapper::toResponse);
     }
 
     /**
@@ -94,7 +99,7 @@ public class ProductService {
     /**
      * Get products by category ID.
      */
-    public Page<Product> getProductsByCategory(Long categoryId, Pageable pageable) {
+    public Page<ProductResponse> getProductsByCategory(Long categoryId, Pageable pageable) {
         log.debug("Fetching products by category ID: {}", categoryId);
         return listingCache.getProductsByCategory(categoryId, pageable).toPage(pageable);
     }
@@ -120,13 +125,13 @@ public class ProductService {
     /**
      * Advanced search with multiple filters.
      */
-    public Page<Product> advancedSearch(String searchTerm, Long categoryId, BigDecimal minPrice,
-                                        BigDecimal maxPrice, boolean activeOnly, boolean inStockOnly,
-                                        Pageable pageable) {
+    public Page<ProductResponse> advancedSearch(String searchTerm, Long categoryId, BigDecimal minPrice,
+                                                BigDecimal maxPrice, boolean activeOnly, boolean inStockOnly,
+                                                Pageable pageable) {
         log.debug("Advanced search - term: {}, categoryId: {}, priceRange: {}-{}, activeOnly: {}, inStockOnly: {}",
             searchTerm, categoryId, minPrice, maxPrice, activeOnly, inStockOnly);
         return productRepository.advancedSearch(searchTerm, categoryId, minPrice, maxPrice,
-            activeOnly, inStockOnly, pageable);
+            activeOnly, inStockOnly, pageable).map(productMapper::toResponse);
     }
 
     /**
@@ -140,7 +145,7 @@ public class ProductService {
     /**
      * Get featured products.
      */
-    public Page<Product> getFeaturedProducts(Pageable pageable) {
+    public Page<ProductResponse> getFeaturedProducts(Pageable pageable) {
         log.debug("Fetching featured products");
         return listingCache.getFeaturedProducts(pageable).toPage(pageable);
     }

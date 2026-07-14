@@ -2,6 +2,8 @@ package cachetestsupport;
 
 import com.ecommerce.productservice.config.LayeredCacheManager;
 import com.ecommerce.productservice.event.ProductEventPublisher;
+import com.ecommerce.productservice.mapper.CategoryMapper;
+import com.ecommerce.productservice.mapper.ProductMapper;
 import com.ecommerce.productservice.repository.CategoryRepository;
 import com.ecommerce.productservice.repository.ProductRepository;
 import com.ecommerce.productservice.service.ProductListingCache;
@@ -66,15 +68,22 @@ public class ProductListingCacheTestConfig {
     }
 
     @Bean
-    public ProductListingCache productListingCache(ProductRepository productRepository) {
-        return new ProductListingCache(productRepository);
+    public ProductMapper productMapper() {
+        return new ProductMapper(new CategoryMapper());
+    }
+
+    @Bean
+    public ProductListingCache productListingCache(ProductRepository productRepository, ProductMapper productMapper) {
+        return new ProductListingCache(productRepository, productMapper);
     }
 
     @Bean
     public ProductService productService(ProductRepository productRepository,
                                          CategoryRepository categoryRepository,
                                          ProductEventPublisher eventPublisher,
-                                         ProductListingCache productListingCache) {
-        return new ProductService(productRepository, categoryRepository, eventPublisher, productListingCache);
+                                         ProductListingCache productListingCache,
+                                         ProductMapper productMapper) {
+        return new ProductService(productRepository, categoryRepository, eventPublisher,
+            productListingCache, productMapper);
     }
 }

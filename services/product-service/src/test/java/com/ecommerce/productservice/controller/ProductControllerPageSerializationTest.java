@@ -2,7 +2,6 @@ package com.ecommerce.productservice.controller;
 
 import com.ecommerce.productservice.dto.ProductResponse;
 import com.ecommerce.productservice.mapper.ProductMapper;
-import com.ecommerce.productservice.model.Product;
 import com.ecommerce.productservice.service.CategoryService;
 import com.ecommerce.productservice.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,15 +59,6 @@ class ProductControllerPageSerializationTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(productController).build();
-        lenient().when(productMapper.toResponse(any(Product.class))).thenReturn(sampleResponse());
-    }
-
-    private static Product sampleProduct() {
-        Product product = new Product();
-        product.setId(1L);
-        product.setSku("SKU-1");
-        product.setName("Sample");
-        return product;
     }
 
     private static ProductResponse sampleResponse() {
@@ -81,7 +71,7 @@ class ProductControllerPageSerializationTest {
 
     @Test
     void should_omitPageableAndSort_when_getAllProducts() throws Exception {
-        Page<Product> page = new PageImpl<>(List.of(sampleProduct()), PageRequest.of(0, 20), 1);
+        Page<ProductResponse> page = new PageImpl<>(List.of(sampleResponse()), PageRequest.of(0, 20), 1);
         lenient().when(productService.getAllProducts(any())).thenReturn(page);
 
         mockMvc.perform(get("/api/products"))
@@ -92,7 +82,7 @@ class ProductControllerPageSerializationTest {
 
     @Test
     void should_exposeStablePageFields_when_getAllProducts() throws Exception {
-        Page<Product> page = new PageImpl<>(List.of(sampleProduct()), PageRequest.of(0, 20), 1);
+        Page<ProductResponse> page = new PageImpl<>(List.of(sampleResponse()), PageRequest.of(0, 20), 1);
         lenient().when(productService.getAllProducts(any())).thenReturn(page);
 
         mockMvc.perform(get("/api/products"))
@@ -111,7 +101,7 @@ class ProductControllerPageSerializationTest {
 
     @Test
     void should_omitPageableAndSort_when_getFeaturedProducts() throws Exception {
-        Page<Product> page = new PageImpl<>(List.of(sampleProduct()), PageRequest.of(0, 10), 1);
+        Page<ProductResponse> page = new PageImpl<>(List.of(sampleResponse()), PageRequest.of(0, 10), 1);
         lenient().when(productService.getFeaturedProducts(any())).thenReturn(page);
 
         mockMvc.perform(get("/api/products/featured"))
@@ -122,7 +112,7 @@ class ProductControllerPageSerializationTest {
 
     @Test
     void should_exposeStablePageFields_when_getFeaturedProducts() throws Exception {
-        Page<Product> page = new PageImpl<>(List.of(sampleProduct()), PageRequest.of(0, 10), 1);
+        Page<ProductResponse> page = new PageImpl<>(List.of(sampleResponse()), PageRequest.of(0, 10), 1);
         lenient().when(productService.getFeaturedProducts(any())).thenReturn(page);
 
         mockMvc.perform(get("/api/products/featured"))
