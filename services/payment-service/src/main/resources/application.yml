@@ -11,8 +11,9 @@ spring:
     password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
+      # Env-overridable pool (docs/db-connection-budget.md); tune without rebuild.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
       connection-timeout: 3000
       idle-timeout: 600000
       max-lifetime: 1800000
