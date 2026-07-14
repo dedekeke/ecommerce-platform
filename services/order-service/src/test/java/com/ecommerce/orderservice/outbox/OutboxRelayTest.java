@@ -22,7 +22,11 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -64,7 +68,7 @@ class OutboxRelayTest {
             buildEvent(2L, "order-2", "order.updated"),
             buildEvent(3L, "order-3", "order.cancelled")
         );
-        when(outboxRepository.findUnpublished(any(Pageable.class))).thenReturn(batch);
+        when(outboxRepository.claimUnpublishedForUpdate(any(Pageable.class))).thenReturn(batch);
         when(kafkaTemplate.send(any(ProducerRecord.class)))
             .thenAnswer(inv -> succeededFuture((ProducerRecord<String, String>) inv.getArgument(0)));
         when(outboxRepository.markPublished(anyList(), any(LocalDateTime.class))).thenReturn(3);
@@ -95,7 +99,7 @@ class OutboxRelayTest {
         OutboxEvent failing = buildEvent(2L, "order-fail", "order.created");
         OutboxEvent ok2 = buildEvent(3L, "order-ok2", "order.created");
 
-        when(outboxRepository.findUnpublished(any(Pageable.class)))
+        when(outboxRepository.claimUnpublishedForUpdate(any(Pageable.class)))
             .thenReturn(List.of(ok1, failing, ok2));
 
         when(kafkaTemplate.send(any(ProducerRecord.class)))
@@ -116,19 +120,15 @@ class OutboxRelayTest {
         // Failing row must stay unpublished so the next poll can retry it.
         assertThat(idsCaptor.getValue()).containsExactly(1L, 3L);
 
-        // Failed row must have its attempt count bumped and lastError captured.
-        ArgumentCaptor<OutboxEvent> savedCaptor = ArgumentCaptor.forClass(OutboxEvent.class);
-        verify(outboxRepository).save(savedCaptor.capture());
-        OutboxEvent updated = savedCaptor.getValue();
-        assertThat(updated.getId()).isEqualTo(2L);
-        assertThat(updated.getAttemptCount()).isEqualTo(1);
-        assertThat(updated.getLastError()).contains("broker unreachable");
+        // Failed row must have its attempt count bumped and lastError captured
+        // via the dedicated recordFailure update (its own short transaction).
+        verify(outboxRepository).recordFailure(eq(2L), eq(1), contains("broker unreachable"));
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void should_doNothing_when_noUnpublishedEvents() {
-        when(outboxRepository.findUnpublished(any(Pageable.class))).thenReturn(List.of());
+        when(outboxRepository.claimUnpublishedForUpdate(any(Pageable.class))).thenReturn(List.of());
 
         relay.relay();
 
@@ -141,22 +141,22 @@ class OutboxRelayTest {
     void should_notMarkAnythingPublished_when_allSendsFail() {
         OutboxEvent e1 = buildEvent(1L, "order-1", "order.created");
         OutboxEvent e2 = buildEvent(2L, "order-2", "order.created");
-        when(outboxRepository.findUnpublished(any(Pageable.class))).thenReturn(List.of(e1, e2));
+        when(outboxRepository.claimUnpublishedForUpdate(any(Pageable.class))).thenReturn(List.of(e1, e2));
         when(kafkaTemplate.send(any(ProducerRecord.class)))
             .thenReturn(failedFuture(new RuntimeException("kafka down")));
 
         relay.relay();
 
         verify(outboxRepository, never()).markPublished(anyList(), any());
-        // Both rows must be saved with bumped attemptCount.
-        verify(outboxRepository, times(2)).save(any(OutboxEvent.class));
+        // Both rows must have their failure recorded with a bumped attemptCount.
+        verify(outboxRepository, times(2)).recordFailure(anyLong(), eq(1), anyString());
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void should_setEventTypeHeader_when_publishingRecord() {
         OutboxEvent event = buildEvent(1L, "order-1", "order.created");
-        when(outboxRepository.findUnpublished(any(Pageable.class))).thenReturn(List.of(event));
+        when(outboxRepository.claimUnpublishedForUpdate(any(Pageable.class))).thenReturn(List.of(event));
         when(kafkaTemplate.send(any(ProducerRecord.class)))
             .thenAnswer(inv -> succeededFuture((ProducerRecord<String, String>) inv.getArgument(0)));
 

@@ -10,7 +10,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -47,11 +46,15 @@ public class OutboxRelay {
         this.batchSize = batchSize;
     }
 
+    /**
+     * Single relay tick: claim (tx1) → publish (no tx) → mark published (tx2).
+     * NOT {@code @Transactional} — the DB connection must not be held across the
+     * blocking Kafka sends. See order-service's copy for full design notes.
+     */
     @Scheduled(fixedDelayString = "${outbox.relay.poll-interval-ms:500}")
-    @Transactional
     public void relay() {
         Pageable page = PageRequest.of(0, batchSize);
-        List<OutboxEvent> batch = outboxRepository.findUnpublished(page);
+        List<OutboxEvent> batch = outboxRepository.claimUnpublishedForUpdate(page);
         if (batch.isEmpty()) {
             return;
         }
@@ -104,11 +107,10 @@ public class OutboxRelay {
     }
 
     private void recordFailure(OutboxEvent event, String reason) {
-        event.setAttemptCount(event.getAttemptCount() + 1);
-        event.setLastError(truncate(reason));
-        outboxRepository.save(event);
+        int attempt = event.getAttemptCount() + 1;
+        outboxRepository.recordFailure(event.getId(), attempt, truncate(reason));
         log.error("Outbox publish failed for event {} (attempt={}): {}",
-            event.getEventId(), event.getAttemptCount(), reason);
+            event.getEventId(), attempt, reason);
     }
 
     private static String truncate(String s) {

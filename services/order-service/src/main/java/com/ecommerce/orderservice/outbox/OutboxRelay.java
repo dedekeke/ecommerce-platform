@@ -10,7 +10,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -24,11 +23,27 @@ import java.util.concurrent.TimeoutException;
  * Polling outbox relay.
  *
  * <p>Strategy: every {@code outbox.relay.poll-interval-ms} milliseconds we
- * claim a batch of unpublished events, publish them to Kafka with the
- * {@code outbox-event-id} header for consumer dedup, then mark the rows
- * published. A failed Kafka publish leaves the row unpublished so the next
- * poll re-attempts; the per-row {@code attempt_count} captures retries so
- * stuck events can be surfaced operationally.
+ * (1) claim a batch of unpublished rows with {@code FOR UPDATE SKIP LOCKED}
+ * in a short transaction, (2) publish them to Kafka <em>outside</em> any DB
+ * transaction, then (3) mark the published rows in a second transaction. A
+ * failed Kafka publish leaves the row unpublished so the next poll re-attempts;
+ * the per-row {@code attempt_count} captures retries so stuck events can be
+ * surfaced operationally.
+ *
+ * <p><b>Replica safety.</b> {@code SKIP LOCKED} lets multiple service instances
+ * run the relay concurrently: each claim locks a disjoint set of rows, so two
+ * instances never publish the same row in the common case. Crucially, the DB
+ * connection is <em>not</em> held across the blocking Kafka send — the claim
+ * transaction commits first — so a slow broker cannot starve the Hikari pool.
+ * The narrow window between the claim commit and {@code markPublished} (during
+ * which another instance could re-claim a not-yet-marked row) is covered by the
+ * existing consumer-side {@code outbox-event-id} dedup, the pattern's safety net.
+ *
+ * <p><b>Ordering.</b> A single claim is created-at ordered and published
+ * sequentially (blocking on each send), and the Kafka key is the aggregate id
+ * so events for one aggregate land on one partition. Strict cross-instance
+ * per-aggregate ordering was never guaranteed (the previous single-transaction
+ * relay only ordered within one instance) and is not introduced here.
  *
  * <p>Disabled in test profile via {@code outbox.relay.enabled=false} so
  * tests can exercise the relay deterministically by calling {@link #relay()}
@@ -63,17 +78,17 @@ public class OutboxRelay {
     }
 
     /**
-     * Single relay tick. Claim batch, publish, mark published.
+     * Single relay tick: claim (tx1) → publish (no tx) → mark published (tx2).
      *
-     * <p>Wrapped in a transaction so the {@code markPublished} update flushes
-     * atomically with the read. If the Kafka send fails for a row we keep
-     * iterating — the row stays unpublished and the next tick retries it.
+     * <p>Deliberately NOT {@code @Transactional} at the method level — holding a
+     * transaction (and its pooled connection) across the blocking Kafka sends is
+     * exactly the failure mode this restructure removes. Each repository call
+     * below opens its own short transaction.
      */
     @Scheduled(fixedDelayString = "${outbox.relay.poll-interval-ms:500}")
-    @Transactional
     public void relay() {
         Pageable page = PageRequest.of(0, batchSize);
-        List<OutboxEvent> batch = outboxRepository.findUnpublished(page);
+        List<OutboxEvent> batch = outboxRepository.claimUnpublishedForUpdate(page);
         if (batch.isEmpty()) {
             return;
         }
@@ -133,11 +148,10 @@ public class OutboxRelay {
     }
 
     private void recordFailure(OutboxEvent event, String reason) {
-        event.setAttemptCount(event.getAttemptCount() + 1);
-        event.setLastError(truncate(reason));
-        outboxRepository.save(event);
+        int attempt = event.getAttemptCount() + 1;
+        outboxRepository.recordFailure(event.getId(), attempt, truncate(reason));
         log.error("Outbox publish failed for event {} (attempt={}): {}",
-            event.getEventId(), event.getAttemptCount(), reason);
+            event.getEventId(), attempt, reason);
     }
 
     private static String truncate(String s) {
