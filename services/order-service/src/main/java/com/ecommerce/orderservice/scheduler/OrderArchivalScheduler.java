@@ -69,13 +69,13 @@ public class OrderArchivalScheduler {
             INSERT INTO orders_archive (
                 id, order_number, user_id, subtotal, tax, shipping_cost, total,
                 status, payment_intent_id, promotion_code, discount_amount,
-                street, city, state, zip_code, country,
+                street, city, state, postal_code, country,
                 created_at, updated_at, archived_at
             )
             SELECT
                 o.id, o.order_number, o.user_id, o.subtotal, o.tax, o.shipping_cost, o.total,
                 o.status, o.payment_intent_id, o.promotion_code, o.discount_amount,
-                o.street, o.city, o.state, o.zip_code, o.country,
+                o.street, o.city, o.state, o.postal_code, o.country,
                 o.created_at, o.updated_at, CURRENT_TIMESTAMP
             FROM orders o
             WHERE o.created_at < ?
