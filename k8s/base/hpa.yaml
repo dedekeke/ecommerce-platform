@@ -1,9 +1,16 @@
-# CPU-based HorizontalPodAutoscalers. Targets 70% CPU.
+# CPU-based HorizontalPodAutoscalers.
 #
-# cart-service / user-service are capped at maxReplicas 2 to stay inside the
-# shared-PostgreSQL connection budget (docs/db-connection-budget.md: co-tenant
-# ceilings user=2, cart=2). Raising these caps requires bumping DB_POOL_SIZE math
-# and POSTGRES_MAX_CONNECTIONS in lockstep.
+# Authority split (see PR "infra/autoscaling-hygiene"):
+#   - product-service, api-gateway, cart-service, user-service -> HPA (this file).
+#   - order-service, payment-service -> KEDA ScaledObject (k8s/base/scaling/*),
+#     which owns a CPU trigger alongside the event/outbox-lag triggers. They were
+#     removed from this file to end the dual-autoscaler conflict (two controllers
+#     driving one Deployment).
+#
+# Targets 70% CPU. cart-service / user-service are capped at maxReplicas 2 to stay
+# inside the shared-PostgreSQL connection budget (docs/db-connection-budget.md:
+# co-tenant ceilings user=2, cart=2). Raising these caps requires bumping
+# DB_POOL_SIZE math and POSTGRES_MAX_CONNECTIONS in lockstep.
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -37,46 +44,6 @@ spec:
         - type: Percent
           value: 100
           periodSeconds: 30
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: order-service-hpa
-  namespace: ecommerce
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: order-service
-  minReplicas: 2
-  maxReplicas: 8
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: payment-service-hpa
-  namespace: ecommerce
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: payment-service
-  minReplicas: 2
-  maxReplicas: 8
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
 ---
 # api-gateway: latency-critical entry point (ZGC, no DB pool), so it scales purely
 # on CPU with the same burst/cooldown behaviour as product-service.

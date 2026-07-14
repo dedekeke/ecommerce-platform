@@ -1,5 +1,29 @@
-# KEDA ScaledObject for order-service.
-# Scales 1->4 when saga response event lag exceeds 50 messages.
+# KEDA ScaledObject for order-service — the SINGLE autoscaling authority for this
+# Deployment. The CPU HorizontalPodAutoscaler that previously lived in
+# k8s/base/hpa.yaml (max 8) was removed to end a dual-autoscaler conflict; its CPU
+# behaviour is reproduced by the cpu trigger below so KEDA now owns both the
+# event-lag and the CPU dimension.
+#
+# Scales 2->4 on the max of: saga response event lag (>50 msgs) or 70% CPU.
+#
+# CONNECTION-BUDGET GUARD: maxReplicaCount is deliberately held at 4 here. Raising
+# it to 8 is only safe once the right-sized Hikari pools + pinned Postgres
+# max_connections from PR #103 (docs/db-connection-budget.md) land — order-service
+# on `develop` still hardcodes maximum-pool-size 20, so 8 replicas would open
+# 8 x 20 = 160 connections against a shared PostgreSQL with no ceiling. A dedicated
+# follow-up commit ("REQUIRES #103") bumps 4 -> 8; the merger must hold/drop that
+# commit until #103 is merged. At 4 this branch is safe on its own (4 <= the 4-cap
+# this ScaledObject already carried on develop, and below the removed HPA's max 8).
+#
+# minReplicaCount 2 preserves the HA floor the removed HPA guaranteed and keeps
+# order-service-pdb (minAvailable 1) effective. Env overlays may cap maxReplicaCount
+# lower (prod 4, staging 2).
+#
+# KEDA quirk (v2.14.0): a cpu trigger combined with `fallback:` is flagged
+# "not supported" by CheckFallbackValid, but v2.14.0 swallows that webhook error and
+# the runtime fallback path only evaluates External metrics, so fallback still works
+# for the kafka triggers and nothing breaks today. Revisit on KEDA upgrade — a future
+# release that enforces the check could reject create/update of this object.
 #
 # Note: at the time of authoring, order-service has no @KafkaListener
 # methods (it is a saga orchestrator that currently only produces). The
@@ -24,11 +48,11 @@ spec:
     name: order-service
   pollingInterval: 15
   cooldownPeriod: 300
-  minReplicaCount: 1
+  minReplicaCount: 2
   maxReplicaCount: 4
   fallback:
     failureThreshold: 3
-    replicas: 1
+    replicas: 2
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:
@@ -45,6 +69,10 @@ spec:
               value: 100
               periodSeconds: 30
   triggers:
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "70"
     - type: kafka
       metadata:
         bootstrapServers: kafka:9092
