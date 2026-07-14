@@ -6,6 +6,8 @@ interface ImportMetaEnv {
   readonly VITE_AUTH0_CLIENT_ID: string
   readonly VITE_AUTH0_AUDIENCE: string
   readonly VITE_AUTH0_REDIRECT_URI: string
+  /** 'mock' enables the dev-server-only local test auth mode — see src/auth/mockAuth.ts */
+  readonly VITE_AUTH_MODE?: string
   readonly VITE_MFE_PRODUCT_CATALOG_URL?: string
   readonly VITE_MFE_CART_URL?: string
   readonly VITE_MFE_CHECKOUT_URL?: string

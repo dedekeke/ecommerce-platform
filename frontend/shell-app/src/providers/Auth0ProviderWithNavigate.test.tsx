@@ -4,11 +4,12 @@ import { MemoryRouter } from 'react-router-dom'
 import { Auth0ProviderWithNavigate } from './Auth0ProviderWithNavigate'
 import type { Auth0ProviderWithConfigOptions } from '@auth0/auth0-react'
 
-vi.mock('@auth0/auth0-react', () => ({
+vi.mock('@auth0/auth0-react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auth0/auth0-react')>()),
   Auth0Provider: vi.fn(({ children }) => <div data-testid="auth0-provider">{children}</div>),
 }))
 
-import { Auth0Provider } from '@auth0/auth0-react'
+import { Auth0Provider, useAuth0 } from '@auth0/auth0-react'
 
 const mockedAuth0Provider = vi.mocked(Auth0Provider)
 
@@ -90,5 +91,59 @@ describe('Auth0ProviderWithNavigate', () => {
 
     const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderWithConfigOptions
     expect(callArgs.useRefreshTokens).toBe(true)
+  })
+
+  describe('when VITE_AUTH_MODE=mock (local test auth mode)', () => {
+    beforeEach(() => {
+      vi.stubEnv('VITE_AUTH_MODE', 'mock')
+    })
+
+    it('should render children through MockAuthProvider without mounting Auth0Provider', () => {
+      render(
+        <MemoryRouter>
+          <Auth0ProviderWithNavigate>
+            <div>Test Child</div>
+          </Auth0ProviderWithNavigate>
+        </MemoryRouter>
+      )
+
+      expect(screen.getByText('Test Child')).toBeInTheDocument()
+      expect(screen.queryByTestId('auth0-provider')).not.toBeInTheDocument()
+      expect(mockedAuth0Provider).not.toHaveBeenCalled()
+    })
+
+    it('should report the deterministic mock identity as authenticated', () => {
+      function Probe() {
+        const { isAuthenticated, user } = useAuth0()
+        return <div>{isAuthenticated ? `sub:${user?.sub}` : 'anonymous'}</div>
+      }
+
+      render(
+        <MemoryRouter>
+          <Auth0ProviderWithNavigate>
+            <Probe />
+          </Auth0ProviderWithNavigate>
+        </MemoryRouter>
+      )
+
+      expect(screen.getByText('sub:e2e|test-user')).toBeInTheDocument()
+    })
+  })
+
+  describe('when VITE_AUTH_MODE has a non-mock value', () => {
+    it('should keep the real Auth0Provider path', () => {
+      vi.stubEnv('VITE_AUTH_MODE', 'auth0')
+
+      render(
+        <MemoryRouter>
+          <Auth0ProviderWithNavigate>
+            <div>Test Child</div>
+          </Auth0ProviderWithNavigate>
+        </MemoryRouter>
+      )
+
+      expect(screen.getByTestId('auth0-provider')).toBeInTheDocument()
+      expect(mockedAuth0Provider).toHaveBeenCalledOnce()
+    })
   })
 })

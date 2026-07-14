@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import federation from '@originjs/vite-plugin-federation'
 import { resolve } from 'path'
+import { mockAuthBuildGuard } from './mockAuthBuildGuard'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -11,6 +12,8 @@ export default defineConfig({
     },
   },
   plugins: [
+    // Fails any `vite build` when VITE_AUTH_MODE=mock (MOCK_AUTH_PRODUCTION_GUARD).
+    mockAuthBuildGuard(),
     react(),
     federation({
       name: 'shell',

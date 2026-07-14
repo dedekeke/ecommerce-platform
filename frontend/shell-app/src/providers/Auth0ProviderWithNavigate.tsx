@@ -1,6 +1,7 @@
 import { Auth0Provider, type AppState } from '@auth0/auth0-react'
 import { useNavigate } from 'react-router-dom'
 import { type ReactNode, useCallback } from 'react'
+import { isMockAuthMode, MockAuthProvider } from '../auth'
 
 interface Auth0ProviderWithNavigateProps {
   children: ReactNode
@@ -20,6 +21,13 @@ export const Auth0ProviderWithNavigate = ({ children }: Auth0ProviderWithNavigat
     },
     [navigate]
   )
+
+  // Local test auth mode (VITE_AUTH_MODE=mock, dev server only): bypass Auth0
+  // entirely with a deterministic test identity. See src/auth/mockAuth.ts for
+  // the runtime + build-time safety guards keeping this out of production.
+  if (isMockAuthMode()) {
+    return <MockAuthProvider>{children}</MockAuthProvider>
+  }
 
   if (!domain || !clientId) {
     console.error('Auth0 configuration is missing. Please check your environment variables.')

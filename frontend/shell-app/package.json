@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:e2e": "VITE_AUTH_MODE=mock vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
