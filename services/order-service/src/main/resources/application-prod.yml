@@ -6,3 +6,17 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# Log-level hardening for production (Scalability P1).
+# Silences verbose SQL / parameter-binding logging inherited from the base profile.
+logging:
+  level:
+    root: WARN
+    com.ecommerce: INFO
+    # Exact-key override: logback applies levels per exact logger name, so the
+    # base profile's com.ecommerce.orderservice: DEBUG is NOT lowered by the
+    # com.ecommerce ancestor above and must be pinned explicitly.
+    com.ecommerce.orderservice: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
