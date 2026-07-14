@@ -24,6 +24,8 @@ import org.springframework.context.annotation.Import;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -51,7 +53,10 @@ import static org.mockito.Mockito.*;
                 "resilience4j.circuitbreaker.instances.product-service.failureRateThreshold=50",
                 "resilience4j.circuitbreaker.instances.product-service.waitDurationInOpenState=30s",
                 "resilience4j.circuitbreaker.instances.product-service.permittedNumberOfCallsInHalfOpenState=2",
-                "resilience4j.circuitbreaker.instances.product-service.automaticTransitionFromOpenToHalfOpenEnabled=false"
+                "resilience4j.circuitbreaker.instances.product-service.automaticTransitionFromOpenToHalfOpenEnabled=false",
+                // single permit + no wait so the saturation path is deterministic
+                "resilience4j.bulkhead.instances.product-service.maxConcurrentCalls=1",
+                "resilience4j.bulkhead.instances.product-service.maxWaitDuration=0ms"
         }
 )
 class ProductServiceGatewayResilienceTest {
@@ -208,5 +213,46 @@ class ProductServiceGatewayResilienceTest {
 
         // 4xx is a legitimate product-service response, not an outage.
         assertThat(breaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
+    }
+
+    @Test
+    @DisplayName("bulkhead saturation is recorded as a circuit-breaker FAILURE (not a success)")
+    void should_recordBulkheadFullAsBreakerFailure() throws InterruptedException {
+        // Regression guard for the record-all vs allow-list semantics bug:
+        // @CircuitBreaker wraps @Bulkhead, so BulkheadFullException must count as
+        // a CB failure, otherwise the breaker can never open on saturation.
+        CountDownLatch permitHeld = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(productServiceClient.getProductById(PRODUCT_ID)).thenAnswer(invocation -> {
+            permitHeld.countDown();
+            release.await(2, TimeUnit.SECONDS);
+            return validProduct();
+        });
+
+        Thread holder = new Thread(() -> {
+            try {
+                gateway.getProductById(PRODUCT_ID);
+            } catch (RuntimeException ignored) {
+                // not relevant to this test
+            }
+        });
+        holder.start();
+        assertThat(permitHeld.await(2, TimeUnit.SECONDS))
+                .as("holder thread should occupy the only bulkhead permit")
+                .isTrue();
+
+        int failuresBefore = breaker.getMetrics().getNumberOfFailedCalls();
+
+        // Second concurrent call: no permit, no wait -> rejected and failed fast.
+        assertThatThrownBy(() -> gateway.getProductById(PRODUCT_ID))
+                .isInstanceOf(ProductServiceUnavailableException.class);
+
+        int failuresAfter = breaker.getMetrics().getNumberOfFailedCalls();
+        assertThat(failuresAfter)
+                .as("bulkhead rejection must be tallied as a breaker failure")
+                .isGreaterThan(failuresBefore);
+
+        release.countDown();
+        holder.join(2000);
     }
 }

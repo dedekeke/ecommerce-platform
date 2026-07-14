@@ -1,8 +1,10 @@
 package com.ecommerce.cartservice.exception;
 
 import feign.FeignException;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -20,6 +22,38 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+
+    private static final String PRODUCT_SERVICE_CB = "product-service";
+    /** Fallback when the breaker config can't be read (matches product-service default). */
+    private static final long DEFAULT_RETRY_AFTER_SECONDS = 20L;
+
+    private final CircuitBreakerRegistry circuitBreakerRegistry;
+
+    public GlobalExceptionHandler(
+            @Autowired(required = false) CircuitBreakerRegistry circuitBreakerRegistry) {
+        this.circuitBreakerRegistry = circuitBreakerRegistry;
+    }
+
+    /**
+     * Retry-After (seconds) derived from the breaker's configured
+     * waitDurationInOpenState so clients back off until the breaker is likely
+     * to probe again, instead of hammering into fail-fast 503s.
+     */
+    private long productServiceRetryAfterSeconds() {
+        if (circuitBreakerRegistry == null) {
+            return DEFAULT_RETRY_AFTER_SECONDS;
+        }
+        try {
+            long millis = circuitBreakerRegistry.circuitBreaker(PRODUCT_SERVICE_CB)
+                    .getCircuitBreakerConfig()
+                    .getWaitIntervalFunctionInOpenState()
+                    .apply(1);
+            return Math.max(1L, millis / 1000L);
+        } catch (Exception e) {
+            log.debug("Falling back to default Retry-After; could not read CB config: {}", e.getMessage());
+            return DEFAULT_RETRY_AFTER_SECONDS;
+        }
+    }
 
     @ExceptionHandler(CartNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleCartNotFoundException(
@@ -84,7 +118,7 @@ public class GlobalExceptionHandler {
                 .build();
 
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .header("Retry-After", "5")
+                .header("Retry-After", String.valueOf(productServiceRetryAfterSeconds()))
                 .body(errorResponse);
     }
 

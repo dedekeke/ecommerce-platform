@@ -47,20 +47,22 @@ resilience4j:
         minimumNumberOfCalls: ${CB_DEFAULT_MIN_CALLS:5}
         failureRateThreshold: ${CB_DEFAULT_FAILURE_RATE:50}
         slowCallRateThreshold: ${CB_DEFAULT_SLOW_CALL_RATE:80}
-        slowCallDurationThreshold: ${CB_DEFAULT_SLOW_CALL_DURATION:2s}
+        # Must stay strictly BELOW the product-service Feign readTimeout (2000ms),
+        # otherwise a call always errors before it can be counted as "slow" and
+        # slow-call detection is dead.
+        slowCallDurationThreshold: ${CB_DEFAULT_SLOW_CALL_DURATION:1500ms}
         waitDurationInOpenState: ${CB_DEFAULT_WAIT_IN_OPEN:30s}
         permittedNumberOfCallsInHalfOpenState: ${CB_DEFAULT_HALF_OPEN_CALLS:3}
         automaticTransitionFromOpenToHalfOpenEnabled: true
-        # Only genuine unavailability trips the breaker. A 4xx (e.g. product
-        # not found) is a valid product-service answer, not an outage.
-        recordExceptions:
-          - java.io.IOException
-          - java.util.concurrent.TimeoutException
-          - feign.RetryableException
-          - feign.FeignException.FeignServerException
+        # Record-all semantics: every exception counts as a failure EXCEPT the
+        # ignored ones. We deliberately do NOT use a recordExceptions allow-list:
+        # since @CircuitBreaker wraps @Bulkhead, a BulkheadFullException (and any
+        # other unavailability type) must count as a failure so the breaker can
+        # open on saturation. An allow-list would flip semantics and treat every
+        # unlisted exception as SUCCESS. Only genuine client answers are ignored:
+        # a 4xx (e.g. product-not-found) is a valid response, not an outage.
         ignoreExceptions:
           - feign.FeignException.FeignClientException
-          - com.ecommerce.cartservice.exception.ProductNotAvailableException
     instances:
       product-service:
         baseConfig: default

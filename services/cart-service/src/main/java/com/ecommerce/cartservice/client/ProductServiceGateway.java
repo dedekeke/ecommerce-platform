@@ -59,8 +59,9 @@ public class ProductServiceGateway {
     /**
      * A 4xx from product-service is a legitimate answer about the product (e.g.
      * 404 not found), not a brownout — re-throw it so the service layer maps it
-     * to a product-not-available (400) exactly as before. Not recorded as a
-     * circuit-breaker failure (see recordExceptions in application.yml).
+     * to a product-not-available (400) exactly as before. Ignored by the
+     * circuit breaker (see ignoreExceptions in application.yml) so it never
+     * trips the breaker.
      */
     @SuppressWarnings("unused")
     private ProductDto getProductByIdFallback(String productId, FeignException.FeignClientException ex) {
