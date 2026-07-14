@@ -36,7 +36,7 @@ test.describe('Cart edge cases', () => {
     await expect(increaseBtn).toBeVisible({ timeout: 8000 })
     await increaseBtn.click()
 
-    const qtyInput = page.getByLabel(/quantity/i)
+    const qtyInput = page.getByRole('spinbutton', { name: /quantity/i })
     await expect(qtyInput).toHaveValue('2', { timeout: 5000 })
   })
 
@@ -111,11 +111,12 @@ test.describe('Cart edge cases', () => {
     })
 
     await page.goto('/cart')
-    await expect(page.getByText('$20.00')).toBeVisible({ timeout: 8000 })
+    // Price renders in several places (line price, subtotal, total) — first() avoids strict-mode violations.
+    await expect(page.getByText('$20.00').first()).toBeVisible({ timeout: 8000 })
 
     const increaseBtn = page.getByRole('button', { name: /increase quantity/i })
     await increaseBtn.click()
 
-    await expect(page.getByText('$40.00')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('$40.00').first()).toBeVisible({ timeout: 5000 })
   })
 })

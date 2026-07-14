@@ -7,11 +7,16 @@ All five frontend applications and the API gateway must be running before execut
 | Service | Command | URL |
 |---------|---------|-----|
 | shell-app | `cd frontend/shell-app && npm run dev:e2e` | http://localhost:5173 |
-| product-catalog-mfe | `cd frontend/product-catalog-mfe && npm run dev` | http://localhost:5001 |
-| cart-mfe | `cd frontend/cart-mfe && npm run dev` | http://localhost:5002 |
-| checkout-mfe | `cd frontend/checkout-mfe && npm run dev` | http://localhost:5003 |
+| product-catalog-mfe | `cd frontend/product-catalog-mfe && npm run build && npm run preview -- --port 5001 --strictPort` | http://localhost:5001 |
+| cart-mfe | `cd frontend/cart-mfe && npm run build && npm run preview -- --port 5002 --strictPort` | http://localhost:5002 |
+| checkout-mfe | `cd frontend/checkout-mfe && npm run build && npm run preview -- --port 5003 --strictPort` | http://localhost:5003 |
 | user-dashboard-mfe | `cd frontend/user-dashboard-mfe && npm start` | http://localhost:5004 |
 | API gateway | see docker-compose.yml | http://localhost:8080 |
+
+> The webpack/vite-federation MFEs must run `build` + `preview` (not `dev`):
+> @originjs/vite-plugin-federation only emits `assets/remoteEntry.js` during a
+> build, so a plain `npm run dev` serves the index.html fallback and the shell
+> fails with "Failed to fetch dynamically imported module".
 
 Browsers must be installed once:
 
