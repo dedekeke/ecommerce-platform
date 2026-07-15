@@ -18,20 +18,23 @@ afterEach(() => {
 })
 afterAll(() => server.close())
 
+const mockNavigate = vi.fn()
+
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
   return {
     ...actual,
-    useNavigate: () => vi.fn(),
+    useNavigate: () => mockNavigate,
   }
 })
 
 // Stub StripeCheckout so the payment step doesn't require the real Stripe.js SDK; the button
-// lets tests simulate a confirmed PaymentIntent without ever touching raw card data.
+// lets tests simulate a confirmed PaymentIntent without ever touching raw card data. Order
+// creation (POST /orders, order-first checkout — PR#122) still goes through real MSW handlers.
 vi.mock('../components/StripeCheckout', () => ({
-  default: ({ onConfirmed }: { onConfirmed: (id: string) => void }) => (
+  default: ({ onConfirmed, clientSecret }: { onConfirmed: (id: string) => void; clientSecret: string }) => (
     <div>
-      <p>Payment step</p>
+      <p>Payment step (secret: {clientSecret})</p>
       <button onClick={() => onConfirmed('pi_confirmed_test')}>Confirm payment (test stub)</button>
     </div>
   ),
@@ -45,9 +48,17 @@ const fillShippingForm = async () => {
   await userEvent.type(screen.getByLabelText(/postal code/i), '94105')
 }
 
+const goToReviewStep = async () => {
+  await fillShippingForm()
+  await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
+  await userEvent.click(screen.getByRole('button', { name: /next/i }))
+  await waitFor(() => expect(screen.getByText(/review your order/i)).toBeInTheDocument())
+}
+
 describe('CheckoutPage', () => {
   beforeEach(() => {
     useCartStore.getState().addItem({ productId: 'prod-1', name: 'Headphones', price: 79.99 })
+    mockNavigate.mockReset()
   })
 
   it('should render the Shipping step by default', () => {
@@ -72,49 +83,38 @@ describe('CheckoutPage', () => {
     })
   })
 
-  it('should advance to Payment step when Next is clicked on valid shipping', async () => {
+  it('should advance to the Review step (not Payment) when Next is clicked on valid shipping', async () => {
     renderWithProviders(<CheckoutPage />)
-    await fillShippingForm()
-    await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
-    await userEvent.click(screen.getByRole('button', { name: /next/i }))
-    await waitFor(() => {
-      expect(screen.getByText(/payment step/i)).toBeInTheDocument()
-    })
+    await goToReviewStep()
+    expect(screen.getByText(/review your order/i)).toBeInTheDocument()
   })
 
-  it('should go back to Shipping step when Back is clicked on Payment step', async () => {
+  it('should go back to Shipping step when Back is clicked on the Review step', async () => {
     renderWithProviders(<CheckoutPage />)
-    await fillShippingForm()
-    await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
-    await userEvent.click(screen.getByRole('button', { name: /next/i }))
-    await waitFor(() => expect(screen.getByText(/payment step/i)).toBeInTheDocument())
+    await goToReviewStep()
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
     await waitFor(() => {
       expect(screen.getByLabelText(/full name/i)).toBeInTheDocument()
     })
   })
 
-  it('should advance to Review step after confirming payment', async () => {
+  it('should submit the order (POST /orders) and advance to the Payment step when confirming Review', async () => {
     renderWithProviders(<CheckoutPage />)
-    await fillShippingForm()
-    await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
-    await userEvent.click(screen.getByRole('button', { name: /next/i }))
-    await waitFor(() => expect(screen.getByText(/payment step/i)).toBeInTheDocument())
+    await goToReviewStep()
 
-    await userEvent.click(screen.getByRole('button', { name: /confirm payment/i }))
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
-    await userEvent.click(screen.getByRole('button', { name: /next/i }))
     await waitFor(() => {
-      expect(screen.getByText(/review your order/i)).toBeInTheDocument()
+      expect(screen.getByText(/payment step/i)).toBeInTheDocument()
     })
+    // The clientSecret came from the order response, not a client-created PaymentIntent.
+    expect(screen.getByText(/pi_test_123_secret_abc/)).toBeInTheDocument()
   })
 
-  it('should never render a raw card number, expiry or CVV field at the payment step', async () => {
+  it('should never render a raw card number, expiry or CVV field at any step', async () => {
     renderWithProviders(<CheckoutPage />)
-    await fillShippingForm()
-    await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
-    await userEvent.click(screen.getByRole('button', { name: /next/i }))
+    await goToReviewStep()
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
     await waitFor(() => expect(screen.getByText(/payment step/i)).toBeInTheDocument())
 
     expect(screen.queryByLabelText(/card number/i)).not.toBeInTheDocument()
@@ -122,18 +122,14 @@ describe('CheckoutPage', () => {
     expect(screen.queryByLabelText(/cvv/i)).not.toBeInTheDocument()
   })
 
-  it('should show Place Order button on Review step', async () => {
-    useCheckoutStore.getState().setStep(2)
-    useCheckoutStore.getState().setAddress({
-      fullName: 'Jane',
-      line1: '123 St',
-      city: 'SF',
-      state: 'CA',
-      postalCode: '94105',
-      country: 'US',
-    })
-    useCheckoutStore.getState().setPaymentMethod('pi_test_123')
+  it('should navigate to the confirmation page once Stripe confirms payment', async () => {
     renderWithProviders(<CheckoutPage />)
-    expect(screen.getByRole('button', { name: /place order/i })).toBeInTheDocument()
+    await goToReviewStep()
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+    await waitFor(() => expect(screen.getByText(/payment step/i)).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /confirm payment/i }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('confirmation/order-123'))
   })
 })

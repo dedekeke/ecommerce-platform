@@ -1,61 +1,138 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { act, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { setupServer } from 'msw/node'
+import { http, HttpResponse } from 'msw'
+import { handlers } from '../test/mocks/handlers'
 import { renderWithProviders } from '../test/renderWithProviders'
 import { useCheckoutStore } from '../stores/checkoutStore'
 import { useCartStore } from '../stores/cartStore'
 
-// Stub StripeCheckout so the test asserts the wiring (mount + onConfirmed) without pulling in
-// Stripe.js. The button lets us simulate a confirmed PaymentIntent.
+const API_BASE = 'http://localhost:8080/api'
+const server = setupServer(...handlers)
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
+afterEach(() => {
+  server.resetHandlers()
+  useCheckoutStore.getState().reset()
+  useCartStore.getState().clearCart()
+})
+afterAll(() => server.close())
+
+const mockNavigate = vi.fn()
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return { ...actual, useNavigate: () => mockNavigate }
+})
+
+// Stub StripeCheckout to capture exactly what clientSecret it was mounted with, proving it came
+// from the order response rather than a self-created PaymentIntent.
 vi.mock('../components/StripeCheckout', () => ({
-  default: ({ onConfirmed, orderId }: { onConfirmed: (id: string) => void; orderId: string }) => (
-    <button data-testid="stripe-checkout" data-order-id={orderId} onClick={() => onConfirmed('pi_confirmed_1')}>
+  default: ({ onConfirmed, clientSecret }: { onConfirmed: (id: string) => void; clientSecret: string }) => (
+    <button data-testid="stripe-checkout" data-client-secret={clientSecret} onClick={() => onConfirmed('pi_confirmed_1')}>
       stripe-checkout
     </button>
   ),
 }))
 
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
-  return { ...actual, useNavigate: () => vi.fn() }
-})
-
 import CheckoutPage from './CheckoutPage'
 
-const seedPaymentStep = () => {
-  act(() => {
-    useCartStore.getState().addItem({ productId: 'p1', name: 'Headphones', price: 79.99 })
-    useCheckoutStore.getState().setStep(1)
-    useCheckoutStore.getState().setAddress({
-      fullName: 'Jane',
-      line1: '123 St',
-      city: 'SF',
-      state: 'CA',
-      postalCode: '94105',
-      country: 'US',
-    })
-  })
+const fillShippingAndReachReview = async () => {
+  await userEvent.type(screen.getByLabelText(/full name/i), 'Jane Doe')
+  await userEvent.type(screen.getByLabelText(/address line 1/i), '123 Main St')
+  await userEvent.type(screen.getByLabelText(/city/i), 'San Francisco')
+  await userEvent.type(screen.getByLabelText(/state/i), 'CA')
+  await userEvent.type(screen.getByLabelText(/postal code/i), '94105')
+  await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
+  await userEvent.click(screen.getByRole('button', { name: /next/i }))
+  await waitFor(() => expect(screen.getByText(/review your order/i)).toBeInTheDocument())
 }
 
-describe('CheckoutPage — payment step', () => {
-  afterEach(() => {
-    act(() => useCheckoutStore.getState().reset())
-    act(() => useCartStore.getState().clearCart())
+describe('CheckoutPage — order-first payment hand-off', () => {
+  beforeEach(() => {
+    useCartStore.getState().addItem({ productId: 'p1', name: 'Headphones', price: 79.99 })
+    mockNavigate.mockReset()
   })
 
-  it('should always render the Stripe checkout step (never a raw card form)', async () => {
-    seedPaymentStep()
+  it('should mount StripeCheckout with the clientSecret from a fresh (201) order response', async () => {
     renderWithProviders(<CheckoutPage />)
-    // StripeCheckout is lazy-loaded (React.lazy + Suspense), so it resolves asynchronously.
-    expect(await screen.findByTestId('stripe-checkout')).toBeInTheDocument()
-    expect(screen.queryByLabelText(/card number/i)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/cvv/i)).not.toBeInTheDocument()
+    await fillShippingAndReachReview()
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+
+    const stripeCheckout = await screen.findByTestId('stripe-checkout')
+    expect(stripeCheckout).toHaveAttribute('data-client-secret', 'pi_test_123_secret_abc')
   })
 
-  it('should set the payment method to the confirmed PaymentIntent id on Stripe confirmation', async () => {
-    seedPaymentStep()
-    const { default: userEvent } = await import('@testing-library/user-event')
+  it('should navigate to confirmation with the returned PaymentIntent id on Stripe confirmation', async () => {
     renderWithProviders(<CheckoutPage />)
+    await fillShippingAndReachReview()
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+
     await userEvent.click(await screen.findByTestId('stripe-checkout'))
-    expect(useCheckoutStore.getState().paymentMethodId).toBe('pi_confirmed_1')
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('confirmation/order-123'))
+  })
+
+  it('should advance to the Payment step on a 200 replay that still carries a clientSecret', async () => {
+    server.use(
+      http.post(`${API_BASE}/orders`, () =>
+        HttpResponse.json(
+          {
+            orderId: 'order-replay-1',
+            orderNumber: 'ORD-REPLAY-1',
+            status: 'PENDING',
+            currency: 'USD',
+            subtotal: 79.99,
+            tax: 8,
+            shippingCost: 5.99,
+            discountAmount: null,
+            loyaltyDiscount: null,
+            total: 93.98,
+            paymentIntentId: 'pi_replay_1',
+            clientSecret: 'secret_replay_1',
+            items: [],
+          },
+          { status: 200 }
+        )
+      )
+    )
+    renderWithProviders(<CheckoutPage />)
+    await fillShippingAndReachReview()
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+
+    const stripeCheckout = await screen.findByTestId('stripe-checkout')
+    expect(stripeCheckout).toHaveAttribute('data-client-secret', 'secret_replay_1')
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('should skip the Payment step and route straight to the order-status view on a 200 replay with a null clientSecret', async () => {
+    server.use(
+      http.post(`${API_BASE}/orders`, () =>
+        HttpResponse.json(
+          {
+            orderId: 'order-replay-2',
+            orderNumber: 'ORD-REPLAY-2',
+            status: 'PENDING',
+            currency: 'USD',
+            subtotal: 79.99,
+            tax: 8,
+            shippingCost: 5.99,
+            discountAmount: null,
+            loyaltyDiscount: null,
+            total: 93.98,
+            paymentIntentId: 'pi_replay_2',
+            clientSecret: null,
+            items: [],
+          },
+          { status: 200 }
+        )
+      )
+    )
+    renderWithProviders(<CheckoutPage />)
+    await fillShippingAndReachReview()
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('confirmation/order-replay-2'))
+    expect(screen.queryByTestId('stripe-checkout')).not.toBeInTheDocument()
   })
 })

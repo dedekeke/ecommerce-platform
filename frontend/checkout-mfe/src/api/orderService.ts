@@ -1,24 +1,37 @@
 import apiClient from './apiClient'
-import type { CreateOrderPayload, Order } from './types'
+import type { CheckoutRequestPayload, CheckoutResponse, Order } from './types'
+
+export interface CheckoutOutcome {
+  response: CheckoutResponse
+  /** True when the server returned 200 — an idempotent replay of an already-completed checkout. */
+  isReplay: boolean
+}
 
 /**
- * Submits the order. `payload.paymentMethodId` must already be a confirmed Stripe PaymentIntent
- * id (see StripeCheckout) — never raw card data. `idempotencyKey` is stable per checkout attempt
- * (see checkoutStore) so a retried submit after a network/5xx failure is deduped server-side
- * instead of creating a duplicate order.
+ * Order-first checkout (services/order-service CheckoutService, PR#122): submits the shipping
+ * address and lets the order-creation saga create the order plus the Stripe PaymentIntent
+ * server-side. The response's `clientSecret` is what Stripe Elements confirms — this app never
+ * creates its own PaymentIntent and never collects raw card data (PCI SAQ-A).
  *
- * ASSUMPTION (see PR description): the backend order-saga contract for how a confirmed
- * PaymentIntent id is consumed on order creation was not finalized at the time of this change.
- * This is the single call site to update once that contract lands.
+ * `idempotencyKey` must be stable across retries of the same checkout attempt (see
+ * checkoutStore) so a retried submit is deduped server-side instead of creating a duplicate
+ * order. Callers must branch on the response:
+ *  - `201` (fresh): `clientSecret` present — confirm with Stripe Elements.
+ *  - `200` (replay of an already-completed key): `clientSecret` may be `null` (not persisted).
+ *    Route to an order-status/confirmation view instead of mounting Elements.
+ *  - `409`: a checkout with this key is still in flight — do not retry, surface a
+ *    "submission in progress" message.
+ *  - `502`: saga/downstream failure — transient, retried automatically by apiClient with the
+ *    same Idempotency-Key.
  */
 export const createOrder = async (
-  payload: CreateOrderPayload,
+  payload: CheckoutRequestPayload,
   idempotencyKey: string
-): Promise<Order> => {
-  const { data } = await apiClient.post<Order>('/orders', payload, {
+): Promise<CheckoutOutcome> => {
+  const res = await apiClient.post<CheckoutResponse>('/orders', payload, {
     headers: { 'Idempotency-Key': idempotencyKey },
   })
-  return data
+  return { response: res.data, isReplay: res.status === 200 }
 }
 
 export const getOrder = async (orderId: string): Promise<Order> => {

@@ -67,16 +67,12 @@ describe('useCheckout', () => {
     expect(result.current.idempotencyKey).toBeTruthy()
   })
 
-  it('should expose address and paymentMethodId from store', () => {
+  it('should expose address from store', () => {
     const { result } = renderHook(() => useCheckout())
     expect(result.current.address).toBeNull()
-    expect(result.current.paymentMethodId).toBeNull()
 
     act(() => result.current.setAddress(mockAddress))
     expect(result.current.address).toEqual(mockAddress)
-
-    act(() => result.current.setPaymentMethod('pi_test_99'))
-    expect(result.current.paymentMethodId).toBe('pi_test_99')
   })
 
   it('should reset checkout state', () => {
@@ -99,24 +95,15 @@ describe('useCheckout', () => {
     expect(result.current.canProceed).toBe(true)
   })
 
-  it('should compute canProceed false on step 1 when no paymentMethodId set', () => {
+  it('should always allow canProceed on step 1 (review step submits the order)', () => {
     const { result } = renderHook(() => useCheckout())
     act(() => result.current.goToStep(1))
-    act(() => result.current.setAddress(mockAddress))
-    expect(result.current.canProceed).toBe(false)
-  })
-
-  it('should compute canProceed true on step 1 when paymentMethodId is set', () => {
-    const { result } = renderHook(() => useCheckout())
-    act(() => result.current.goToStep(1))
-    act(() => result.current.setAddress(mockAddress))
-    act(() => result.current.setPaymentMethod('pi_test_abc'))
     expect(result.current.canProceed).toBe(true)
   })
 
-  it('should always allow canProceed on step 2 (review step)', () => {
+  it('should compute canProceed false on step 2 (payment step has no generic action)', () => {
     const { result } = renderHook(() => useCheckout())
     act(() => result.current.goToStep(2))
-    expect(result.current.canProceed).toBe(true)
+    expect(result.current.canProceed).toBe(false)
   })
 })

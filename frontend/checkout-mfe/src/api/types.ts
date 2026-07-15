@@ -14,18 +14,59 @@ export interface ShippingAddress {
   country: string
 }
 
-export interface CreateOrderPayload {
-  userId: string
-  items: OrderItem[]
-  shippingAddress: ShippingAddress
-  /**
-   * A Stripe PaymentIntent id already confirmed via Stripe Elements (see StripeCheckout) — never
-   * raw card data. ASSUMPTION: the order-saga contract for consuming this at order-creation time
-   * was not finalized as of this change; see orderService.createOrder for the single call site
-   * to update once the contract is confirmed.
-   */
-  paymentMethodId: string
-  totalAmount: number
+/** Wire shape of the shipping address accepted by `POST /api/orders` (order-service AddressDto). */
+export interface AddressDto {
+  street: string
+  city: string
+  state: string
+  postalCode: string
+  country: string
+}
+
+/**
+ * Body of `POST /api/orders` — order-first checkout (see services/order-service CheckoutRequest,
+ * PR#122). The cart is never sent; the saga reads the authenticated user's real cart server-side.
+ * `userId` is an optional correlation hint only — the JWT subject is authoritative.
+ */
+export interface CheckoutRequestPayload {
+  userId?: string
+  shippingAddress: AddressDto
+  promotionCode?: string
+  userEmail?: string
+  userName?: string
+}
+
+export interface CheckoutResponseItem {
+  productId: string
+  productName: string
+  price: number
+  quantity: number
+  subtotal: number
+}
+
+/**
+ * Response of `POST /api/orders` (order-service CheckoutResponse). The saga creates the order
+ * and the Stripe PaymentIntent server-side; `clientSecret` is what Stripe Elements confirms —
+ * this app never creates its own PaymentIntent and never collects raw card data (PCI SAQ-A).
+ *
+ * On an idempotent replay (`HTTP 200`) of an already-completed checkout, `clientSecret` is
+ * `null` (not persisted) — callers must not try to mount Stripe Elements with it.
+ */
+export interface CheckoutResponse {
+  orderId: string
+  orderNumber: string
+  status: string
+  currency: string
+  subtotal: number
+  tax: number
+  shippingCost: number
+  discountAmount: number | null
+  loyaltyDiscount: number | null
+  total: number
+  paymentIntentId: string | null
+  clientSecret: string | null
+  items: CheckoutResponseItem[]
+  createdAt?: string
 }
 
 export interface Order {
@@ -36,18 +77,4 @@ export interface Order {
   shippingAddress: ShippingAddress
   totalAmount: number
   createdAt?: string
-}
-
-export interface CreatePaymentIntentPayload {
-  orderId: string
-  userId: string
-  amount: number
-  currency: string
-}
-
-export interface PaymentIntentResponse {
-  paymentId: number
-  paymentIntentId: string
-  clientSecret: string
-  status: string
 }

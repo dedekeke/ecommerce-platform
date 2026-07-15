@@ -16,11 +16,10 @@ describe('useCheckoutStore', () => {
     useCheckoutStore.getState().reset()
   })
 
-  it('should initialise with step 0, no address and no paymentMethodId', () => {
+  it('should initialise with step 0 and no address', () => {
     const state = useCheckoutStore.getState()
     expect(state.step).toBe(0)
     expect(state.address).toBeNull()
-    expect(state.paymentMethodId).toBeNull()
   })
 
   it('should set step when setStep is called', () => {
@@ -33,22 +32,15 @@ describe('useCheckoutStore', () => {
     expect(useCheckoutStore.getState().address).toEqual(mockAddress)
   })
 
-  it('should set paymentMethodId when setPaymentMethod is called', () => {
-    useCheckoutStore.getState().setPaymentMethod('pi_test_12345')
-    expect(useCheckoutStore.getState().paymentMethodId).toBe('pi_test_12345')
-  })
-
   it('should reset all state to initial values', () => {
     useCheckoutStore.getState().setStep(2)
     useCheckoutStore.getState().setAddress(mockAddress)
-    useCheckoutStore.getState().setPaymentMethod('pi_test_12345')
 
     useCheckoutStore.getState().reset()
 
     const state = useCheckoutStore.getState()
     expect(state.step).toBe(0)
     expect(state.address).toBeNull()
-    expect(state.paymentMethodId).toBeNull()
   })
 
   it('should generate a non-empty idempotencyKey initially', () => {

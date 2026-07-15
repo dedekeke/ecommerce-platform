@@ -115,5 +115,62 @@ describe('apiClient', () => {
       expect(callCount).toBe(2)
       expect(data).toEqual({ ok: true, attempt: 2 })
     }, 15000)
+
+    it('should NOT retry a generic POST on a 5xx (no Idempotency-Key contract for that endpoint)', async () => {
+      let callCount = 0
+      server.use(
+        http.post('http://localhost:8080/api/widgets', () => {
+          callCount += 1
+          return HttpResponse.json({ message: 'boom' }, { status: 500 })
+        })
+      )
+
+      await expect(apiClient.post('/widgets', {})).rejects.toThrow()
+      expect(callCount).toBe(1)
+    })
+
+    it('should retry POST /orders specifically on a 502 (order-first checkout saga failure)', async () => {
+      let callCount = 0
+      server.use(
+        http.post('http://localhost:8080/api/orders', () => {
+          callCount += 1
+          if (callCount === 1) {
+            return HttpResponse.json({ message: 'saga/downstream failure' }, { status: 502 })
+          }
+          return HttpResponse.json({ ok: true, attempt: callCount }, { status: 201 })
+        })
+      )
+
+      const { data } = await apiClient.post('/orders', {})
+
+      expect(callCount).toBe(2)
+      expect(data).toEqual({ ok: true, attempt: 2 })
+    }, 15000)
+
+    it('should NOT retry POST /orders on a 409 (checkout already in flight for this key)', async () => {
+      let callCount = 0
+      server.use(
+        http.post('http://localhost:8080/api/orders', () => {
+          callCount += 1
+          return HttpResponse.json({ message: 'in flight' }, { status: 409 })
+        })
+      )
+
+      await expect(apiClient.post('/orders', {})).rejects.toThrow()
+      expect(callCount).toBe(1)
+    })
+
+    it('should NOT retry POST /orders on a plain 500 (only 502 is the documented retryable band)', async () => {
+      let callCount = 0
+      server.use(
+        http.post('http://localhost:8080/api/orders', () => {
+          callCount += 1
+          return HttpResponse.json({ message: 'unexpected' }, { status: 500 })
+        })
+      )
+
+      await expect(apiClient.post('/orders', {})).rejects.toThrow()
+      expect(callCount).toBe(1)
+    })
   })
 })
