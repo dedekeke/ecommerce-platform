@@ -10,7 +10,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>The secret key is sourced from {@code STRIPE_SECRET_KEY} via the {@code stripe.secret-key}
  * placeholder and is never hardcoded or committed. {@code apiBase} is overridable so integration
- * tests can point the SDK at a WireMock-stubbed server instead of the live Stripe API.</p>
+ * tests can point the SDK at a WireMock-stubbed server instead of the live Stripe API. The
+ * {@code webhookSecret} ({@code STRIPE_WEBHOOK_SECRET}) authenticates inbound Stripe webhooks —
+ * it is a distinct secret from the API key and, like the API key, is never committed.</p>
  */
 @Component
 @ConfigurationProperties(prefix = "stripe")
@@ -21,4 +23,6 @@ public class StripeProperties {
     private String secretKey;
 
     private String apiBase;
+
+    private String webhookSecret;
 }
