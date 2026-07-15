@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -41,6 +42,11 @@ public class SecurityConfig {
                     .authorizeHttpRequests(authorize -> authorize
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                             .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
+                            // Stripe cannot present a JWT: the webhook authenticates via the
+                            // Stripe-Signature HMAC (verified in DefaultStripeWebhookVerifier),
+                            // NOT the resource server. Permit the path here and rely on signature
+                            // verification for auth. Must precede the /api/** rule below.
+                            .requestMatchers(HttpMethod.POST, "/api/payments/webhook").permitAll()
                             .requestMatchers("/api/**").authenticated()
                             .anyRequest().authenticated()
                     )

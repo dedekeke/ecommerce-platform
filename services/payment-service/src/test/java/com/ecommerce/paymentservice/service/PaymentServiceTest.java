@@ -165,6 +165,84 @@ class PaymentServiceTest {
     }
 
     @Nested
+    @DisplayName("webhook reconciliation")
+    class WebhookReconciliation {
+
+        @Test
+        @DisplayName("should complete a pending payment and publish completed on succeeded webhook")
+        void should_completeAndPublish_when_succeededWebhook() {
+            when(paymentRepository.findByPaymentIntentId(INTENT_ID))
+                    .thenReturn(Optional.of(savedPayment(PaymentStatus.PENDING)));
+            when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            paymentService.markPaymentSucceeded(INTENT_ID, "ch_web");
+
+            verify(eventPublisher).publishPaymentCompletedEvent(any());
+            verify(eventPublisher, never()).publishPaymentFailedEvent(any());
+        }
+
+        @Test
+        @DisplayName("should converge idempotently and NOT re-emit when already completed by client confirm")
+        void should_notReemit_when_alreadyCompleted() {
+            when(paymentRepository.findByPaymentIntentId(INTENT_ID))
+                    .thenReturn(Optional.of(savedPayment(PaymentStatus.COMPLETED)));
+
+            paymentService.markPaymentSucceeded(INTENT_ID, "ch_web");
+
+            verify(paymentRepository, never()).save(any());
+            verify(eventPublisher, never()).publishPaymentCompletedEvent(any());
+        }
+
+        @Test
+        @DisplayName("should acknowledge without action or throwing when the intent is unknown")
+        void should_ack_when_succeededIntentUnknown() {
+            when(paymentRepository.findByPaymentIntentId(INTENT_ID)).thenReturn(Optional.empty());
+
+            paymentService.markPaymentSucceeded(INTENT_ID, "ch_web");
+
+            verify(paymentRepository, never()).save(any());
+            verify(eventPublisher, never()).publishPaymentCompletedEvent(any());
+        }
+
+        @Test
+        @DisplayName("should fail a pending payment and publish failed on failed webhook")
+        void should_failAndPublish_when_failedWebhook() {
+            when(paymentRepository.findByPaymentIntentId(INTENT_ID))
+                    .thenReturn(Optional.of(savedPayment(PaymentStatus.PENDING)));
+            when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            paymentService.markPaymentFailed(INTENT_ID, "Your card was declined.");
+
+            verify(eventPublisher).publishPaymentFailedEvent(any());
+            verify(eventPublisher, never()).publishPaymentCompletedEvent(any());
+        }
+
+        @Test
+        @DisplayName("should NOT downgrade a completed payment when a late failure webhook arrives")
+        void should_notDowngrade_when_completedThenFailedWebhook() {
+            when(paymentRepository.findByPaymentIntentId(INTENT_ID))
+                    .thenReturn(Optional.of(savedPayment(PaymentStatus.COMPLETED)));
+
+            paymentService.markPaymentFailed(INTENT_ID, "late failure");
+
+            verify(paymentRepository, never()).save(any());
+            verify(eventPublisher, never()).publishPaymentFailedEvent(any());
+        }
+
+        @Test
+        @DisplayName("should be a no-op when a failure webhook repeats for an already failed payment")
+        void should_noop_when_alreadyFailed() {
+            when(paymentRepository.findByPaymentIntentId(INTENT_ID))
+                    .thenReturn(Optional.of(savedPayment(PaymentStatus.FAILED)));
+
+            paymentService.markPaymentFailed(INTENT_ID, "again");
+
+            verify(paymentRepository, never()).save(any());
+            verify(eventPublisher, never()).publishPaymentFailedEvent(any());
+        }
+    }
+
+    @Nested
     @DisplayName("refundPayment")
     class RefundPayment {
 

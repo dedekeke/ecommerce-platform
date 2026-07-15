@@ -50,6 +50,21 @@ spec:
           env:
             - name: JAVA_TOOL_OPTIONS
               value: "-XX:MaxRAMPercentage=70.0 -XX:+UseZGC -XX:+ZGenerational"
+            # Stripe credentials from the dedicated (least-privilege) ExternalSecret.
+            # Injected explicitly (not envFrom) so the shared ecommerce-secrets
+            # datastore wiring above is left untouched. STRIPE_WEBHOOK_SECRET
+            # authenticates the Stripe webhook (POST /api/payments/webhook); without
+            # it the verifier fails closed and every real webhook is dropped.
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: payment-service-secret
+                  key: STRIPE_WEBHOOK_SECRET
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: payment-service-secret
+                  key: STRIPE_SECRET_KEY
           resources:
             requests:
               memory: "512Mi"

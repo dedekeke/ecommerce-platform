@@ -2,6 +2,7 @@ package com.ecommerce.paymentservice.api;
 
 import com.ecommerce.paymentservice.service.InvalidPaymentStateException;
 import com.ecommerce.paymentservice.service.PaymentNotFoundException;
+import com.ecommerce.paymentservice.webhook.WebhookVerificationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,6 +43,15 @@ public class PaymentApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleUserMismatch(UserMismatchException ex) {
         log.warn("Payment request user mismatch: {}", ex.getMessage());
         return build(HttpStatus.FORBIDDEN, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(WebhookVerificationException.class)
+    public ResponseEntity<Map<String, Object>> handleWebhookVerification(WebhookVerificationException ex) {
+        // Signature verification is the webhook's only authentication. A failure is
+        // rejected with 400 (Stripe treats non-2xx as "retry later") and never leaks
+        // the underlying reason to the caller.
+        log.warn("Rejected Stripe webhook: {}", ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, "Webhook signature verification failed", null);
     }
 
     @ExceptionHandler(RuntimeException.class)

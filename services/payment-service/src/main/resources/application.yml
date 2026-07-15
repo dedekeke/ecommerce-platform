@@ -79,9 +79,12 @@ payment:
 
 # Stripe configuration (only used when payment.provider=stripe).
 # The secret key MUST be supplied via the STRIPE_SECRET_KEY env var; never hardcode or commit it.
+# The webhook signing secret (STRIPE_WEBHOOK_SECRET) authenticates inbound webhooks at
+# POST /api/payments/webhook — it is a distinct secret from the API key and equally never committed.
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   api-base: ${STRIPE_API_BASE:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 
 # Server Configuration
 server:
