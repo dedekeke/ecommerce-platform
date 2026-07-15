@@ -79,12 +79,22 @@ public class UserController {
     }
 
     /**
-     * Create a new user (for testing/admin purposes)
+     * Create a new user (administrative provisioning).
+     *
+     * <p>This endpoint provisions a user row directly from a supplied
+     * {@code auth0Id}/{@code email}, bypassing the normal first-login Auth0 sync.
+     * Because {@code email} and {@code auth0Id} carry unique constraints, an
+     * unauthenticated-but-authorized caller could otherwise pre-create a row with
+     * a victim's real email and an arbitrary Auth0 id, blocking that victim's
+     * genuine first login (unique-constraint DoS). It is therefore restricted to
+     * {@code SCOPE_admin}, consistent with the other administrative endpoints in
+     * this controller ({@code GET /api/users/{id}}).
      *
      * POST /api/users
      */
     @PostMapping
-    @Operation(summary = "Create user", description = "Create a new user (for testing/admin purposes)")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
+    @Operation(summary = "Create user", description = "Provision a new user directly (admin scope only)")
     public ResponseEntity<UserProfileResponse> createUser(@Valid @RequestBody Map<String, Object> request) {
         log.debug("Creating user with email: {}", request.get("email"));
 

@@ -21,12 +21,14 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -199,6 +201,94 @@ class UserControllerIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error", is("VALIDATION_ERROR")))
                 .andExpect(jsonPath("$.validationErrors.firstName", notNullValue()));
+    }
+
+    @Test
+    void testCreateUser_nonAdminScope_shouldReturnForbidden() throws Exception {
+        // Authz guard: an authenticated but non-admin caller must not be able to
+        // provision arbitrary user rows. Leaving POST /api/users open lets any
+        // caller pre-seed a victim's email with a bogus auth0Id and block that
+        // victim's genuine first login (unique-constraint DoS).
+        String payload = objectMapper.writeValueAsString(Map.of(
+                "auth0Id", "auth0|attacker-created",
+                "email", "victim@example.com",
+                "firstName", "Vic",
+                "lastName", "Tim"));
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|attacker"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_write:profile")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isForbidden());
+
+        // And nothing was persisted.
+        assertThat(userRepository.findByEmail("victim@example.com")).isEmpty();
+    }
+
+    @Test
+    void testCreateUser_unauthenticated_shouldBeDenied() throws Exception {
+        String payload = objectMapper.writeValueAsString(Map.of(
+                "auth0Id", "auth0|anon-created",
+                "email", "anon@example.com"));
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().is4xxClientError())
+                .andExpect(result -> {
+                    int status = result.getResponse().getStatus();
+                    org.assertj.core.api.Assertions.assertThat(status).isIn(401, 403);
+                });
+    }
+
+    @Test
+    void testCreateUser_adminScope_shouldCreateUser() throws Exception {
+        String payload = objectMapper.writeValueAsString(Map.of(
+                "auth0Id", "auth0|provisioned789",
+                "email", "provisioned@example.com",
+                "firstName", "Pro",
+                "lastName", "Visioned"));
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|admin"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.email", is("provisioned@example.com")))
+                .andExpect(jsonPath("$.firstName", is("Pro")))
+                .andExpect(jsonPath("$.lastName", is("Visioned")));
+
+        assertThat(userRepository.findByAuth0Id("auth0|provisioned789")).isPresent();
+    }
+
+    @Test
+    void testCreateUser_adminScope_emailCollision_shouldReturnConflict() throws Exception {
+        // An admin provisioning a row whose email already belongs to a different
+        // account must get a controlled 409 — never an opaque 500 from the DB
+        // unique constraint.
+        String payload = objectMapper.writeValueAsString(Map.of(
+                "auth0Id", "auth0|different-id",
+                "email", "test@example.com", // already owned by testUser (auth0|test123)
+                "firstName", "Dupe",
+                "lastName", "Email"));
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|admin"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("EMAIL_ALREADY_REGISTERED")));
+
+        // The pre-existing account is untouched: still owned by the original sub.
+        User owner = userRepository.findByEmail("test@example.com").orElseThrow();
+        assertThat(owner.getAuth0Id()).isEqualTo(auth0Id);
     }
 
     @Test

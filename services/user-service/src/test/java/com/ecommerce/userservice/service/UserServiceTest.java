@@ -2,6 +2,7 @@ package com.ecommerce.userservice.service;
 
 import com.ecommerce.userservice.domain.User;
 import com.ecommerce.userservice.domain.UserRole;
+import com.ecommerce.userservice.exception.EmailAlreadyRegisteredException;
 import com.ecommerce.userservice.exception.UserNotFoundException;
 import com.ecommerce.userservice.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -95,6 +96,46 @@ class UserServiceTest {
         assertThat(result.getRole()).isEqualTo(UserRole.USER);
         assertThat(result.getActive()).isTrue();
         assertThat(result.getLastLoginAt()).isNotNull();
+        verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    void getOrCreateFromAuth0_emailExistsWithDifferentAuth0Id_shouldThrowConflict() {
+        // Given: no user for the incoming Auth0 id, but the email is already
+        // taken by a DIFFERENT account (e.g. a pre-created/spoofed row). This is
+        // the DoS vector: the raw insert would hit the unique-email constraint
+        // and surface as an opaque 500, blocking the victim's first login.
+        String incomingAuth0Id = "auth0|victim-real";
+        when(userRepository.findByAuth0Id(incomingAuth0Id)).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(existingUser));
+
+        // When / Then: a controlled conflict is raised instead of a raw 500,
+        // and we never silently link the new Auth0 id to the existing record.
+        assertThatThrownBy(() -> userService.getOrCreateFromAuth0(incomingAuth0Id, claims))
+                .isInstanceOf(EmailAlreadyRegisteredException.class)
+                .hasMessageContaining("test@example.com");
+
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void getOrCreateFromAuth0_newUserNoEmailCollision_shouldCreateUser() {
+        // Given: neither the Auth0 id nor the email exist yet.
+        when(userRepository.findByAuth0Id(auth0Id)).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User user = inv.getArgument(0);
+            user.setId(1L);
+            return user;
+        });
+
+        // When
+        User result = userService.getOrCreateFromAuth0(auth0Id, claims);
+
+        // Then: happy-path first login still provisions the account.
+        assertThat(result).isNotNull();
+        assertThat(result.getAuth0Id()).isEqualTo(auth0Id);
+        assertThat(result.getEmail()).isEqualTo("test@example.com");
         verify(userRepository).save(any(User.class));
     }
 
