@@ -128,8 +128,10 @@ public class GatewayRoutesConfig {
             )
 
             // ---------------- Order Service ----------------
+            // /api/returns/** (saga/rma RmaController) also lives in
+            // order-service, kept in sync with the declarative route.
             .route("order-service-prog", r -> r
-                .path("/api/orders/**")
+                .path("/api/orders/**", "/api/returns/**")
                 .filters(f -> f
                     .tokenRelay()
                     .addResponseHeader("Deprecation", "true")
@@ -138,7 +140,7 @@ public class GatewayRoutesConfig {
                 .uri("lb://order-service")
             )
             .route("order-service-v1-prog", r -> r
-                .path("/api/v1/orders/**")
+                .path("/api/v1/orders/**", "/api/v1/returns/**")
                 .filters(f -> f
                     .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
                     .addRequestHeader("X-API-Version", "v1")

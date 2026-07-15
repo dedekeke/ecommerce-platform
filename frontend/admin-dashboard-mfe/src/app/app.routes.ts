@@ -27,6 +27,16 @@ export const routes: Routes = [
       import('./pages/users/users.page').then((m) => m.UsersPage),
   },
   {
+    path: 'refunds',
+    loadComponent: () =>
+      import('./pages/refunds-admin/refunds-admin.page').then((m) => m.RefundsAdminPage),
+  },
+  {
+    path: 'returns',
+    loadComponent: () =>
+      import('./pages/returns-admin/returns-admin.page').then((m) => m.ReturnsAdminPage),
+  },
+  {
     path: 'analytics',
     loadComponent: () =>
       import('./pages/analytics/analytics.page').then((m) => m.AnalyticsPage),
