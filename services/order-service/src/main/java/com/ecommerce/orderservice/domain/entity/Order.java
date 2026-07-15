@@ -83,6 +83,14 @@ public class Order {
 
     private String paymentIntentId;
 
+    /**
+     * Stripe PaymentIntent client secret, persisted so an idempotent checkout
+     * replay can re-serve it to the owning session for payment confirmation.
+     * Safe to expose to the paying customer's browser (that is its purpose).
+     */
+    @Column(name = "payment_client_secret")
+    private String paymentClientSecret;
+
     private String promotionCode;
 
     @Column(precision = 10, scale = 2)

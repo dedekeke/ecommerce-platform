@@ -7,6 +7,7 @@ import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
+import com.ecommerce.orderservice.event.OrderEventPublisher;
 import com.ecommerce.orderservice.exception.InvalidOrderStatusTransitionException;
 import com.ecommerce.orderservice.exception.OrderNotFoundException;
 import com.ecommerce.orderservice.repository.OrderRepository;
@@ -41,6 +42,9 @@ class OrderServiceTest {
 
     @Mock
     private PromotionServiceClient promotionServiceClient;
+
+    @Mock
+    private OrderEventPublisher orderEventPublisher;
 
     @InjectMocks
     private OrderService orderService;
@@ -154,6 +158,58 @@ class OrderServiceTest {
         assertEquals(0, BigDecimal.valueOf(2.88).compareTo(order.getTax()));
         // 50 - 10 (promo) - 4 (loyalty) + 2.88 (tax) + 0 (shipping) = 38.88
         assertEquals(0, BigDecimal.valueOf(38.88).compareTo(order.getTotal()));
+    }
+
+    @Test
+    void should_persistIntentSecretAndPublishCreated_when_finalizingSuccessfulOrder() {
+        Order pending = pendingOrder("order-1", "ORD-2026-9001");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(pending));
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        Order result = orderService.finalizeSuccessfulOrder(
+            "order-1", "pi_1", "pi_1_secret", "buyer@example.com", "Buyer");
+
+        assertEquals("pi_1", result.getPaymentIntentId());
+        assertEquals("pi_1_secret", result.getPaymentClientSecret());
+        verify(orderEventPublisher).publishOrderCreatedEvent(result, "buyer@example.com", "Buyer");
+    }
+
+    @Test
+    void should_cancelAndPublishCancelled_when_compensating() {
+        Order pending = pendingOrder("order-2", "ORD-2026-9002");
+        when(orderRepository.findById("order-2")).thenReturn(Optional.of(pending));
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        orderService.compensateCancelOrder("order-2");
+
+        assertEquals(OrderStatus.CANCELLED, pending.getStatus());
+        verify(orderEventPublisher).publishOrderCancelledEvent(pending);
+    }
+
+    @Test
+    void should_beNoOp_when_compensatingAlreadyCancelledOrder() {
+        Order cancelled = pendingOrder("order-3", "ORD-2026-9003");
+        cancelled.setStatus(OrderStatus.CANCELLED);
+        when(orderRepository.findById("order-3")).thenReturn(Optional.of(cancelled));
+
+        orderService.compensateCancelOrder("order-3");
+
+        verify(orderRepository, never()).save(any(Order.class));
+        verify(orderEventPublisher, never()).publishOrderCancelledEvent(any(Order.class));
+    }
+
+    private Order pendingOrder(String id, String orderNumber) {
+        return Order.builder()
+            .id(id)
+            .orderNumber(orderNumber)
+            .userId(userId)
+            .subtotal(BigDecimal.valueOf(50.00))
+            .tax(BigDecimal.valueOf(4.00))
+            .shippingCost(BigDecimal.ZERO)
+            .total(BigDecimal.valueOf(54.00))
+            .status(OrderStatus.PENDING)
+            .shippingAddress(shippingAddress)
+            .build();
     }
 
     @Test

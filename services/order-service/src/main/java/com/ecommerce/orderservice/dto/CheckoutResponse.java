@@ -59,9 +59,13 @@ public record CheckoutResponse(
         return build(result.order(), result.currency(), result.paymentIntentId(), result.paymentClientSecret());
     }
 
-    /** Idempotent replay: the order already exists, no client secret is re-issued. */
+    /**
+     * Idempotent replay: the order already exists. The persisted client secret
+     * is re-served so the owning session can still complete payment even if it
+     * never saw the original response.
+     */
     public static CheckoutResponse fromExistingOrder(Order order, String currency) {
-        return build(order, currency, order.getPaymentIntentId(), null);
+        return build(order, currency, order.getPaymentIntentId(), order.getPaymentClientSecret());
     }
 
     private static CheckoutResponse build(Order order, String currency, String paymentIntentId, String clientSecret) {

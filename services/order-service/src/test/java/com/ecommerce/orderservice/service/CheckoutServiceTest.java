@@ -23,7 +23,6 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -108,8 +107,9 @@ class CheckoutServiceTest {
 
         assertTrue(outcome.replay());
         assertEquals(ORDER_ID, outcome.response().orderId());
-        // Replay must not re-issue a client secret or re-run the saga.
-        assertNull(outcome.response().clientSecret());
+        // Replay must not re-run the saga, but must re-serve the persisted secret
+        // so the owning session can still complete payment.
+        assertEquals("pi_123_secret", outcome.response().clientSecret());
         verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any());
         verify(idempotencyService, never()).tryReserve(any(), any());
     }
@@ -182,6 +182,7 @@ class CheckoutServiceTest {
         order.setShippingCost(new BigDecimal("5.99"));
         order.setTotal(new BigDecimal("70.77"));
         order.setPaymentIntentId("pi_123");
+        order.setPaymentClientSecret("pi_123_secret");
         return order;
     }
 
