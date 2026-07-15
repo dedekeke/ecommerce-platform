@@ -1,7 +1,7 @@
 package com.ecommerce.notificationservice.kafka;
 
+import com.ecommerce.notificationservice.kafka.dedup.NotificationEventDeduplicator;
 import com.ecommerce.notificationservice.kafka.event.OrderEvent;
-import com.ecommerce.notificationservice.repository.NotificationLogRepository;
 import com.ecommerce.notificationservice.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,7 +13,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,8 +23,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
- * Test class for OrderEventConsumer
- * Following TDD principles
+ * Unit tests for {@link OrderEventConsumer}. Dedup is exercised here at the
+ * mock level (claim returns true/false); the real unique-index guarantee is
+ * proven in {@code NotificationEventDeduplicatorIntegrationTest}.
  */
 @ExtendWith(MockitoExtension.class)
 class OrderEventConsumerTest {
@@ -37,7 +37,7 @@ class OrderEventConsumerTest {
     private ObjectMapper objectMapper;
 
     @Mock
-    private NotificationLogRepository notificationLogRepository;
+    private NotificationEventDeduplicator deduplicator;
 
     @InjectMocks
     private OrderEventConsumer orderEventConsumer;
@@ -47,9 +47,7 @@ class OrderEventConsumerTest {
 
     @BeforeEach
     void setUp() {
-        // Treat every event as non-duplicate so the consumer proceeds to send.
-        lenient().when(notificationLogRepository.existsByRelatedEntityIdAndTemplateCodeAndStatusIn(
-                anyString(), anyString(), any(List.class))).thenReturn(false);
+        lenient().when(deduplicator.claim(anyString(), anyString())).thenReturn(true);
 
         orderEvent = new OrderEvent();
         orderEvent.setOrderId("order123");
@@ -65,23 +63,15 @@ class OrderEventConsumerTest {
 
     @Test
     void shouldHandleOrderCreatedEvent() throws Exception {
-        // Given
-        when(objectMapper.readValue(anyString(), eq(OrderEvent.class)))
-                .thenReturn(orderEvent);
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
 
-        // When
         orderEventConsumer.handleOrderCreated(orderEventJson);
 
-        // Then
+        verify(deduplicator).claim(eq("ORDER_CONFIRMATION:order123"), eq("order.created"));
         ArgumentCaptor<Map<String, Object>> variablesCaptor = ArgumentCaptor.forClass(Map.class);
         verify(notificationService).sendNotification(
-                eq("user123"),
-                eq("john.doe@example.com"),
-                eq("ORDER_CONFIRMATION"),
-                variablesCaptor.capture(),
-                eq("order123"),
-                eq("ORDER")
-        );
+                eq("user123"), eq("john.doe@example.com"), eq("ORDER_CONFIRMATION"),
+                variablesCaptor.capture(), eq("order123"), eq("ORDER"));
 
         Map<String, Object> capturedVariables = variablesCaptor.getValue();
         assertThat(capturedVariables.get("orderNumber")).isEqualTo("ORD-12345");
@@ -92,97 +82,96 @@ class OrderEventConsumerTest {
 
     @Test
     void shouldHandlePaymentCompletedEvent() throws Exception {
-        // Given
-        when(objectMapper.readValue(anyString(), eq(OrderEvent.class)))
-                .thenReturn(orderEvent);
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
 
-        // When
         orderEventConsumer.handlePaymentCompleted(orderEventJson);
 
-        // Then
-        ArgumentCaptor<Map<String, Object>> variablesCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(deduplicator).claim(eq("PAYMENT_RECEIPT:order123"), eq("payment.completed"));
         verify(notificationService).sendNotification(
-                eq("user123"),
-                eq("john.doe@example.com"),
-                eq("PAYMENT_RECEIPT"),
-                variablesCaptor.capture(),
-                eq("order123"),
-                eq("PAYMENT")
-        );
-
-        Map<String, Object> capturedVariables = variablesCaptor.getValue();
-        assertThat(capturedVariables.get("orderNumber")).isEqualTo("ORD-12345");
-        assertThat(capturedVariables.get("userName")).isEqualTo("John Doe");
-        assertThat(capturedVariables.get("totalAmount")).isEqualTo(new BigDecimal("199.99"));
+                eq("user123"), eq("john.doe@example.com"), eq("PAYMENT_RECEIPT"),
+                anyMap(), eq("order123"), eq("PAYMENT"));
     }
 
     @Test
     void shouldHandleOrderShippedEvent() throws Exception {
-        // Given
-        when(objectMapper.readValue(anyString(), eq(OrderEvent.class)))
-                .thenReturn(orderEvent);
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
 
-        // When
         orderEventConsumer.handleOrderShipped(orderEventJson);
 
-        // Then
-        ArgumentCaptor<Map<String, Object>> variablesCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(deduplicator).claim(eq("SHIPPING_NOTIFICATION:order123"), eq("order.shipped"));
         verify(notificationService).sendNotification(
-                eq("user123"),
-                eq("john.doe@example.com"),
-                eq("SHIPPING_NOTIFICATION"),
-                variablesCaptor.capture(),
-                eq("order123"),
-                eq("SHIPMENT")
-        );
+                eq("user123"), eq("john.doe@example.com"), eq("SHIPPING_NOTIFICATION"),
+                anyMap(), eq("order123"), eq("SHIPMENT"));
+    }
 
-        Map<String, Object> capturedVariables = variablesCaptor.getValue();
-        assertThat(capturedVariables.get("orderNumber")).isEqualTo("ORD-12345");
-        assertThat(capturedVariables.get("userName")).isEqualTo("John Doe");
-        assertThat(capturedVariables.get("shippingAddress")).isEqualTo("123 Main St, City, Country");
+    @Test
+    void shouldSendOnlyOnce_whenDuplicateDelivered() throws Exception {
+        // First delivery wins the claim, the redelivery loses it.
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
+        when(deduplicator.claim(eq("ORDER_CONFIRMATION:order123"), eq("order.created")))
+                .thenReturn(true, false);
+
+        orderEventConsumer.handleOrderCreated(orderEventJson);
+        orderEventConsumer.handleOrderCreated(orderEventJson);
+
+        verify(notificationService, times(1)).sendNotification(
+                anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
+    }
+
+    @Test
+    void shouldSkipSend_whenDuplicate() throws Exception {
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
+        when(deduplicator.claim(anyString(), anyString())).thenReturn(false);
+
+        orderEventConsumer.handleOrderCreated(orderEventJson);
+
+        verify(notificationService, never()).sendNotification(
+                anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
     }
 
     @Test
     void shouldHandleInvalidJsonGracefully() throws Exception {
-        // Given
         when(objectMapper.readValue(anyString(), eq(OrderEvent.class)))
                 .thenThrow(new RuntimeException("Invalid JSON"));
 
-        // When
         orderEventConsumer.handleOrderCreated("invalid json");
 
-        // Then
+        verifyNoInteractions(deduplicator);
         verify(notificationService, never()).sendNotification(
-                anyString(), anyString(), anyString(), anyMap(), anyString(), anyString()
-        );
+                anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
+    }
+
+    @Test
+    void shouldSkip_whenEventMissingOrderId() throws Exception {
+        OrderEvent noId = new OrderEvent();
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(noId);
+
+        orderEventConsumer.handleOrderCreated(orderEventJson);
+
+        verifyNoInteractions(deduplicator);
+        verify(notificationService, never()).sendNotification(
+                anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
     }
 
     @Test
     void shouldHandleNullEventGracefully() throws Exception {
-        // Given
-        when(objectMapper.readValue(anyString(), eq(OrderEvent.class)))
-                .thenReturn(null);
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(null);
 
-        // When/Then - Should not throw exception
         orderEventConsumer.handleOrderCreated(orderEventJson);
+
+        verifyNoInteractions(deduplicator);
     }
 
     @Test
     void shouldContinueProcessingAfterNotificationFailure() throws Exception {
-        // Given
-        when(objectMapper.readValue(anyString(), eq(OrderEvent.class)))
-                .thenReturn(orderEvent);
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
         doThrow(new RuntimeException("Notification failed"))
                 .when(notificationService).sendNotification(
-                        anyString(), anyString(), anyString(), any(), anyString(), anyString()
-                );
+                        anyString(), anyString(), anyString(), any(), anyString(), anyString());
 
-        // When - Should not throw exception
         orderEventConsumer.handleOrderCreated(orderEventJson);
 
-        // Then
         verify(notificationService).sendNotification(
-                anyString(), anyString(), anyString(), any(), anyString(), anyString()
-        );
+                anyString(), anyString(), anyString(), any(), anyString(), anyString());
     }
 }

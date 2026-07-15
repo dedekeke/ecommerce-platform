@@ -1,31 +1,36 @@
 package com.ecommerce.notificationservice.kafka;
 
-import com.ecommerce.notificationservice.domain.NotificationLog;
-import com.ecommerce.notificationservice.domain.NotificationStatus;
-import com.ecommerce.notificationservice.domain.NotificationType;
+import com.ecommerce.notificationservice.kafka.dedup.NotificationEventDeduplicator;
 import com.ecommerce.notificationservice.kafka.event.RmaEvent;
-import com.ecommerce.notificationservice.repository.NotificationLogRepository;
-import com.ecommerce.notificationservice.service.EmailService;
+import com.ecommerce.notificationservice.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * Consumes the three customer-facing RMA topics and emails the customer
- * via the existing template engine. {@code rma.received} is intentionally
- * not handled here — it is an internal warehouse event with no customer
- * email.
+ * Consumes the three customer-facing RMA topics and emails the customer.
+ * {@code rma.received} is intentionally not handled here — it is an internal
+ * warehouse event with no customer email.
  *
- * <p>Idempotency: each topic uses a different {@code templateCode}, and
- * we de-dupe per ({@code orderId}, {@code templateCode}) so a producer
- * retry doesn't double-mail the customer.</p>
+ * <p><b>Idempotency.</b> Enforced insert-first via
+ * {@link NotificationEventDeduplicator} on {@code <templateCode>:<rmaNumber>}.
+ * We key strictly on {@code rmaNumber}, which the order-service RMA saga
+ * generates at request time and stores under a unique constraint, so it is
+ * always present and globally unique. We deliberately do <em>not</em> fall back
+ * to {@code orderId}: a customer with sequential returns on one order would
+ * collide on an orderId key and have the second return's email suppressed. An
+ * event missing {@code rmaNumber} is treated as malformed and skipped.
+ *
+ * <p><b>Delivery + retry.</b> Sends route through
+ * {@link NotificationService#sendNotification} (the retry-capable path). A
+ * transient email failure becomes a RETRYING log that
+ * {@code NotificationRetryScheduler} re-sends internally, so the permanent
+ * fire-once dedup claim is correct.
  */
 @Component
 @Slf4j
@@ -36,88 +41,64 @@ public class RmaEventConsumer {
     public static final String RMA_COMPLETED_TOPIC = "rma.completed";
     public static final String RMA_REJECTED_TOPIC = "rma.rejected";
 
-    public static final String TEMPLATE_REQUESTED = "rma-requested";
-    public static final String TEMPLATE_COMPLETED = "rma-completed";
-    public static final String TEMPLATE_REJECTED = "rma-rejected";
-
     public static final String CODE_REQUESTED = "RMA_REQUESTED";
     public static final String CODE_COMPLETED = "RMA_COMPLETED";
     public static final String CODE_REJECTED = "RMA_REJECTED";
 
-    private static final List<NotificationStatus> ACTIVE_STATUSES =
-        List.of(NotificationStatus.SENT, NotificationStatus.PENDING, NotificationStatus.RETRYING);
+    public static final String ENTITY_TYPE = "RMA";
 
-    private final NotificationLogRepository notificationLogRepository;
-    private final EmailService emailService;
+    private final NotificationService notificationService;
+    private final NotificationEventDeduplicator deduplicator;
     private final ObjectMapper objectMapper;
 
     @KafkaListener(topics = RMA_REQUESTED_TOPIC, groupId = "notification-service-rma-requested")
     public void handleRmaRequested(String message) {
-        process(message, CODE_REQUESTED, TEMPLATE_REQUESTED, "Your return has been authorized");
+        process(message, RMA_REQUESTED_TOPIC, CODE_REQUESTED);
     }
 
     @KafkaListener(topics = RMA_COMPLETED_TOPIC, groupId = "notification-service-rma-completed")
     public void handleRmaCompleted(String message) {
-        process(message, CODE_COMPLETED, TEMPLATE_COMPLETED, "Your return has been completed");
+        process(message, RMA_COMPLETED_TOPIC, CODE_COMPLETED);
     }
 
     @KafkaListener(topics = RMA_REJECTED_TOPIC, groupId = "notification-service-rma-rejected")
     public void handleRmaRejected(String message) {
-        process(message, CODE_REJECTED, TEMPLATE_REJECTED, "Your return has been rejected");
+        process(message, RMA_REJECTED_TOPIC, CODE_REJECTED);
     }
 
-    private void process(String message, String templateCode, String templateName, String subject) {
+    private void process(String message, String topic, String templateCode) {
+        RmaEvent event;
         try {
-            RmaEvent event = objectMapper.readValue(message, RmaEvent.class);
-
-            if (event.getOrderId() == null || event.getUserEmail() == null) {
-                log.warn("Skipping {} event with missing orderId or userEmail: rmaNumber={}",
-                    templateCode, event.getRmaNumber());
-                return;
-            }
-
-            // Per-RMA idempotency. We key on rmaNumber+templateCode rather
-            // than orderId because a single order can — in theory — have
-            // multiple sequential returns over time (one per item lifecycle).
-            String dedupKey = event.getRmaNumber() != null ? event.getRmaNumber() : event.getOrderId();
-            if (isDuplicate(dedupKey, templateCode)) {
-                log.warn("Duplicate {} event for {}, skipping", templateCode, dedupKey);
-                return;
-            }
-
-            Map<String, Object> variables = buildVariables(event);
-
-            NotificationLog logEntry = NotificationLog.builder()
-                .userId(event.getUserId())
-                .recipient(event.getUserEmail())
-                .type(NotificationType.EMAIL)
-                .templateCode(templateCode)
-                .subject(subject)
-                .variables(variables)
-                .status(NotificationStatus.PENDING)
-                .relatedEntityId(dedupKey)
-                .relatedEntityType("RMA")
-                .retryCount(0)
-                .build();
-            logEntry = notificationLogRepository.save(logEntry);
-
-            try {
-                emailService.sendEmail(event.getUserEmail(), subject, templateName, variables);
-                logEntry.setStatus(NotificationStatus.SENT);
-                logEntry.setSentAt(Instant.now());
-                notificationLogRepository.save(logEntry);
-                log.info("{} email sent to {} for RMA {}", templateCode,
-                    event.getUserEmail(), event.getRmaNumber());
-            } catch (RuntimeException sendError) {
-                log.error("Failed to send {} email for RMA {}", templateCode,
-                    event.getRmaNumber(), sendError);
-                logEntry.setStatus(NotificationStatus.FAILED);
-                logEntry.setErrorMessage(sendError.getMessage());
-                notificationLogRepository.save(logEntry);
-            }
-
+            event = objectMapper.readValue(message, RmaEvent.class);
         } catch (Exception e) {
-            log.error("Failed to process {} event", templateCode, e);
+            log.error("Failed to deserialize {} event", topic, e);
+            return;
+        }
+
+        if (event == null || event.getRmaNumber() == null
+                || event.getOrderId() == null || event.getUserEmail() == null) {
+            log.warn("Skipping {} event with missing rmaNumber/orderId/userEmail: rmaNumber={}",
+                    templateCode, event != null ? event.getRmaNumber() : null);
+            return;
+        }
+
+        if (!deduplicator.claim(templateCode + ":" + event.getRmaNumber(), topic)) {
+            log.warn("Duplicate {} event for rmaNumber={}, skipping", templateCode, event.getRmaNumber());
+            return;
+        }
+
+        try {
+            notificationService.sendNotification(
+                    event.getUserId(),
+                    event.getUserEmail(),
+                    templateCode,
+                    buildVariables(event),
+                    event.getRmaNumber(),
+                    ENTITY_TYPE);
+            log.info("{} notification triggered for RMA {}", templateCode, event.getRmaNumber());
+        } catch (Exception e) {
+            log.error("Failed to dispatch {} notification for RMA {}",
+                    templateCode, event.getRmaNumber(), e);
         }
     }
 
@@ -131,10 +112,5 @@ public class RmaEventConsumer {
         vars.put("notes", event.getNotes());
         vars.put("occurredAt", event.getOccurredAt());
         return vars;
-    }
-
-    private boolean isDuplicate(String dedupKey, String templateCode) {
-        return notificationLogRepository.existsByRelatedEntityIdAndTemplateCodeAndStatusIn(
-            dedupKey, templateCode, ACTIVE_STATUSES);
     }
 }

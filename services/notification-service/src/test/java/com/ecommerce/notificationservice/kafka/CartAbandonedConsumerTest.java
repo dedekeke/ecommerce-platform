@@ -1,7 +1,7 @@
 package com.ecommerce.notificationservice.kafka;
 
+import com.ecommerce.notificationservice.kafka.dedup.NotificationEventDeduplicator;
 import com.ecommerce.notificationservice.kafka.event.CartAbandonedEvent;
-import com.ecommerce.notificationservice.repository.NotificationLogRepository;
 import com.ecommerce.notificationservice.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,13 +19,14 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -39,7 +40,7 @@ class CartAbandonedConsumerTest {
     private NotificationService notificationService;
 
     @Mock
-    private NotificationLogRepository notificationLogRepository;
+    private NotificationEventDeduplicator deduplicator;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -52,6 +53,7 @@ class CartAbandonedConsumerTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(deduplicator.claim(anyString(), anyString())).thenReturn(true);
         event = CartAbandonedEvent.builder()
                 .cartId("101")
                 .userId("user-1")
@@ -74,19 +76,14 @@ class CartAbandonedConsumerTest {
     @DisplayName("should_callNotificationService_when_eventValidAndNotDuplicate")
     void should_callNotificationService_when_eventValidAndNotDuplicate() throws Exception {
         when(objectMapper.readValue(anyString(), eq(CartAbandonedEvent.class))).thenReturn(event);
-        when(notificationLogRepository.existsByRelatedEntityIdAndTemplateCodeAndStatusIn(
-                eq("101"), eq("CART_ABANDONED"), anyList())).thenReturn(false);
 
         consumer.handle(payload);
 
+        verify(deduplicator).claim(eq("CART_ABANDONED:101"), eq("cart.abandoned"));
         ArgumentCaptor<Map<String, Object>> vars = ArgumentCaptor.forClass(Map.class);
         verify(notificationService, times(1)).sendNotification(
-                eq("user-1"),
-                eq("user@example.com"),
-                eq("CART_ABANDONED"),
-                vars.capture(),
-                eq("101"),
-                eq("CART"));
+                eq("user-1"), eq("user@example.com"), eq("CART_ABANDONED"),
+                vars.capture(), eq("101"), eq("CART"));
         Map<String, Object> captured = vars.getValue();
         assertThat(captured).containsEntry("totalItems", 2);
         assertThat(captured).containsEntry("totalAmount", new BigDecimal("29.99"));
@@ -94,11 +91,10 @@ class CartAbandonedConsumerTest {
     }
 
     @Test
-    @DisplayName("should_skipSend_when_duplicateEventDetectedByLog")
-    void should_skipSend_when_duplicateEventDetectedByLog() throws Exception {
+    @DisplayName("should_skipSend_when_duplicateClaimLost")
+    void should_skipSend_when_duplicateClaimLost() throws Exception {
         when(objectMapper.readValue(anyString(), eq(CartAbandonedEvent.class))).thenReturn(event);
-        when(notificationLogRepository.existsByRelatedEntityIdAndTemplateCodeAndStatusIn(
-                eq("101"), eq("CART_ABANDONED"), anyList())).thenReturn(true);
+        when(deduplicator.claim(eq("CART_ABANDONED:101"), anyString())).thenReturn(false);
 
         consumer.handle(payload);
 
@@ -116,8 +112,7 @@ class CartAbandonedConsumerTest {
 
         verify(notificationService, never()).sendNotification(
                 anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
-        verify(notificationLogRepository, never()).existsByRelatedEntityIdAndTemplateCodeAndStatusIn(
-                anyString(), anyString(), anyList());
+        verifyNoInteractions(deduplicator);
     }
 
     @Test
@@ -130,6 +125,7 @@ class CartAbandonedConsumerTest {
 
         verify(notificationService, never()).sendNotification(
                 anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
+        verifyNoInteractions(deduplicator);
     }
 
     @Test
@@ -142,5 +138,6 @@ class CartAbandonedConsumerTest {
 
         verify(notificationService, never()).sendNotification(
                 anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
+        verifyNoInteractions(deduplicator);
     }
 }
