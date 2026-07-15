@@ -23,6 +23,7 @@ import {
 import { useProduct } from '../hooks'
 import { useFeatureFlag } from '../featureFlags'
 import { recommendationService } from '../api'
+import { ProductReviewsSection } from '../components/reviews'
 import type { Product } from '../types'
 
 interface ProductDetailPageProps {
@@ -331,6 +332,8 @@ export default function ProductDetailPage({
           </Box>
         </Box>
       )}
+
+      <ProductReviewsSection productId={product.id} />
     </Box>
   )
 }
