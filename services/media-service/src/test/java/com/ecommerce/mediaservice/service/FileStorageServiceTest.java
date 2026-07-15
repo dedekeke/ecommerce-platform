@@ -7,11 +7,14 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 
 class FileStorageServiceTest {
@@ -173,6 +176,36 @@ class FileStorageServiceTest {
         assertThatThrownBy(() -> fileStorageService.store(emptyFile))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Failed to store empty file");
+    }
+
+    @Test
+    void should_close_source_input_stream_when_storing_file() throws IOException {
+        // Given — Files.copy does NOT close the source stream; the service must.
+        InputStream in = spy(new ByteArrayInputStream("content".getBytes()));
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("test.jpg");
+        when(file.getInputStream()).thenReturn(in);
+
+        // When
+        fileStorageService.store(file);
+
+        // Then
+        verify(in).close();
+    }
+
+    @Test
+    void should_reject_file_with_null_original_filename() throws IOException {
+        // Given
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn(null);
+
+        // When/Then — controlled 400, not an NPE-driven 500.
+        assertThatThrownBy(() -> fileStorageService.store(file))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no filename");
+        verify(file, never()).getInputStream();
     }
 
     @Test
