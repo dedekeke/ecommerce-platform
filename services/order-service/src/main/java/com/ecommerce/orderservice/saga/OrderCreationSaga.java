@@ -49,6 +49,16 @@ public class OrderCreationSaga {
     private final OrderEventPublisher eventPublisher;
     private final PromotionServiceClient promotionServiceClient;
 
+    private static final String PAYMENT_CURRENCY = "USD";
+
+    /**
+     * Outcome of a successful checkout saga. Carries the persisted order plus the
+     * Stripe PaymentIntent details the browser needs to confirm payment — the
+     * {@code paymentClientSecret} is otherwise dropped after the gRPC call.
+     */
+    public record CheckoutResult(Order order, String paymentIntentId, String paymentClientSecret, String currency) {
+    }
+
     /*
      * Virtual-thread executor used to fan out the two independent saga steps
      * (inventory reservation + order persistence). We deliberately use
@@ -86,6 +96,22 @@ public class OrderCreationSaga {
     }
 
     /**
+     * Backwards-compatible overload returning only the persisted order. Prefer
+     * {@link #executeCheckout} on the REST checkout path, which also surfaces the
+     * PaymentIntent client secret required by the browser.
+     */
+    @Transactional
+    public Order executeOrderCreationSaga(
+        String userId,
+        Address shippingAddress,
+        String promotionCode,
+        String userEmail,
+        String userName
+    ) {
+        return executeCheckout(userId, shippingAddress, promotionCode, userEmail, userName).order();
+    }
+
+    /**
      * Execute the order creation saga
      * Steps:
      * 1. Get cart items from Cart Service (gRPC)
@@ -100,7 +126,7 @@ public class OrderCreationSaga {
      * If any step fails, compensate previous steps
      */
     @Transactional
-    public Order executeOrderCreationSaga(
+    public CheckoutResult executeCheckout(
         String userId,
         Address shippingAddress,
         String promotionCode,
@@ -111,6 +137,7 @@ public class OrderCreationSaga {
 
         String reservationId = null;
         String paymentIntentId = null;
+        String paymentClientSecret = null;
         Order order = null;
         boolean promotionApplied = false;
 
@@ -188,6 +215,7 @@ public class OrderCreationSaga {
                 throw new SagaException("Failed to create payment intent: " + paymentResponse.getMessage());
             }
             paymentIntentId = paymentResponse.getPaymentIntentId();
+            paymentClientSecret = paymentResponse.getClientSecret();
             log.info("Payment intent created: {}", paymentIntentId);
 
             // Update order with payment intent ID
@@ -203,7 +231,7 @@ public class OrderCreationSaga {
             eventPublisher.publishOrderCreatedEvent(order, userEmail, userName);
 
             log.info("Order creation saga completed successfully for order: {}", order.getOrderNumber());
-            return order;
+            return new CheckoutResult(order, paymentIntentId, paymentClientSecret, PAYMENT_CURRENCY);
 
         } catch (Exception e) {
             log.error("Order creation saga failed. Starting compensation...", e);
@@ -307,7 +335,7 @@ public class OrderCreationSaga {
                 .setOrderId(orderId)
                 .setUserId(userId)
                 .setAmount(amount.doubleValue())
-                .setCurrency("USD")
+                .setCurrency(PAYMENT_CURRENCY)
                 .build();
             return paymentServiceStub.createPaymentIntent(request);
         } catch (Exception e) {

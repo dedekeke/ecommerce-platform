@@ -7,7 +7,6 @@ import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
-import com.ecommerce.orderservice.event.OrderEventPublisher;
 import com.ecommerce.orderservice.exception.InvalidOrderStatusTransitionException;
 import com.ecommerce.orderservice.exception.OrderNotFoundException;
 import com.ecommerce.orderservice.repository.OrderRepository;
@@ -22,9 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Service for order management and business logic
@@ -37,7 +34,6 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderNumberGeneratorService orderNumberGenerator;
     private final PromotionServiceClient promotionServiceClient;
-    private final OrderEventPublisher orderEventPublisher;
 
     @Value("${order.tax.rate:0.08}")
     private Double taxRate;
@@ -47,42 +43,6 @@ public class OrderService {
 
     @Value("${order.shipping.free-threshold:50.00}")
     private Double freeShippingThreshold;
-
-    /**
-     * Create order from cart (for testing) and publish ORDER_CREATED so the
-     * notification-service can render the order confirmation email.
-     */
-    @Transactional
-    public Order createOrderFromCart(String userId, Map<String, Object> request) {
-        log.info("Creating order from cart for user: {}", userId);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> addressMap = (Map<String, Object>) request.get("shippingAddress");
-        Address shippingAddress = Address.builder()
-            .street((String) addressMap.get("street"))
-            .city((String) addressMap.get("city"))
-            .state((String) addressMap.get("state"))
-            .postalCode((String) addressMap.get("postalCode"))
-            .country((String) addressMap.get("country"))
-            .build();
-
-        String promotionCode = (String) request.getOrDefault("promotionCode", "");
-        String userEmail = (String) request.get("userEmail");
-        String userName = (String) request.get("userName");
-
-        List<OrderItem> items = new ArrayList<>();
-        OrderItem item = OrderItem.builder()
-            .productId("1")
-            .productName("Test Product")
-            .price(BigDecimal.valueOf(10.00))
-            .quantity(1)
-            .build();
-        items.add(item);
-
-        Order order = createOrder(userId, items, shippingAddress, promotionCode);
-        orderEventPublisher.publishOrderCreatedEvent(order, userEmail, userName);
-        return order;
-    }
 
     /**
      * Create a new order

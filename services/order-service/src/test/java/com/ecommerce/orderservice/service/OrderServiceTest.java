@@ -7,7 +7,6 @@ import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
-import com.ecommerce.orderservice.event.OrderEventPublisher;
 import com.ecommerce.orderservice.exception.InvalidOrderStatusTransitionException;
 import com.ecommerce.orderservice.exception.OrderNotFoundException;
 import com.ecommerce.orderservice.repository.OrderRepository;
@@ -42,9 +41,6 @@ class OrderServiceTest {
 
     @Mock
     private PromotionServiceClient promotionServiceClient;
-
-    @Mock
-    private OrderEventPublisher orderEventPublisher;
 
     @InjectMocks
     private OrderService orderService;
@@ -104,31 +100,6 @@ class OrderServiceTest {
 
         verify(orderNumberGenerator, times(1)).generateOrderNumber();
         verify(orderRepository, times(1)).save(any(Order.class));
-    }
-
-    @Test
-    void should_publishOrderCreatedWithRecipient_when_creatingOrderFromCart() {
-        when(orderNumberGenerator.generateOrderNumber()).thenReturn("ORD-2026-00099");
-        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
-
-        java.util.Map<String, Object> address = new java.util.HashMap<>();
-        address.put("street", "1 Infinite Loop");
-        address.put("city", "Cupertino");
-        address.put("state", "CA");
-        address.put("postalCode", "95014");
-        address.put("country", "USA");
-
-        java.util.Map<String, Object> request = new java.util.HashMap<>();
-        request.put("shippingAddress", address);
-        request.put("userEmail", "buyer@example.com");
-        request.put("userName", "Buyer");
-
-        Order order = orderService.createOrderFromCart(userId, request);
-
-        assertNotNull(order);
-        verify(orderEventPublisher, times(1))
-            .publishOrderCreatedEvent(any(Order.class), org.mockito.ArgumentMatchers.eq("buyer@example.com"),
-                org.mockito.ArgumentMatchers.eq("Buyer"));
     }
 
     @Test

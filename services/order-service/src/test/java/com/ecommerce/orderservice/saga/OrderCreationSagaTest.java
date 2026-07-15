@@ -23,6 +23,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -370,6 +371,44 @@ class OrderCreationSagaTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void should_surfaceClientSecretAndRealCartItems_when_executeCheckout() {
+        // Arrange - proves the REST checkout path builds order items from the
+        // real cart (prod1 x2) rather than the retired hardcoded "Test Product",
+        // and that the PaymentIntent client secret is surfaced to the caller.
+        String userId = "user-checkout";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-CHK1";
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockPaymentService.setPaymentSuccess(true);
+
+        Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
+        ArgumentCaptor<List<OrderItem>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        when(orderService.createOrder(eq(userId), itemsCaptor.capture(), eq(address), isNull()))
+            .thenReturn(mockOrder);
+        when(orderService.setPaymentIntent(eq(orderId), anyString())).thenReturn(mockOrder);
+
+        // Act
+        OrderCreationSaga.CheckoutResult result =
+            saga.executeCheckout(userId, address, null, null, null);
+
+        // Assert - payment details surfaced for the browser to confirm.
+        assertEquals("pi_test_secret", result.paymentClientSecret());
+        assertEquals("pi_test", result.paymentIntentId());
+        assertEquals("USD", result.currency());
+        assertSame(mockOrder, result.order());
+
+        // Assert - real cart line items, not the hardcoded test product.
+        List<OrderItem> capturedItems = itemsCaptor.getValue();
+        assertEquals(1, capturedItems.size());
+        assertEquals("prod1", capturedItems.get(0).getProductId());
+        assertEquals(2, capturedItems.get(0).getQuantity());
+    }
+
+    @Test
     void testOrderCreation_WithPromotionCode() {
         // Arrange
         String userId = "user123";
@@ -571,7 +610,8 @@ class OrderCreationSagaTest {
 
             if (paymentSuccess) {
                 builder.setMessage("Payment intent created")
-                    .setPaymentIntentId("pi_" + UUID.randomUUID().toString());
+                    .setPaymentIntentId("pi_test")
+                    .setClientSecret("pi_test_secret");
             } else {
                 builder.setMessage("Payment processing failed");
             }
