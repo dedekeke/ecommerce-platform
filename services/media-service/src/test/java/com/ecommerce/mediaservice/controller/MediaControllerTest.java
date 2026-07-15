@@ -1,6 +1,8 @@
 package com.ecommerce.mediaservice.controller;
 
+import com.ecommerce.mediaservice.config.SecurityConfig;
 import com.ecommerce.mediaservice.dto.MediaResponse;
+import com.ecommerce.mediaservice.exception.GlobalExceptionHandler;
 import com.ecommerce.mediaservice.exception.MediaNotFoundException;
 import com.ecommerce.mediaservice.service.MediaService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,11 +11,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
@@ -28,6 +33,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(MediaController.class)
 @AutoConfigureMockMvc
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
+@TestPropertySource(properties = {
+        "security.enabled=true",
+        "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://issuer.test/"
+})
 class MediaControllerTest {
 
     @Autowired
@@ -39,11 +49,15 @@ class MediaControllerTest {
     @MockBean
     private MediaService mediaService;
 
+    // Satisfies the oauth2 resource-server filter chain without hitting a real issuer.
+    @MockBean
+    private JwtDecoder jwtDecoder;
+
     private static final String USER_ID = "auth0|123456";
+    private static final String OTHER_USER_ID = "auth0|999999";
     private static final String MEDIA_ID = "media-123";
 
     @Test
-    @WithMockUser
     void shouldUploadFile() throws Exception {
         // Given
         MockMultipartFile file = new MockMultipartFile(
@@ -77,7 +91,7 @@ class MediaControllerTest {
     }
 
     @Test
-    void shouldRequireAuthenticationForUpload() throws Exception {
+    void shouldReturn401WhenUploadingUnauthenticated() throws Exception {
         // Given
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -86,16 +100,15 @@ class MediaControllerTest {
                 "content".getBytes()
         );
 
-        // When/Then - No authentication (Spring Security returns 403 with CSRF disabled)
+        // When/Then - no bearer token -> oauth2 resource server rejects with 401
         mockMvc.perform(multipart("/api/media/upload").file(file))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         verify(mediaService, never()).uploadFile(any(), any());
     }
 
     @Test
-    @WithMockUser
-    void shouldGetMediaById() throws Exception {
+    void shouldGetOwnMediaById() throws Exception {
         // Given
         MediaResponse response = MediaResponse.builder()
                 .id(MEDIA_ID)
@@ -106,7 +119,7 @@ class MediaControllerTest {
                 .uploadedBy(USER_ID)
                 .build();
 
-        when(mediaService.getMediaById(MEDIA_ID)).thenReturn(response);
+        when(mediaService.getMediaById(MEDIA_ID, USER_ID, false)).thenReturn(response);
 
         // When/Then
         mockMvc.perform(get("/api/media/{id}", MEDIA_ID)
@@ -115,14 +128,13 @@ class MediaControllerTest {
                 .andExpect(jsonPath("$.id").value(MEDIA_ID))
                 .andExpect(jsonPath("$.filename").value("test.jpg"));
 
-        verify(mediaService).getMediaById(MEDIA_ID);
+        verify(mediaService).getMediaById(MEDIA_ID, USER_ID, false);
     }
 
     @Test
-    @WithMockUser
     void shouldReturn404WhenMediaNotFound() throws Exception {
         // Given
-        when(mediaService.getMediaById(MEDIA_ID))
+        when(mediaService.getMediaById(MEDIA_ID, USER_ID, false))
                 .thenThrow(new MediaNotFoundException(MEDIA_ID));
 
         // When/Then
@@ -130,12 +142,56 @@ class MediaControllerTest {
                         .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
                 .andExpect(status().isNotFound());
 
-        verify(mediaService).getMediaById(MEDIA_ID);
+        verify(mediaService).getMediaById(MEDIA_ID, USER_ID, false);
     }
 
     @Test
-    @WithMockUser
-    void shouldDownloadFile() throws Exception {
+    void shouldReturn404WhenGettingOtherUsersMedia() throws Exception {
+        // Given - service reports non-owned media as not found (enumeration hardening)
+        when(mediaService.getMediaById(MEDIA_ID, OTHER_USER_ID, false))
+                .thenThrow(new MediaNotFoundException(MEDIA_ID));
+
+        // When/Then
+        mockMvc.perform(get("/api/media/{id}", MEDIA_ID)
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", OTHER_USER_ID))))
+                .andExpect(status().isNotFound());
+
+        verify(mediaService).getMediaById(MEDIA_ID, OTHER_USER_ID, false);
+    }
+
+    @Test
+    void shouldReturn401WhenGettingMediaUnauthenticated() throws Exception {
+        // When/Then
+        mockMvc.perform(get("/api/media/{id}", MEDIA_ID))
+                .andExpect(status().isUnauthorized());
+
+        verify(mediaService, never()).getMediaById(anyString(), anyString(), anyBoolean());
+    }
+
+    @Test
+    void shouldAllowAdminToGetAnyMedia() throws Exception {
+        // Given
+        MediaResponse response = MediaResponse.builder()
+                .id(MEDIA_ID)
+                .filename("test.jpg")
+                .contentType("image/jpeg")
+                .uploadedBy(USER_ID)
+                .build();
+
+        when(mediaService.getMediaById(MEDIA_ID, OTHER_USER_ID, true)).thenReturn(response);
+
+        // When/Then - caller holds SCOPE_admin, media owned by someone else
+        mockMvc.perform(get("/api/media/{id}", MEDIA_ID)
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", OTHER_USER_ID))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(MEDIA_ID));
+
+        verify(mediaService).getMediaById(MEDIA_ID, OTHER_USER_ID, true);
+    }
+
+    @Test
+    void shouldDownloadOwnFile() throws Exception {
         // Given
         byte[] fileContent = "test file content".getBytes();
         Resource resource = new ByteArrayResource(fileContent);
@@ -146,8 +202,8 @@ class MediaControllerTest {
                 .contentType("image/jpeg")
                 .build();
 
-        when(mediaService.getMediaById(MEDIA_ID)).thenReturn(mediaResponse);
-        when(mediaService.loadMediaFile(MEDIA_ID)).thenReturn(resource);
+        when(mediaService.getMediaById(MEDIA_ID, USER_ID, false)).thenReturn(mediaResponse);
+        when(mediaService.loadMediaFile(MEDIA_ID, USER_ID, false)).thenReturn(resource);
 
         // When/Then
         mockMvc.perform(get("/api/media/{id}/download", MEDIA_ID)
@@ -157,42 +213,77 @@ class MediaControllerTest {
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"test.jpg\""))
                 .andExpect(content().bytes(fileContent));
 
-        verify(mediaService).getMediaById(MEDIA_ID);
-        verify(mediaService).loadMediaFile(MEDIA_ID);
+        verify(mediaService).getMediaById(MEDIA_ID, USER_ID, false);
+        verify(mediaService).loadMediaFile(MEDIA_ID, USER_ID, false);
     }
 
     @Test
-    @WithMockUser
-    void shouldDeleteMedia() throws Exception {
+    void shouldReturn404WhenDownloadingOtherUsersFile() throws Exception {
         // Given
-        doNothing().when(mediaService).deleteMedia(eq(MEDIA_ID), eq(USER_ID));
+        when(mediaService.getMediaById(MEDIA_ID, OTHER_USER_ID, false))
+                .thenThrow(new MediaNotFoundException(MEDIA_ID));
+
+        // When/Then
+        mockMvc.perform(get("/api/media/{id}/download", MEDIA_ID)
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", OTHER_USER_ID))))
+                .andExpect(status().isNotFound());
+
+        verify(mediaService).getMediaById(MEDIA_ID, OTHER_USER_ID, false);
+        verify(mediaService, never()).loadMediaFile(anyString(), anyString(), anyBoolean());
+    }
+
+    @Test
+    void shouldReturn401WhenDownloadingUnauthenticated() throws Exception {
+        // When/Then
+        mockMvc.perform(get("/api/media/{id}/download", MEDIA_ID))
+                .andExpect(status().isUnauthorized());
+
+        verify(mediaService, never()).loadMediaFile(anyString(), anyString(), anyBoolean());
+    }
+
+    @Test
+    void shouldDeleteOwnMedia() throws Exception {
+        // Given
+        doNothing().when(mediaService).deleteMedia(eq(MEDIA_ID), eq(USER_ID), eq(false));
 
         // When/Then
         mockMvc.perform(delete("/api/media/{id}", MEDIA_ID)
                         .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
                 .andExpect(status().isNoContent());
 
-        verify(mediaService).deleteMedia(MEDIA_ID, USER_ID);
+        verify(mediaService).deleteMedia(MEDIA_ID, USER_ID, false);
     }
 
     @Test
-    @WithMockUser
     void shouldReturn403WhenDeletingOthersMedia() throws Exception {
         // Given
         doThrow(new SecurityException("Not authorized"))
-                .when(mediaService).deleteMedia(eq(MEDIA_ID), eq(USER_ID));
+                .when(mediaService).deleteMedia(eq(MEDIA_ID), eq(USER_ID), eq(false));
 
         // When/Then
         mockMvc.perform(delete("/api/media/{id}", MEDIA_ID)
                         .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
                 .andExpect(status().isForbidden());
 
-        verify(mediaService).deleteMedia(MEDIA_ID, USER_ID);
+        verify(mediaService).deleteMedia(MEDIA_ID, USER_ID, false);
     }
 
     @Test
-    @WithMockUser
-    void shouldGetUserMedia() throws Exception {
+    void shouldAllowAdminToDeleteAnyMedia() throws Exception {
+        // Given
+        doNothing().when(mediaService).deleteMedia(eq(MEDIA_ID), eq(OTHER_USER_ID), eq(true));
+
+        // When/Then
+        mockMvc.perform(delete("/api/media/{id}", MEDIA_ID)
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", OTHER_USER_ID))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
+                .andExpect(status().isNoContent());
+
+        verify(mediaService).deleteMedia(MEDIA_ID, OTHER_USER_ID, true);
+    }
+
+    @Test
+    void shouldGetOwnUserMedia() throws Exception {
         // Given
         List<MediaResponse> mediaList = Arrays.asList(
                 MediaResponse.builder()
@@ -209,7 +300,7 @@ class MediaControllerTest {
                         .build()
         );
 
-        when(mediaService.getMediaByUser(USER_ID)).thenReturn(mediaList);
+        when(mediaService.getMediaByUser(USER_ID, USER_ID, false)).thenReturn(mediaList);
 
         // When/Then
         mockMvc.perform(get("/api/media/user/{userId}", USER_ID)
@@ -220,23 +311,52 @@ class MediaControllerTest {
                 .andExpect(jsonPath("$[0].id").value("media-1"))
                 .andExpect(jsonPath("$[1].id").value("media-2"));
 
-        verify(mediaService).getMediaByUser(USER_ID);
+        verify(mediaService).getMediaByUser(USER_ID, USER_ID, false);
     }
 
     @Test
-    @WithMockUser
-    void shouldReturn400WhenUploadingWithoutFile() throws Exception {
-        // When/Then - Missing required parameter returns 500 (Spring's default for missing @RequestParam)
-        // This is acceptable as proper clients will always send the file parameter
-        mockMvc.perform(multipart("/api/media/upload")
-                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
-                .andExpect(status().is5xxServerError());
+    void shouldReturn403WhenListingOtherUsersMedia() throws Exception {
+        // Given - listing another user's uploads is a 403 authorization failure
+        when(mediaService.getMediaByUser(eq(USER_ID), eq(OTHER_USER_ID), eq(false)))
+                .thenThrow(new SecurityException("Not authorized"));
 
-        verify(mediaService, never()).uploadFile(any(), any());
+        // When/Then
+        mockMvc.perform(get("/api/media/user/{userId}", USER_ID)
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", OTHER_USER_ID))))
+                .andExpect(status().isForbidden());
+
+        verify(mediaService).getMediaByUser(USER_ID, OTHER_USER_ID, false);
     }
 
     @Test
-    @WithMockUser
+    void shouldAllowAdminToListAnyUsersMedia() throws Exception {
+        // Given
+        List<MediaResponse> mediaList = Arrays.asList(
+                MediaResponse.builder().id("media-1").filename("file1.jpg").uploadedBy(USER_ID).build()
+        );
+
+        when(mediaService.getMediaByUser(USER_ID, OTHER_USER_ID, true)).thenReturn(mediaList);
+
+        // When/Then
+        mockMvc.perform(get("/api/media/user/{userId}", USER_ID)
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", OTHER_USER_ID))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+
+        verify(mediaService).getMediaByUser(USER_ID, OTHER_USER_ID, true);
+    }
+
+    @Test
+    void shouldReturn401WhenListingUnauthenticated() throws Exception {
+        // When/Then
+        mockMvc.perform(get("/api/media/user/{userId}", USER_ID))
+                .andExpect(status().isUnauthorized());
+
+        verify(mediaService, never()).getMediaByUser(anyString(), anyString(), anyBoolean());
+    }
+
+    @Test
     void shouldReturn400WhenUploadingEmptyFile() throws Exception {
         // Given
         MockMultipartFile emptyFile = new MockMultipartFile(
@@ -257,7 +377,6 @@ class MediaControllerTest {
     }
 
     @Test
-    @WithMockUser
     void shouldReturn400WhenFileTypeMismatch() throws Exception {
         // Given
         MockMultipartFile file = new MockMultipartFile(
