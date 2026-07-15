@@ -1,8 +1,12 @@
 # E-Commerce Microservices Project: 10-Week Daily Development Plan
 
-## Progress Summary (Updated: 2026-01-01)
+## Progress Summary (Updated: 2026-07-14)
 
-### Current Status: Week 7, Day 35 Complete
+### Current Status: 10-Week Plan Complete — Post-Plan Hardening Phase
+
+Day-to-day tracking has moved to [todo.md](todo.md); the forward roadmap is
+[docs/SCALING_AND_IMPROVEMENTS.md](docs/SCALING_AND_IMPROVEMENTS.md). This file is the
+historical plan plus the summary below.
 
 | Week | Days | Status | Description |
 |------|------|--------|-------------|
@@ -12,10 +16,11 @@
 | Week 4 | Days 16-20 | **COMPLETE** | Transaction Services (Order, Payment, Inventory) |
 | Week 5 | Days 21-25 | **COMPLETE** | Supporting Services (Notification, Search, Media, Promotion) |
 | Week 6 | Days 26-30 | **COMPLETE** | Advanced Features (Caching, Security, Resilience, Scheduled Tasks, Documentation) |
-| Week 7 | Days 31-35 | **IN PROGRESS** | Frontend Shell and Setup |
-| Week 8 | Days 36-40 | PENDING | React Micro-Frontends |
-| Week 9 | Days 41-45 | PENDING | Angular Micro-Frontends |
-| Week 10 | Days 46-50 | PENDING | Testing, Optimization, Deployment |
+| Week 7 | Days 31-35 | **COMPLETE** | Frontend Shell and Setup |
+| Week 8 | Days 36-40 | **COMPLETE** | React Micro-Frontends (Product Catalog, Cart, Checkout) |
+| Week 9 | Days 41-45 | **COMPLETE** | Angular Micro-Frontends (User Dashboard, Admin Dashboard) |
+| Week 10 | Days 46-50 | **COMPLETE** | Testing (E2E/a11y/ZAP/coverage), K8s + Helm, CI/CD, Logging, Backup & DR |
+| Post-plan | — | **IN PROGRESS** | Scaling roadmap items + hardening sprints (see todo.md) |
 
 ### Completed Milestones
 
@@ -96,39 +101,42 @@
 - [x] Integration with App.tsx routes
 - [x] 300 unit tests passing (66 new MFE tests)
 
-### Next Steps (Week 7+)
+**Weeks 8-10 - MFEs, Testing, Production Readiness (Complete — details in [todo.md](todo.md))**
+- [x] Product Catalog, Cart, Checkout MFEs (React) + integration tests
+- [x] User Dashboard and Admin Dashboard MFEs (Angular) + Shell integration
+- [x] E2E (Playwright), accessibility (axe/WCAG AA), OWASP ZAP scan, 80%+ coverage
+- [x] docker-compose.prod, Kubernetes (Kustomize), Helm umbrella chart, CI/CD workflows
+- [x] Centralized logging (Loki), Backup & DR plan, onboarding + operations runbook
 
-1. **Frontend Development**
-   - Shell App with Module Federation (React 19)
-   - Product Catalog MFE (React)
-   - Cart MFE (React)
-   - Checkout MFE (React)
-   - User Dashboard MFE (Angular)
-   - Admin Dashboard MFE (Angular)
+**Post-Plan Features (2026-04)**
+- [x] Returns/RMA orchestration saga (order-service + notification-service)
+- [x] GraphQL BFF embedded in api-gateway (`/graphql`)
+- [x] Recommendation service Phase 1 (streaming co-occurrence, port 8092)
+- [x] Transactional outbox (polling) in order/payment services
+- [x] Real-time inventory SSE stream
 
-2. **Frontend Beautification** (Ongoing alongside core development)
+**Post-Plan Hardening Sprint (2026-07-14, PRs #95-#109 — details in [todo.md](todo.md))**
+- [x] Gateway: 401/committed-response fix, catalog auth-policy drift fix, response-timeout, GET-only retries
+- [x] Order-service: JWT-derived identity, IDOR gaps closed, stable PageResponse envelope
+- [x] Payment hardening; product/notification PageResponse envelope
+- [x] Standalone reactor Dockerfiles (eureka, config-server, api-gateway)
+- [x] DB connection budget (Hikari right-sizing + max_connections ceilings)
+- [x] Prod log-level guard, k6 load-test suite
+- [x] Autoscaling hygiene (HPAs, KEDA single-authority for order/payment, JVM heap cap)
+- [x] Cart-service circuit breaker + bulkhead around product-service client
+
+### Next Steps (Post-Plan)
+
+1. **Scaling roadmap** — prioritized in [docs/SCALING_AND_IMPROVEMENTS.md](docs/SCALING_AND_IMPROVEMENTS.md)
+   (open items include StructuredTaskScope fan-out, N+1 audit, Debezium CDC
+   migration for the outbox, SLOs/error budgets, read replicas, CDN)
+
+2. **Frontend Beautification** (ongoing, low priority — backlog in [todo.md](todo.md))
    - **Design System**: See [docs/frontend-design-brief.md](docs/frontend-design-brief.md)
-   - **Approach**: Apply beautification progressively as each MFE is built
-   - **Key Focus Areas**:
-     - Design tokens (colors, typography, spacing, shadows)
-     - Micro-interactions (hover effects, button animations, card lifts)
-     - Loading states (skeletons with shimmer, progress indicators)
-     - Page transitions and scroll animations
-     - Playful copy and empty states
-     - Accessibility (WCAG 2.1 AA compliance)
    - **Use Claude Frontend Skill**: Invoke `/frontend-design` for component creation
 
-3. **Testing & Quality**
-   - E2E tests with Playwright
-   - Performance/load testing
-   - Security audit with OWASP ZAP
-   - 80%+ code coverage
-
-4. **Production Readiness**
-   - Kubernetes deployment manifests
-   - Helm charts
-   - CI/CD pipeline refinement
-   - Production monitoring setup
+3. **Load-test follow-ups** — validate the order-service pool size (12) and
+   autoscaling ceilings under the k6 golden-path suite (`performance-tests/k6/`)
 
 ---
 

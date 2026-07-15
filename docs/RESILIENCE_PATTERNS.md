@@ -139,6 +139,20 @@ The Order Service communicates with multiple downstream services:
 - Long timeout (30s) - payment processing can be slow
 - Limited concurrency (10) - rate limiting for external gateway
 
+### Cart Service (added 2026-07-14, PR #109)
+
+The cart-service `ProductServiceGateway` (Feign call to product-service) is guarded by a
+circuit breaker + bulkhead, mirroring order-service's annotation-based convention.
+
+| Downstream | Circuit Breaker | Bulkhead | Fallback |
+|------------|-----------------|----------|----------|
+| Product Service | 50% failure, COUNT_BASED window 10, min 5 calls (env-tunable via `CB_DEFAULT_*`) | Semaphore | **Fail fast** — typed `ProductServiceUnavailableException` → HTTP 503 with `Retry-After` |
+
+**Rationale**:
+- When product-service browns out, add-to-cart/update calls fail fast instead of burning the read timeout, protecting the checkout funnel and the request thread pool
+- Genuine 4xx responses (e.g. product not found) are re-thrown unchanged and do **not** trip the breaker; `ignoreExceptions`-only semantics ensure bulkhead rejections still count as breaker failures
+- No stale prices or fabricated product data are ever served; cart read/view paths use denormalized `CartItem` data and never call product-service
+
 ## Fallback Strategies
 
 ### Graceful Degradation

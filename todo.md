@@ -1,18 +1,57 @@
 # E-Commerce Platform - TODO & Progress Tracker
 
-> Last updated: 2026-04-29 — GraphQL BFF embedded in API gateway.
-> Previous update: 2026-04-30 — Recommendation service Phase 1.
+> Last updated: 2026-07-14 — Hardening sprint merged: PRs #95–#109 (security, API contracts, Docker builds, DB/gateway performance, k6 load tests, autoscaling hygiene, cart resilience).
+> Previous update: 2026-04-30 — Recommendation service Phase 1; GraphQL BFF embedded in API gateway.
 
 ---
 
-## Current Status: Week 8 - Product Catalog MFE Development
+## Current Status: Post-Plan Hardening & Operations
 
-Product Catalog MFE initialized with core components implemented. BFF
-endpoint at `/graphql` ready for MFEs to consume on the next iteration.
+The 10-week plan (all MFEs, production readiness, documentation) is complete.
+Current work is iterative hardening driven by review findings and
+[docs/SCALING_AND_IMPROVEMENTS.md](docs/SCALING_AND_IMPROVEMENTS.md).
+Latest sprint (PRs #95–#109, merged 2026-07-14) is summarized below.
 
 ---
 
 ## Completed Tasks
+
+### 2026-07-14 — Hardening Sprint (PRs #95–#109, merged to develop)
+
+**Security & identity**
+- [x] #95 — Gateway: stop committed-response header writes turning 401 into 500
+- [x] #96 — Payment hardening: auth-gated checkout identity, `failureReason`,
+  Stripe-laziness regression guards
+- [x] #99 / #100 — Order-service: derive `userId` from JWT `sub` (never trust
+  client input); closed remaining IDOR gaps on subscription, RMA, and
+  order-by-number endpoints
+- [x] #108 — Gateway: fixed catalog auth-policy drift across versioned and
+  unversioned routes; category/product writes require `SCOPE_admin`
+
+**API contracts**
+- [x] #101 — Order-service: stable `PageResponse` envelope for `getUserOrders`
+  (fixes `PageImpl` serialization drift)
+- [x] #102 — Product & notification services: same `PageResponse` envelope for
+  all paginated endpoints; product-catalog-mfe `PaginatedResponse` type aligned
+
+**Build & deploy**
+- [x] #97 / #98 — Reactor-standalone Dockerfiles for eureka-server,
+  config-server, and api-gateway (build without a pre-installed local repo)
+
+**Performance & capacity**
+- [x] #103 — Right-sized Hikari pools per service + explicit shared-DB
+  `max_connections` ceilings — budget in [docs/db-connection-budget.md](docs/db-connection-budget.md)
+- [x] #104 — Gateway: response-timeout added; retries scoped to GET only
+- [x] #105 — Prod profiles: verbose SQL/param logging silenced + CI drift guard
+- [x] #106 — k6 load-test suite for the golden path (`performance-tests/k6/`)
+
+**Resilience & autoscaling**
+- [x] #107 — Autoscaling hygiene: HPAs for api-gateway/cart/user (cart & user
+  capped at 2 per connection budget), KEDA made the single autoscaler for
+  order/payment (ceiling 8), JVM heap capped via `MaxRAMPercentage`
+- [x] #109 — Cart-service: circuit breaker + bulkhead around the
+  product-service client; fail-fast 503 with `Retry-After`, 4xx never trips
+  the breaker
 
 ### 2026-04-29 — Returns / RMA Orchestration Saga §3.8 (feature/returns-rma-saga)
 - [x] `services/order-service/.../saga/rma/` — Return entity, ReturnStatus,
@@ -267,11 +306,11 @@ endpoint at `/graphql` ready for MFEs to consume on the next iteration.
 - [x] Comment cleanup (CLAUDE.md rule 6)
 
 ### Priority 2: Testing & Quality (Week 10)
-- [ ] Increase unit test coverage to 80%+
-- [ ] Add E2E tests with Playwright
-- [ ] Add performance/load testing suite
-- [ ] Security audit with OWASP ZAP
-- [ ] Accessibility testing (WCAG AA)
+- [x] Increase unit test coverage to 80%+ (`docs/COVERAGE_REPORT.md`, ≥80% statements enforced)
+- [x] Add E2E tests with Playwright (`e2e/` — golden path, auth gate, cart edge cases)
+- [x] Add performance/load testing suite (k6 golden-path suite, `performance-tests/k6/`, PR #106)
+- [x] Security audit with OWASP ZAP (`docs/SECURITY_SCAN.md`, reports in `security-reports/`)
+- [x] Accessibility testing (WCAG AA) (`e2e/tests/a11y.spec.ts` via axe)
 
 ### Priority 5: Frontend Beautification (Ongoing - Low Priority)
 > **Note**: These tasks can be done progressively alongside core MFE development. See [docs/frontend-design-brief.md](docs/frontend-design-brief.md) for full design system.
@@ -366,9 +405,11 @@ endpoint at `/graphql` ready for MFEs to consume on the next iteration.
 | Search Service | 8088 | - |
 | Media Service | 8089 | - |
 | Promotion Service | 8090 | 9090 |
+| Recommendation Service | 8092 | - |
 
 ### Key URLs
 - **Swagger UI**: http://localhost:8080/swagger-ui.html
+- **GraphQL BFF**: http://localhost:8080/graphql
 - **Eureka Dashboard**: http://localhost:8761
 - **Grafana**: http://localhost:3000 (admin/admin)
 - **Zipkin**: http://localhost:9411

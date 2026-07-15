@@ -2,19 +2,19 @@
 
 > Evidence-based roadmap for the next 6–12 months.  
 > Platform: Spring Boot 3.2 / Java 21 · 11 microservices · 5 datastores · React + Angular MFEs · Kubernetes / Helm  
-> Last updated: 2026-04-29
+> Last updated: 2026-07-14 (hardening sprint PRs #95–#109 reconciled)
 
 ---
 
 ## Top 5 to Do Next (Impact / Effort)
 
-| # | Item | Why now | Effort |
-|---|------|---------|--------|
-| 1 | **Outbox pattern via Debezium CDC** (§4) | Eliminates the active dual-write bug class in `order-service` and `payment-service`; highest correctness ROI with zero application-layer changes after setup. | M |
-| 2 | **StructuredTaskScope fan-out in OrderService** (§2) | Virtual threads are already on; `OrderCreationSaga` makes ≥3 sequential gRPC calls that can run in parallel, directly cutting p95 order creation latency. | S |
-| 3 | **HikariCP pool right-sizing** (§2) | Default pool size of 10 is almost certainly wrong for virtual-thread workloads at scale; a misconfigured pool is a silent p99 killer. Takes an afternoon. | S |
-| 4 | **KEDA Kafka consumer lag autoscaling** (§1) | Standard HPA cannot see Kafka lag; `search-service` and `notification-service` consumers will stall under burst load without this. | M |
-| 5 | **SLO definitions + error budgets per service** (§5) | No SLO means no objective basis for prioritising reliability vs. feature work; blocks error budget policy and chaos engineering programmes. | S |
+| # | Item | Why now | Effort | Status |
+|---|------|---------|--------|--------|
+| 1 | **Outbox pattern via Debezium CDC** (§4) | Eliminates the active dual-write bug class in `order-service` and `payment-service`; highest correctness ROI with zero application-layer changes after setup. | M | Partially applied 2026-04-30 — polling outbox live in order/payment; Debezium CDC remains the migration target (§4.1) |
+| 2 | **StructuredTaskScope fan-out in OrderService** (§2) | Virtual threads are already on; `OrderCreationSaga` makes ≥3 sequential gRPC calls that can run in parallel, directly cutting p95 order creation latency. | S | Open |
+| 3 | **HikariCP pool right-sizing** (§2) | Default pool size of 10 is almost certainly wrong for virtual-thread workloads at scale; a misconfigured pool is a silent p99 killer. Takes an afternoon. | S | **Applied 2026-07-14 (PR #103)** — per-service budget in [db-connection-budget.md](db-connection-budget.md) |
+| 4 | **KEDA Kafka consumer lag autoscaling** (§1) | Standard HPA cannot see Kafka lag; `search-service` and `notification-service` consumers will stall under burst load without this. | M | **Applied 2026-04-30**; hygiene pass 2026-07-14 (PR #107) made KEDA the single autoscaler for order/payment |
+| 5 | **SLO definitions + error budgets per service** (§5) | No SLO means no objective basis for prioritising reliability vs. feature work; blocks error budget policy and chaos engineering programmes. | S | Open |
 
 ---
 
@@ -230,6 +230,8 @@
 
 **Risk if skipped.** Virtual threads park on I/O, keeping CPU low even when service is saturated — the CPU HPA will never trigger.
 
+**Partially applied 2026-07-14 (PR #107, autoscaling hygiene).** CPU HPAs now exist for `api-gateway` (max 8), `product-service` (max 8), and `cart-service` / `user-service` (both capped at max 2 by the [connection budget](db-connection-budget.md)). The redundant CPU HPAs on `order-service` / `payment-service` were removed so KEDA is their single autoscaler, and JVM heap is capped via `MaxRAMPercentage` so scaled-out pods respect container memory limits. The multi-metric (request-rate via Prometheus Adapter) upgrade described above remains open.
+
 **References.**
 - Kubernetes HPA documentation: `https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/` (retrieved 2026-04-29) — multi-metric HPA and stabilisation window behaviour.
 
@@ -246,6 +248,8 @@
 **Effort.** M — KEDA operator install + one `ScaledObject` YAML per consumer deployment.
 
 **Applied 2026-04-30** — manifests at `k8s/base/scaling/` (notification-service, search-service, order-service) with per-environment maxReplicaCount overrides in `k8s/overlays/{staging,production}/scaling/`. Staging caps all three at 2; production runs notification-service 1->6, search-service and order-service 1->4. Requires KEDA operator installed via `kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.14.0/keda-2.14.0.yaml`. Operator install + lag-test runbook lives at `monitoring/keda/README.md`.
+
+**Hygiene pass 2026-07-14 (PR #107).** KEDA is now the *single* autoscaler for `order-service` and `payment-service` (their duplicate CPU HPAs were removed) with base `maxReplicaCount: 8`, sized against the [DB connection budget](db-connection-budget.md) from PR #103; the production overlay holds order-service at 4. `inventory-service` and `recommendation-service` also carry `ScaledObject`s (max 4).
 
 **Risk if skipped.** Kafka consumers will fall behind under burst load and cannot self-heal without manual replica adjustment or CPU-triggered HPA (which won't fire for idle consumers).
 
@@ -340,6 +344,8 @@ spring:
 For virtual-thread services, also set `hikari.allow-pool-suspension=false` and monitor `hikari.pending-threads` via Prometheus — sustained > 0 pending threads signals pool exhaustion.
 
 **Applied 2026-04-30** — values rolled out to user, product, cart, order, payment, inventory and promotion services: `maximum-pool-size: 20`, `minimum-idle: 5`, `connection-timeout: 3000`, `idle-timeout: 600000`, `max-lifetime: 1800000`, `leak-detection-threshold: 60000`, `pool-name: ${spring.application.name}-hikari`, `register-mbeans: true`, `validation-timeout: 1000`. The pool size was bumped from 10 to 20 because virtual threads multiply the number of concurrent in-flight DB calls (each virtual thread parks on connection acquisition rather than blocking a platform thread); a per-pod ceiling of 20 still fits comfortably under the per-DB `max_connections` (PostgreSQL 100, MySQL 151) across the projected pod count (≤4 pods/service in staging). `connection-timeout` was tightened to 3 s for fail-fast under saturation, `leak-detection-threshold` (60 s) gives observability into long-running transactions, and `register-mbeans: true` exposes the pool over JMX for ad-hoc debugging. Cart-service config lives in profile-specific YAMLs (`application-local.yml` and `application-docker.yml`) because its canonical `application.yml` is config-server style and intentionally bare; values were applied identically in both. Notification-service was skipped (MongoDB only). Search-service (Elasticsearch) and media-service (file storage / Mongo) also skipped — no JDBC datasource.
+
+**Superseded 2026-07-14 (PR #103).** The flat `maximum-pool-size: 20` proved unsafe once services scale out on the *shared* Postgres/MySQL instances (e.g. order-service at 8 replicas × 20 = 160 connections vs Postgres's default 100). Pools are now right-sized per service via `${DB_POOL_SIZE:...}` — order 12, product 8, all other SQL services 5, `minimum-idle: 2` — and the server ceilings are pinned explicitly (`POSTGRES_MAX_CONNECTIONS=200`, `MYSQL_MAX_CONNECTIONS=150`, routed through `.env`). Full budget math, KEDA-scaler connection caveats, and change procedure live in [db-connection-budget.md](db-connection-budget.md).
 
 **Trigger.** `hikari.pending-threads` > 0 for more than 10 s, OR p99 latency spikes without corresponding CPU increase, OR DB max connections exceeded.
 

@@ -208,6 +208,11 @@ jfr print --events jdk.VirtualThreadStart,jdk.VirtualThreadEnd recording.jfr
 
 ## Load Testing with JMeter
 
+> **Note (2026-07-14).** The maintained load-test suite for the platform golden
+> path (browse → cart → checkout) is now the **k6 suite** at
+> [`performance-tests/k6/`](../performance-tests/k6/README.md) (PR #106). The
+> JMeter plan below is kept for the virtual-threads comparison scenario only.
+
 ### Test Plan Configuration
 
 1. **Thread Group (Platform Threads Baseline)**
