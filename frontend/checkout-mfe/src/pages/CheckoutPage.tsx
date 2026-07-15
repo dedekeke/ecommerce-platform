@@ -9,9 +9,7 @@ import { useCheckout } from '../hooks/useCheckout'
 import { useAuthUserId } from '../hooks/useAuthUserId'
 import { useCartStore, selectCartItems, selectCartTotal } from '../stores/cartStore'
 import { createOrder } from '../api/orderService'
-import { isStripeEnabled } from '../config/payments'
 import AddressForm from '../components/AddressForm'
-import PaymentMethodForm from '../components/PaymentMethodForm'
 import OrderReview from '../components/OrderReview'
 import CheckoutStepper from '../components/CheckoutStepper'
 import type { ShippingAddress } from '../api/types'
@@ -35,6 +33,7 @@ export default function CheckoutPage() {
     step,
     address,
     paymentMethodId,
+    idempotencyKey,
     isFirstStep,
     isLastStep,
     canProceed,
@@ -52,12 +51,8 @@ export default function CheckoutPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const stripeEnabled = isStripeEnabled()
   // Stable draft order id for the PaymentIntent's idempotency/correlation, created once per session.
-  const draftOrderId = useMemo(
-    () => (stripeEnabled ? `draft-${crypto.randomUUID()}` : ''),
-    [stripeEnabled]
-  )
+  const draftOrderId = useMemo(() => `draft-${crypto.randomUUID()}`, [])
 
   const handleAddressValid = useCallback((addr: ShippingAddress) => setAddress(addr), [setAddress])
 
@@ -93,13 +88,16 @@ export default function CheckoutPage() {
     setIsSubmitting(true)
     setSubmitError(null)
     try {
-      const order = await createOrder({
-        userId: liveUserId,
-        items: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity, price: i.price })),
-        shippingAddress: address,
-        paymentMethodId,
-        totalAmount: computeTotal(subtotal),
-      })
+      const order = await createOrder(
+        {
+          userId: liveUserId,
+          items: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity, price: i.price })),
+          shippingAddress: address,
+          paymentMethodId,
+          totalAmount: computeTotal(subtotal),
+        },
+        idempotencyKey
+      )
       reset()
       navigate(`confirmation/${order.id}`)
     } catch {
@@ -134,27 +132,24 @@ export default function CheckoutPage() {
             />
           )}
 
-          {step === 1 &&
-            (stripeEnabled ? (
-              <Suspense
-                fallback={
-                  <Box>
-                    <Skeleton variant="rounded" height={48} sx={{ mb: 2 }} aria-label="Loading payment" />
-                    <Skeleton variant="rounded" height={48} />
-                  </Box>
-                }
-              >
-                <StripeCheckout
-                  orderId={draftOrderId}
-                  userId={userId}
-                  amount={computeTotal(subtotal)}
-                  currency="USD"
-                  onConfirmed={(paymentIntentId) => setPaymentMethod(paymentIntentId)}
-                />
-              </Suspense>
-            ) : (
-              <PaymentMethodForm onPaymentMethodReady={setPaymentMethod} />
-            ))}
+          {step === 1 && (
+            <Suspense
+              fallback={
+                <Box>
+                  <Skeleton variant="rounded" height={48} sx={{ mb: 2 }} aria-label="Loading payment" />
+                  <Skeleton variant="rounded" height={48} />
+                </Box>
+              }
+            >
+              <StripeCheckout
+                orderId={draftOrderId}
+                userId={userId}
+                amount={computeTotal(subtotal)}
+                currency="USD"
+                onConfirmed={(paymentIntentId) => setPaymentMethod(paymentIntentId)}
+              />
+            </Suspense>
+          )}
 
           {step === 2 && address && paymentMethodId && (
             <OrderReview address={address} paymentMethodId={paymentMethodId} />

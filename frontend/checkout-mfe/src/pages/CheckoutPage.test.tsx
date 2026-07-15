@@ -26,6 +26,17 @@ vi.mock('react-router-dom', async () => {
   }
 })
 
+// Stub StripeCheckout so the payment step doesn't require the real Stripe.js SDK; the button
+// lets tests simulate a confirmed PaymentIntent without ever touching raw card data.
+vi.mock('../components/StripeCheckout', () => ({
+  default: ({ onConfirmed }: { onConfirmed: (id: string) => void }) => (
+    <div>
+      <p>Payment step</p>
+      <button onClick={() => onConfirmed('pi_confirmed_test')}>Confirm payment (test stub)</button>
+    </div>
+  ),
+}))
+
 const fillShippingForm = async () => {
   await userEvent.type(screen.getByLabelText(/full name/i), 'Jane Doe')
   await userEvent.type(screen.getByLabelText(/address line 1/i), '123 Main St')
@@ -67,7 +78,7 @@ describe('CheckoutPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: /next/i }))
     await waitFor(() => {
-      expect(screen.getByText(/payment method/i)).toBeInTheDocument()
+      expect(screen.getByText(/payment step/i)).toBeInTheDocument()
     })
   })
 
@@ -76,29 +87,39 @@ describe('CheckoutPage', () => {
     await fillShippingForm()
     await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: /next/i }))
-    await waitFor(() => expect(screen.getByText(/payment method/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/payment step/i)).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: /back/i }))
     await waitFor(() => {
       expect(screen.getByLabelText(/full name/i)).toBeInTheDocument()
     })
   })
 
-  it('should advance to Review step after filling payment', async () => {
+  it('should advance to Review step after confirming payment', async () => {
     renderWithProviders(<CheckoutPage />)
     await fillShippingForm()
     await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: /next/i }))
-    await waitFor(() => expect(screen.getByText(/payment method/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/payment step/i)).toBeInTheDocument())
 
-    await userEvent.type(screen.getByLabelText(/card number/i), '4111111111111111')
-    await userEvent.type(screen.getByLabelText(/expiry/i), '12/28')
-    await userEvent.type(screen.getByLabelText(/cvv/i), '123')
+    await userEvent.click(screen.getByRole('button', { name: /confirm payment/i }))
 
     await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: /next/i }))
     await waitFor(() => {
       expect(screen.getByText(/review your order/i)).toBeInTheDocument()
     })
+  })
+
+  it('should never render a raw card number, expiry or CVV field at the payment step', async () => {
+    renderWithProviders(<CheckoutPage />)
+    await fillShippingForm()
+    await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: /next/i }))
+    await waitFor(() => expect(screen.getByText(/payment step/i)).toBeInTheDocument())
+
+    expect(screen.queryByLabelText(/card number/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^expiry/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/cvv/i)).not.toBeInTheDocument()
   })
 
   it('should show Place Order button on Review step', async () => {
@@ -111,7 +132,7 @@ describe('CheckoutPage', () => {
       postalCode: '94105',
       country: 'US',
     })
-    useCheckoutStore.getState().setPaymentMethod('mock_card_123')
+    useCheckoutStore.getState().setPaymentMethod('pi_test_123')
     renderWithProviders(<CheckoutPage />)
     expect(screen.getByRole('button', { name: /place order/i })).toBeInTheDocument()
   })

@@ -42,7 +42,7 @@ function renderAtReviewStep() {
       postalCode: '94105',
       country: 'US',
     })
-    useCheckoutStore.getState().setPaymentMethod('mock_card_abc')
+    useCheckoutStore.getState().setPaymentMethod('pi_test_abc')
   })
   return renderWithProviders(<CheckoutPage />)
 }
@@ -80,6 +80,42 @@ describe('CheckoutPage — order submission', () => {
       },
       { timeout: 10000 }
     )
+  }, 15000)
+
+  it('should send a stable Idempotency-Key header, reused on retry after a failure', async () => {
+    const { http, HttpResponse } = await import('msw')
+    const seenKeys: Array<string | null> = []
+    let failNext = true
+    server.use(
+      http.post('http://localhost:8080/api/orders', async ({ request }) => {
+        seenKeys.push(request.headers.get('Idempotency-Key'))
+        if (failNext) {
+          failNext = false
+          return HttpResponse.json({ message: 'Server error' }, { status: 500 })
+        }
+        return HttpResponse.json(
+          { id: 'order-123', orderNumber: 'ORD-001', status: 'PENDING', items: [], shippingAddress: {}, totalAmount: 0 },
+          { status: 201 }
+        )
+      })
+    )
+    renderAtReviewStep()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /place order/i })).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: /place order/i }))
+    await waitFor(
+      () => expect(screen.getByText(/failed to place order/i)).toBeInTheDocument(),
+      { timeout: 10000 }
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /place order/i }))
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('confirmation/order-123'))
+
+    expect(seenKeys).toHaveLength(2)
+    expect(seenKeys[0]).toBeTruthy()
+    expect(seenKeys[0]).toBe(seenKeys[1])
   }, 15000)
 
   it('should disable Place Order button while submitting', async () => {

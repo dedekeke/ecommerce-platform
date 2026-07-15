@@ -20,16 +20,32 @@ const validPayload = {
     postalCode: '94105',
     country: 'US',
   },
-  paymentMethodId: 'mock_card_abc',
+  paymentMethodId: 'pi_test_abc',
   totalAmount: 168.97,
 }
 
 describe('createOrder', () => {
   it('should return a created order on success', async () => {
-    const order = await createOrder(validPayload)
+    const order = await createOrder(validPayload, 'idem-key-1')
     expect(order.id).toBe('order-123')
     expect(order.orderNumber).toBe('ORD-20260429-001')
     expect(order.status).toBe('PENDING')
+  })
+
+  it('should send the Idempotency-Key header on the request', async () => {
+    const { http, HttpResponse } = await import('msw')
+    let seenHeader: string | null = null
+    server.use(
+      http.post('http://localhost:8080/api/orders', async ({ request }) => {
+        seenHeader = request.headers.get('Idempotency-Key')
+        return HttpResponse.json(
+          { id: 'order-123', orderNumber: 'ORD-20260429-001', status: 'PENDING', items: [], shippingAddress: {}, totalAmount: 0 },
+          { status: 201 }
+        )
+      })
+    )
+    await createOrder(validPayload, 'idem-key-abc')
+    expect(seenHeader).toBe('idem-key-abc')
   })
 
   it('should throw when the server returns a 400', async () => {
@@ -39,7 +55,7 @@ describe('createOrder', () => {
         HttpResponse.json({ message: 'Bad request' }, { status: 400 })
       )
     )
-    await expect(createOrder({ ...validPayload, userId: '' })).rejects.toThrow()
+    await expect(createOrder({ ...validPayload, userId: '' }, 'idem-key-1')).rejects.toThrow()
   })
 })
 

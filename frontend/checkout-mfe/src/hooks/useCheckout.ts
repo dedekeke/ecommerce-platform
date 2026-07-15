@@ -7,6 +7,7 @@ export function useCheckout() {
   const step = useCheckoutStore((s) => s.step)
   const address = useCheckoutStore((s) => s.address)
   const paymentMethodId = useCheckoutStore((s) => s.paymentMethodId)
+  const idempotencyKey = useCheckoutStore((s) => s.idempotencyKey)
   const setStep = useCheckoutStore((s) => s.setStep)
   const setAddress = useCheckoutStore((s) => s.setAddress)
   const setPaymentMethod = useCheckoutStore((s) => s.setPaymentMethod)
@@ -37,6 +38,7 @@ export function useCheckout() {
     step,
     address,
     paymentMethodId,
+    idempotencyKey,
     isFirstStep,
     isLastStep,
     canProceed,

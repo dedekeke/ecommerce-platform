@@ -1,14 +1,8 @@
 /**
  * Payment configuration sourced from Vite env vars.
  *
- * - VITE_PAYMENTS_PROVIDER: 'stripe' enables the real Stripe.js confirmation flow.
- *   Any other value (default) keeps the legacy mock card form so tests and local
- *   development run without a Stripe account.
- * - VITE_STRIPE_PUBLISHABLE_KEY: Stripe publishable key (pk_...). Never commit a real key.
+ * Stripe Elements is the only supported checkout payment flow — raw card data must never be
+ * collected by this app (PCI SAQ-A). VITE_STRIPE_PUBLISHABLE_KEY is the Stripe publishable
+ * (client-side) key, pk_.... Never commit a real value; use a Stripe test key for local/dev.
  */
-export const PAYMENTS_PROVIDER: string = import.meta.env.VITE_PAYMENTS_PROVIDER ?? 'mock'
-
 export const STRIPE_PUBLISHABLE_KEY: string = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ?? ''
-
-export const isStripeEnabled = (): boolean =>
-  PAYMENTS_PROVIDER === 'stripe' && STRIPE_PUBLISHABLE_KEY.length > 0

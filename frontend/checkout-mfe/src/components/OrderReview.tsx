@@ -21,9 +21,12 @@ interface OrderReviewProps {
   paymentMethodId: string
 }
 
+// paymentMethodId is a confirmed Stripe PaymentIntent id (pi_...); the specific payment method
+// type (card, wallet, etc.) is chosen and confirmed within Stripe Elements, so we only need to
+// show that payment was confirmed here, with a masked reference for the user's records.
 function paymentLabel(paymentMethodId: string): string {
-  if (paymentMethodId.startsWith('mock_paypal')) return 'PayPal'
-  return 'Card (stub)'
+  const reference = paymentMethodId.slice(-6)
+  return `Payment confirmed (ref: ...${reference})`
 }
 
 export default function OrderReview({ address, paymentMethodId }: OrderReviewProps) {

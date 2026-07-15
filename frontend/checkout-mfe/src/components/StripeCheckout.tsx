@@ -51,8 +51,8 @@ function intentReducer(_state: IntentState, action: IntentAction): IntentState {
 
 /**
  * Real Stripe checkout step. Creates a PaymentIntent on the backend to obtain a client_secret,
- * then renders Stripe Elements so the user can confirm the payment with Stripe.js. Enabled only
- * when VITE_PAYMENTS_PROVIDER=stripe; otherwise the legacy mock card form is used.
+ * then renders Stripe Elements so the user can confirm the payment with Stripe.js. This is the
+ * only payment step in checkout — raw card data is never collected by this app (PCI SAQ-A).
  */
 export default function StripeCheckout({
   orderId,

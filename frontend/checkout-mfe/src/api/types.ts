@@ -18,6 +18,12 @@ export interface CreateOrderPayload {
   userId: string
   items: OrderItem[]
   shippingAddress: ShippingAddress
+  /**
+   * A Stripe PaymentIntent id already confirmed via Stripe Elements (see StripeCheckout) — never
+   * raw card data. ASSUMPTION: the order-saga contract for consuming this at order-creation time
+   * was not finalized as of this change; see orderService.createOrder for the single call site
+   * to update once the contract is confirmed.
+   */
   paymentMethodId: string
   totalAmount: number
 }

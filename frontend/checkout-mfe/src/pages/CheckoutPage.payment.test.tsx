@@ -1,17 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act, screen } from '@testing-library/react'
 import { renderWithProviders } from '../test/renderWithProviders'
 import { useCheckoutStore } from '../stores/checkoutStore'
 import { useCartStore } from '../stores/cartStore'
 
-// Toggle the payment provider per test via this mock.
-const isStripeEnabled = vi.fn()
-vi.mock('../config/payments', () => ({
-  isStripeEnabled: () => isStripeEnabled(),
-}))
-
-// Stub StripeCheckout so the test asserts the wiring (provider selection + onConfirmed) without
-// pulling in Stripe.js. The button lets us simulate a confirmed PaymentIntent.
+// Stub StripeCheckout so the test asserts the wiring (mount + onConfirmed) without pulling in
+// Stripe.js. The button lets us simulate a confirmed PaymentIntent.
 vi.mock('../components/StripeCheckout', () => ({
   default: ({ onConfirmed, orderId }: { onConfirmed: (id: string) => void; orderId: string }) => (
     <button data-testid="stripe-checkout" data-order-id={orderId} onClick={() => onConfirmed('pi_confirmed_1')}>
@@ -42,35 +36,22 @@ const seedPaymentStep = () => {
   })
 }
 
-describe('CheckoutPage — payment step provider selection', () => {
-  beforeEach(() => {
-    isStripeEnabled.mockReset()
-  })
-
+describe('CheckoutPage — payment step', () => {
   afterEach(() => {
     act(() => useCheckoutStore.getState().reset())
     act(() => useCartStore.getState().clearCart())
   })
 
-  it('should render the mock PaymentMethodForm when Stripe is disabled', () => {
-    isStripeEnabled.mockReturnValue(false)
-    seedPaymentStep()
-    renderWithProviders(<CheckoutPage />)
-    expect(screen.getByText(/payment method/i)).toBeInTheDocument()
-    expect(screen.queryByTestId('stripe-checkout')).not.toBeInTheDocument()
-  })
-
-  it('should render StripeCheckout when Stripe is enabled', async () => {
-    isStripeEnabled.mockReturnValue(true)
+  it('should always render the Stripe checkout step (never a raw card form)', async () => {
     seedPaymentStep()
     renderWithProviders(<CheckoutPage />)
     // StripeCheckout is lazy-loaded (React.lazy + Suspense), so it resolves asynchronously.
     expect(await screen.findByTestId('stripe-checkout')).toBeInTheDocument()
-    expect(screen.queryByText(/test mode — no real charges/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/card number/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/cvv/i)).not.toBeInTheDocument()
   })
 
   it('should set the payment method to the confirmed PaymentIntent id on Stripe confirmation', async () => {
-    isStripeEnabled.mockReturnValue(true)
     seedPaymentStep()
     const { default: userEvent } = await import('@testing-library/user-event')
     renderWithProviders(<CheckoutPage />)

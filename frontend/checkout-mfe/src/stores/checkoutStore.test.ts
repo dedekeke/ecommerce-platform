@@ -34,14 +34,14 @@ describe('useCheckoutStore', () => {
   })
 
   it('should set paymentMethodId when setPaymentMethod is called', () => {
-    useCheckoutStore.getState().setPaymentMethod('mock_card_12345')
-    expect(useCheckoutStore.getState().paymentMethodId).toBe('mock_card_12345')
+    useCheckoutStore.getState().setPaymentMethod('pi_test_12345')
+    expect(useCheckoutStore.getState().paymentMethodId).toBe('pi_test_12345')
   })
 
   it('should reset all state to initial values', () => {
     useCheckoutStore.getState().setStep(2)
     useCheckoutStore.getState().setAddress(mockAddress)
-    useCheckoutStore.getState().setPaymentMethod('mock_card_12345')
+    useCheckoutStore.getState().setPaymentMethod('pi_test_12345')
 
     useCheckoutStore.getState().reset()
 
@@ -49,6 +49,23 @@ describe('useCheckoutStore', () => {
     expect(state.step).toBe(0)
     expect(state.address).toBeNull()
     expect(state.paymentMethodId).toBeNull()
+  })
+
+  it('should generate a non-empty idempotencyKey initially', () => {
+    expect(useCheckoutStore.getState().idempotencyKey).toBeTruthy()
+  })
+
+  it('should keep the same idempotencyKey across unrelated state updates', () => {
+    const before = useCheckoutStore.getState().idempotencyKey
+    useCheckoutStore.getState().setStep(1)
+    useCheckoutStore.getState().setAddress(mockAddress)
+    expect(useCheckoutStore.getState().idempotencyKey).toBe(before)
+  })
+
+  it('should generate a fresh idempotencyKey on reset', () => {
+    const before = useCheckoutStore.getState().idempotencyKey
+    useCheckoutStore.getState().reset()
+    expect(useCheckoutStore.getState().idempotencyKey).not.toBe(before)
   })
 
   it('should allow step to advance through all 3 checkout steps', () => {

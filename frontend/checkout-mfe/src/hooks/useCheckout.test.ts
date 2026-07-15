@@ -62,6 +62,11 @@ describe('useCheckout', () => {
     expect(result.current.step).toBe(0)
   })
 
+  it('should expose a non-empty idempotencyKey from store', () => {
+    const { result } = renderHook(() => useCheckout())
+    expect(result.current.idempotencyKey).toBeTruthy()
+  })
+
   it('should expose address and paymentMethodId from store', () => {
     const { result } = renderHook(() => useCheckout())
     expect(result.current.address).toBeNull()
@@ -70,8 +75,8 @@ describe('useCheckout', () => {
     act(() => result.current.setAddress(mockAddress))
     expect(result.current.address).toEqual(mockAddress)
 
-    act(() => result.current.setPaymentMethod('mock_card_99'))
-    expect(result.current.paymentMethodId).toBe('mock_card_99')
+    act(() => result.current.setPaymentMethod('pi_test_99'))
+    expect(result.current.paymentMethodId).toBe('pi_test_99')
   })
 
   it('should reset checkout state', () => {
@@ -105,7 +110,7 @@ describe('useCheckout', () => {
     const { result } = renderHook(() => useCheckout())
     act(() => result.current.goToStep(1))
     act(() => result.current.setAddress(mockAddress))
-    act(() => result.current.setPaymentMethod('mock_card_abc'))
+    act(() => result.current.setPaymentMethod('pi_test_abc'))
     expect(result.current.canProceed).toBe(true)
   })
 
