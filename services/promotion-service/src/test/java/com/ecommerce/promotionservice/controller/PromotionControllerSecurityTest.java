@@ -1,0 +1,238 @@
+package com.ecommerce.promotionservice.controller;
+
+import com.ecommerce.promotionservice.dto.DiscountResult;
+import com.ecommerce.promotionservice.dto.PromotionRequest;
+import com.ecommerce.promotionservice.dto.PromotionResponse;
+import com.ecommerce.promotionservice.dto.PromotionValidationRequest;
+import com.ecommerce.promotionservice.model.PromotionType;
+import com.ecommerce.promotionservice.service.PromotionService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * Authorization tests for the promotion write endpoints.
+ *
+ * Boots the real Spring Security filter chain ({@code security.enabled=true}) so
+ * the JWT-scope authorization is exercised end to end. The mutating endpoints
+ * (POST/PUT/DELETE) must require {@code SCOPE_admin}; the read + validate/apply
+ * endpoints stay anonymous. The JwtDecoder is mocked so the resource server
+ * starts without contacting Auth0; the caller identity is supplied via the
+ * {@code jwt()} post-processor (the {@code scope} claim maps to
+ * {@code SCOPE_*} authorities via the default converter).
+ */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "security.enabled=true",
+        "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://test-tenant.auth0.com/",
+        "grpc.server.port=-1"
+})
+@DisplayName("Promotion Controller Authorization Tests")
+class PromotionControllerSecurityTest {
+
+    private static final SimpleGrantedAuthority ADMIN = new SimpleGrantedAuthority("SCOPE_admin");
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @MockBean
+    private PromotionService promotionService;
+
+    @MockBean
+    private JwtDecoder jwtDecoder;
+
+    private String promotionRequestJson() throws Exception {
+        PromotionRequest request = PromotionRequest.builder()
+                .code("SAVE20")
+                .name("20% Off Sale")
+                .type(PromotionType.PERCENTAGE)
+                .discountValue(BigDecimal.valueOf(20))
+                .startDate(LocalDateTime.now().minusDays(1))
+                .endDate(LocalDateTime.now().plusDays(1))
+                .build();
+        return objectMapper.writeValueAsString(request);
+    }
+
+    private String validationRequestJson() throws Exception {
+        PromotionValidationRequest request = PromotionValidationRequest.builder()
+                .code("SAVE20")
+                .purchaseAmount(BigDecimal.valueOf(200))
+                .build();
+        return objectMapper.writeValueAsString(request);
+    }
+
+    // ---------- POST /api/promotions ----------
+
+    @Test
+    @DisplayName("should_return401_when_createPromotionUnauthenticated")
+    void should_return401_when_createPromotionUnauthenticated() throws Exception {
+        mockMvc.perform(post("/api/promotions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(promotionRequestJson()))
+                .andExpect(status().isUnauthorized());
+
+        verify(promotionService, never()).createPromotion(any());
+    }
+
+    @Test
+    @DisplayName("should_return403_when_createPromotionWithoutAdminScope")
+    void should_return403_when_createPromotionWithoutAdminScope() throws Exception {
+        mockMvc.perform(post("/api/promotions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(promotionRequestJson())
+                        .with(jwt().jwt(jwt -> jwt.claim("scope", "read:promotions"))))
+                .andExpect(status().isForbidden());
+
+        verify(promotionService, never()).createPromotion(any());
+    }
+
+    @Test
+    @DisplayName("should_return201_when_createPromotionWithAdminScope")
+    void should_return201_when_createPromotionWithAdminScope() throws Exception {
+        when(promotionService.createPromotion(any())).thenReturn(PromotionResponse.builder().id(1L).build());
+
+        mockMvc.perform(post("/api/promotions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(promotionRequestJson())
+                        .with(jwt().authorities(ADMIN)))
+                .andExpect(status().isCreated());
+
+        verify(promotionService).createPromotion(any());
+    }
+
+    // ---------- PUT /api/promotions/{id} ----------
+
+    @Test
+    @DisplayName("should_return401_when_updatePromotionUnauthenticated")
+    void should_return401_when_updatePromotionUnauthenticated() throws Exception {
+        mockMvc.perform(put("/api/promotions/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(promotionRequestJson()))
+                .andExpect(status().isUnauthorized());
+
+        verify(promotionService, never()).updatePromotion(anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("should_return403_when_updatePromotionWithoutAdminScope")
+    void should_return403_when_updatePromotionWithoutAdminScope() throws Exception {
+        mockMvc.perform(put("/api/promotions/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(promotionRequestJson())
+                        .with(jwt().jwt(jwt -> jwt.claim("scope", "read:promotions"))))
+                .andExpect(status().isForbidden());
+
+        verify(promotionService, never()).updatePromotion(anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("should_return200_when_updatePromotionWithAdminScope")
+    void should_return200_when_updatePromotionWithAdminScope() throws Exception {
+        when(promotionService.updatePromotion(anyLong(), any()))
+                .thenReturn(PromotionResponse.builder().id(1L).build());
+
+        mockMvc.perform(put("/api/promotions/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(promotionRequestJson())
+                        .with(jwt().authorities(ADMIN)))
+                .andExpect(status().isOk());
+
+        verify(promotionService).updatePromotion(anyLong(), any());
+    }
+
+    // ---------- DELETE /api/promotions/{id} ----------
+
+    @Test
+    @DisplayName("should_return401_when_deletePromotionUnauthenticated")
+    void should_return401_when_deletePromotionUnauthenticated() throws Exception {
+        mockMvc.perform(delete("/api/promotions/1"))
+                .andExpect(status().isUnauthorized());
+
+        verify(promotionService, never()).deletePromotion(anyLong());
+    }
+
+    @Test
+    @DisplayName("should_return403_when_deletePromotionWithoutAdminScope")
+    void should_return403_when_deletePromotionWithoutAdminScope() throws Exception {
+        mockMvc.perform(delete("/api/promotions/1")
+                        .with(jwt().jwt(jwt -> jwt.claim("scope", "read:promotions"))))
+                .andExpect(status().isForbidden());
+
+        verify(promotionService, never()).deletePromotion(anyLong());
+    }
+
+    @Test
+    @DisplayName("should_return204_when_deletePromotionWithAdminScope")
+    void should_return204_when_deletePromotionWithAdminScope() throws Exception {
+        mockMvc.perform(delete("/api/promotions/1")
+                        .with(jwt().authorities(ADMIN)))
+                .andExpect(status().isNoContent());
+
+        verify(promotionService).deletePromotion(1L);
+    }
+
+    // ---------- Anonymous (read + validate + apply) still open ----------
+
+    @Test
+    @DisplayName("should_allowAnonymous_when_getAllActivePromotions")
+    void should_allowAnonymous_when_getAllActivePromotions() throws Exception {
+        when(promotionService.getAllActivePromotions()).thenReturn(java.util.List.of());
+
+        mockMvc.perform(get("/api/promotions"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("should_allowAnonymous_when_validatePromotion")
+    void should_allowAnonymous_when_validatePromotion() throws Exception {
+        when(promotionService.validatePromotion(any()))
+                .thenReturn(DiscountResult.builder().valid(true).build());
+
+        mockMvc.perform(post("/api/promotions/validate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("should_allowAnonymous_when_applyPromotion")
+    void should_allowAnonymous_when_applyPromotion() throws Exception {
+        when(promotionService.applyPromotion(any()))
+                .thenReturn(DiscountResult.builder().valid(true).build());
+
+        mockMvc.perform(post("/api/promotions/apply")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson()))
+                .andExpect(status().isOk());
+    }
+}

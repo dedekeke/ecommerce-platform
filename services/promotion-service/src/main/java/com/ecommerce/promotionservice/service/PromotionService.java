@@ -158,6 +158,15 @@ public class PromotionService {
                 .build();
     }
 
+    /**
+     * Applies a promotion and increments its usage counter. The increment is a
+     * single atomic conditional UPDATE ({@link PromotionRepository#redeemByCode})
+     * that both checks {@code currentUses < maxUses} and increments in one SQL
+     * statement, so concurrent redemptions of the same limited-use code are
+     * serialized by the row lock and the cap can never be exceeded (money loss).
+     * A zero row count means the code was exhausted between validation and
+     * redemption, so we reject.
+     */
     @CacheEvict(value = {"promotions", "activePromotions"}, allEntries = true)
     public DiscountResult applyPromotion(PromotionValidationRequest request) {
         log.info("Applying promotion with code: {}", request.getCode());
@@ -169,16 +178,18 @@ public class PromotionService {
             return validationResult;
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        Promotion promotion = promotionRepository.findValidPromotionByCode(request.getCode(), now)
-                .orElseThrow(() -> new PromotionNotFoundException(request.getCode()));
+        int redeemed = promotionRepository.redeemByCode(request.getCode(), LocalDateTime.now());
 
-        promotion.incrementUsage();
-        promotionRepository.save(promotion);
+        if (redeemed == 0) {
+            log.warn("Promotion usage limit reached or no longer valid for code: {}", request.getCode());
+            return DiscountResult.builder()
+                    .valid(false)
+                    .message("Promotion has reached its maximum usage limit")
+                    .promotionCode(request.getCode())
+                    .build();
+        }
 
-        log.info("Promotion applied successfully. Code: {}, New usage count: {}",
-                promotion.getCode(), promotion.getCurrentUses());
-
+        log.info("Promotion applied successfully. Code: {}", request.getCode());
         return validationResult;
     }
 

@@ -136,6 +136,14 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- spring-security-test: jwt() request post-processor for authorization tests.
+             common-library declares it test-scoped, so it is not transitive here. -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers</artifactId>

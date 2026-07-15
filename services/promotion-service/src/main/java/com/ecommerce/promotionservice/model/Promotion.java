@@ -29,6 +29,17 @@ public class Promotion implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Optimistic-lock guard. Concurrent redemptions of a limited-use code each
+     * read then increment {@code currentUses}; the version check makes the
+     * increment atomic so two writers cannot both commit off the same read and
+     * push usage past {@code maxUses}. Managed by Hibernate.
+     */
+    @Version
+    @Column(nullable = false)
+    @Builder.Default
+    private Long version = 0L;
+
     @Column(nullable = false, unique = true, length = 50)
     @NotBlank(message = "Promotion code is required")
     @Size(min = 3, max = 50, message = "Code must be between 3 and 50 characters")
