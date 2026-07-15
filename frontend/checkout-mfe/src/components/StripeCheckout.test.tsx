@@ -1,12 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../test/renderWithProviders'
-
-const createPaymentIntent = vi.fn()
-
-vi.mock('../api/paymentService', () => ({
-  createPaymentIntent: (...args: unknown[]) => createPaymentIntent(...args),
-}))
 
 // A publishable key is required for the component to attempt loadStripe; supply a fake one.
 vi.mock('../config/payments', () => ({
@@ -19,8 +13,12 @@ vi.mock('@stripe/stripe-js', () => ({
   loadStripe: (...args: unknown[]) => loadStripe(...args),
 }))
 
+let seenOptions: unknown
 vi.mock('@stripe/react-stripe-js', () => ({
-  Elements: ({ children }: { children: React.ReactNode }) => <div data-testid="elements">{children}</div>,
+  Elements: ({ children, options }: { children: React.ReactNode; options: unknown }) => {
+    seenOptions = options
+    return <div data-testid="elements">{children}</div>
+  },
 }))
 
 vi.mock('./StripePaymentForm', () => ({
@@ -30,49 +28,26 @@ vi.mock('./StripePaymentForm', () => ({
 import StripeCheckout from './StripeCheckout'
 
 const props = {
-  orderId: 'order-1',
-  userId: 'user-1',
-  amount: 42,
-  currency: 'USD',
+  clientSecret: 'pi_test_123_secret_abc',
   onConfirmed: vi.fn(),
 }
 
 describe('StripeCheckout', () => {
-  beforeEach(() => {
-    createPaymentIntent.mockReset()
-  })
-
-  it('should show a loading skeleton while fetching the client secret', () => {
-    createPaymentIntent.mockReturnValue(new Promise(() => {}))
-    renderWithProviders(<StripeCheckout {...props} />)
-    expect(screen.getByLabelText(/loading payment form/i)).toBeInTheDocument()
-  })
-
-  it('should render the Stripe payment form once the client secret is fetched', async () => {
-    createPaymentIntent.mockResolvedValue({
-      paymentId: 1,
-      paymentIntentId: 'pi_test_123',
-      clientSecret: 'pi_test_123_secret_abc',
-      status: 'PENDING',
-    })
+  it('should mount Stripe Elements with the supplied clientSecret (order-first checkout)', async () => {
     renderWithProviders(<StripeCheckout {...props} />)
     await waitFor(() => expect(screen.getByTestId('stripe-payment-form')).toBeInTheDocument())
-    expect(createPaymentIntent).toHaveBeenCalledWith({
-      orderId: 'order-1',
-      userId: 'user-1',
-      amount: 42,
-      currency: 'USD',
-    })
+    expect(seenOptions).toEqual({ clientSecret: 'pi_test_123_secret_abc' })
   })
 
-  it('should show an error when intent creation fails', async () => {
-    createPaymentIntent.mockRejectedValue(new Error('boom'))
+  it('should never call payment-service to create its own PaymentIntent', async () => {
+    // No fetch/network mock is wired for a client-side intent-creation call — if StripeCheckout
+    // tried to make one, this component-level render (with no MSW server running) would throw
+    // or hang. Rendering synchronously to the payment form proves no such call happens.
     renderWithProviders(<StripeCheckout {...props} />)
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/unable to start payment/i))
+    await waitFor(() => expect(screen.getByTestId('stripe-payment-form')).toBeInTheDocument())
   })
 
   it('should lazy-load the Stripe SDK and only call loadStripe with a non-empty publishable key', async () => {
-    createPaymentIntent.mockReturnValue(new Promise(() => {}))
     renderWithProviders(<StripeCheckout {...props} />)
     // loadStripe is reached via a dynamic import('@stripe/stripe-js'), so it resolves on a microtask.
     await waitFor(() => expect(loadStripe).toHaveBeenCalledWith('pk_test_fake'))

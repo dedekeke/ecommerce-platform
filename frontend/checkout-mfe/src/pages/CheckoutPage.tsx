@@ -1,5 +1,6 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { isAxiosError } from 'axios'
 import Box from '@mui/material/Box'
 import Container from '@mui/material/Container'
 import Typography from '@mui/material/Typography'
@@ -7,26 +8,26 @@ import Alert from '@mui/material/Alert'
 import Skeleton from '@mui/material/Skeleton'
 import { useCheckout } from '../hooks/useCheckout'
 import { useAuthUserId } from '../hooks/useAuthUserId'
-import { useCartStore, selectCartItems, selectCartTotal } from '../stores/cartStore'
 import { createOrder } from '../api/orderService'
-import { isStripeEnabled } from '../config/payments'
+import { toAddressDto } from '../utils/toAddressDto'
 import AddressForm from '../components/AddressForm'
-import PaymentMethodForm from '../components/PaymentMethodForm'
 import OrderReview from '../components/OrderReview'
 import CheckoutStepper from '../components/CheckoutStepper'
 import type { ShippingAddress } from '../api/types'
 
 // Code-split the Stripe step: StripeCheckout statically pulls @stripe/stripe-js +
 // @stripe/react-stripe-js (~120KB). Lazy-loading keeps that SDK out of the main checkout bundle
-// and only fetches it when the Stripe provider is active and the user reaches the payment step.
+// and only fetches it when the user reaches the payment step.
 const StripeCheckout = lazy(() => import('../components/StripeCheckout'))
 
-const STEPS = ['Shipping', 'Payment', 'Review']
+// Order-first checkout (PR#122): the Review step submits POST /api/orders, which creates the
+// order AND the Stripe PaymentIntent server-side. Only once that response is in hand do we know
+// the client_secret needed to mount Stripe Elements — so Payment must come after Review.
+const STEPS = ['Shipping', 'Review', 'Payment']
 
-const computeTotal = (subtotal: number) => {
-  const tax = subtotal * 0.1
-  const shipping = subtotal >= 50 ? 0 : 5
-  return subtotal + tax + shipping
+interface CheckoutResult {
+  orderId: string
+  clientSecret: string
 }
 
 export default function CheckoutPage() {
@@ -34,30 +35,21 @@ export default function CheckoutPage() {
   const {
     step,
     address,
-    paymentMethodId,
+    idempotencyKey,
     isFirstStep,
     isLastStep,
     canProceed,
     goNext,
     goBack,
     setAddress,
-    setPaymentMethod,
     reset,
   } = useCheckout()
 
-  const cartItems = useCartStore(selectCartItems)
-  const subtotal = useCartStore(selectCartTotal)
   const userId = useAuthUserId()
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-
-  const stripeEnabled = isStripeEnabled()
-  // Stable draft order id for the PaymentIntent's idempotency/correlation, created once per session.
-  const draftOrderId = useMemo(
-    () => (stripeEnabled ? `draft-${crypto.randomUUID()}` : ''),
-    [stripeEnabled]
-  )
+  const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null)
 
   const handleAddressValid = useCallback((addr: ShippingAddress) => setAddress(addr), [setAddress])
 
@@ -78,12 +70,13 @@ export default function CheckoutPage() {
     )
   }
 
-  const handleNext = async () => {
-    if (!isLastStep) {
-      goNext()
-      return
-    }
-    if (!address || !paymentMethodId) return
+  // Submits the order (POST /api/orders). This is the Review step's action: the saga creates
+  // the order and the PaymentIntent server-side, so the resulting clientSecret is what unlocks
+  // the Payment step. idempotencyKey is stable across retries of this attempt (see
+  // checkoutStore) so a 409 (in-flight) is never blindly retried and a transient 502 (retried
+  // automatically by apiClient) never creates a duplicate order.
+  const submitOrder = async () => {
+    if (!address) return
     // Re-read the live identity at submit time: the session may have expired since render.
     const liveUserId = window.__getAuthUserId?.() ?? null
     if (!liveUserId) {
@@ -93,20 +86,50 @@ export default function CheckoutPage() {
     setIsSubmitting(true)
     setSubmitError(null)
     try {
-      const order = await createOrder({
-        userId: liveUserId,
-        items: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity, price: i.price })),
-        shippingAddress: address,
-        paymentMethodId,
-        totalAmount: computeTotal(subtotal),
-      })
-      reset()
-      navigate(`confirmation/${order.id}`)
-    } catch {
-      setSubmitError('Failed to place order. Please try again.')
+      const { response, isReplay } = await createOrder(
+        { userId: liveUserId, shippingAddress: toAddressDto(address) },
+        idempotencyKey
+      )
+
+      if (isReplay && !response.clientSecret) {
+        // Already-completed checkout for this idempotency key and no secret was re-issued —
+        // nothing left to confirm here. Route to the order-status/confirmation view rather than
+        // mounting Stripe Elements with nothing to confirm.
+        reset()
+        navigate(`confirmation/${response.orderId}`)
+        return
+      }
+
+      if (!response.clientSecret) {
+        setSubmitError('Order created but payment could not be started. Please contact support.')
+        return
+      }
+
+      setCheckoutResult({ orderId: response.orderId, clientSecret: response.clientSecret })
+      goNext()
+    } catch (err) {
+      if (isAxiosError(err) && err.response?.status === 409) {
+        // A checkout with this idempotency key is already being processed (concurrent
+        // double-submit) — must NOT retry; retrying would just re-trigger this same guard.
+        setSubmitError('Your order is already being submitted. Please wait a moment before trying again.')
+      } else {
+        setSubmitError('Failed to place order. Please try again.')
+      }
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleNext = () => {
+    if (step === 0) {
+      goNext()
+      return
+    }
+    if (step === 1) {
+      void submitOrder()
+    }
+    // step === 2 (Payment) has no generic "Next" action — the stepper's action bar is hidden
+    // there; Stripe's own confirm button drives completion.
   }
 
   return (
@@ -134,30 +157,25 @@ export default function CheckoutPage() {
             />
           )}
 
-          {step === 1 &&
-            (stripeEnabled ? (
-              <Suspense
-                fallback={
-                  <Box>
-                    <Skeleton variant="rounded" height={48} sx={{ mb: 2 }} aria-label="Loading payment" />
-                    <Skeleton variant="rounded" height={48} />
-                  </Box>
-                }
-              >
-                <StripeCheckout
-                  orderId={draftOrderId}
-                  userId={userId}
-                  amount={computeTotal(subtotal)}
-                  currency="USD"
-                  onConfirmed={(paymentIntentId) => setPaymentMethod(paymentIntentId)}
-                />
-              </Suspense>
-            ) : (
-              <PaymentMethodForm onPaymentMethodReady={setPaymentMethod} />
-            ))}
+          {step === 1 && address && <OrderReview address={address} />}
 
-          {step === 2 && address && paymentMethodId && (
-            <OrderReview address={address} paymentMethodId={paymentMethodId} />
+          {step === 2 && checkoutResult && (
+            <Suspense
+              fallback={
+                <Box>
+                  <Skeleton variant="rounded" height={48} sx={{ mb: 2 }} aria-label="Loading payment" />
+                  <Skeleton variant="rounded" height={48} />
+                </Box>
+              }
+            >
+              <StripeCheckout
+                clientSecret={checkoutResult.clientSecret}
+                onConfirmed={() => {
+                  reset()
+                  navigate(`confirmation/${checkoutResult.orderId}`)
+                }}
+              />
+            </Suspense>
           )}
         </Box>
 
@@ -170,6 +188,8 @@ export default function CheckoutPage() {
           isLastStep={isLastStep}
           isFirstStep={isFirstStep}
           isSubmitting={isSubmitting}
+          nextLabel={step === 1 ? 'Continue to payment' : undefined}
+          hideActions={step === 2}
         />
       </Container>
     </Box>

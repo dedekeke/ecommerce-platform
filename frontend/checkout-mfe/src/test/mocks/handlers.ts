@@ -1,38 +1,33 @@
 import { http, HttpResponse } from 'msw'
-import type { CreateOrderPayload, CreatePaymentIntentPayload } from '../../api/types'
+import type { CheckoutRequestPayload } from '../../api/types'
 
 const API_BASE = 'http://localhost:8080/api'
 
+// Order-first checkout (PR#122): POST /orders creates the order AND the Stripe PaymentIntent
+// server-side, returning a clientSecret for Stripe Elements. The cart is not sent by the client.
 export const handlers = [
-  http.post(`${API_BASE}/payments/intents`, async ({ request }) => {
-    const body = (await request.json()) as CreatePaymentIntentPayload
-    if (!body.orderId || !body.amount) {
-      return HttpResponse.json({ message: 'Invalid payment intent payload' }, { status: 400 })
-    }
-    return HttpResponse.json(
-      {
-        paymentId: 1,
-        paymentIntentId: 'pi_test_123',
-        clientSecret: 'pi_test_123_secret_abc',
-        status: 'PENDING',
-      },
-      { status: 201 }
-    )
-  }),
-
   http.post(`${API_BASE}/orders`, async ({ request }) => {
-    const body = (await request.json()) as CreateOrderPayload
-    if (!body.userId || !body.items?.length) {
-      return HttpResponse.json({ message: 'Invalid order payload' }, { status: 400 })
+    const body = (await request.json()) as CheckoutRequestPayload
+    if (!body.shippingAddress?.street) {
+      return HttpResponse.json({ message: 'Shipping address is required' }, { status: 400 })
     }
     return HttpResponse.json(
       {
-        id: 'order-123',
+        orderId: 'order-123',
         orderNumber: 'ORD-20260429-001',
         status: 'PENDING',
-        items: body.items,
-        shippingAddress: body.shippingAddress,
-        totalAmount: body.totalAmount,
+        currency: 'USD',
+        subtotal: 79.99,
+        tax: 8.0,
+        shippingCost: 5.99,
+        discountAmount: null,
+        loyaltyDiscount: null,
+        total: 93.98,
+        paymentIntentId: 'pi_test_123',
+        clientSecret: 'pi_test_123_secret_abc',
+        items: [
+          { productId: 'prod-1', productName: 'Headphones', price: 79.99, quantity: 1, subtotal: 79.99 },
+        ],
         createdAt: new Date().toISOString(),
       },
       { status: 201 }

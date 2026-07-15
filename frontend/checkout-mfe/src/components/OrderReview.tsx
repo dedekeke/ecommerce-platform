@@ -9,6 +9,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
+import CreditCardIcon from '@mui/icons-material/CreditCard'
 import type { ShippingAddress } from '../api/types'
 import { useCartStore, selectCartItems, selectCartTotal } from '../stores/cartStore'
 
@@ -18,15 +19,12 @@ const FREE_SHIPPING_THRESHOLD = 50
 
 interface OrderReviewProps {
   address: ShippingAddress
-  paymentMethodId: string
 }
 
-function paymentLabel(paymentMethodId: string): string {
-  if (paymentMethodId.startsWith('mock_paypal')) return 'PayPal'
-  return 'Card (stub)'
-}
-
-export default function OrderReview({ address, paymentMethodId }: OrderReviewProps) {
+// Order-first checkout (PR#122): payment happens after this review step, once the order is
+// created and a PaymentIntent client_secret is available — so there is no payment method to
+// show yet here.
+export default function OrderReview({ address }: OrderReviewProps) {
   const items = useCartStore(selectCartItems)
   const subtotal = useCartStore(selectCartTotal)
   const tax = subtotal * TAX_RATE
@@ -68,12 +66,15 @@ export default function OrderReview({ address, paymentMethodId }: OrderReviewPro
           p: 2.5,
           mb: 3,
           boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
         }}
       >
-        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
-          Payment method
+        <CreditCardIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+        <Typography variant="body2" color="text.secondary">
+          You&apos;ll enter payment details securely on the next step.
         </Typography>
-        <Typography variant="body2">{paymentLabel(paymentMethodId)}</Typography>
       </Box>
 
       <Box

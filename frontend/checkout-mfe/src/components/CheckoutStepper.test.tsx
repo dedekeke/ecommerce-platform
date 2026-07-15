@@ -133,4 +133,40 @@ describe('CheckoutStepper', () => {
     )
     expect(screen.getByRole('button', { name: /placing order/i })).toBeDisabled()
   })
+
+  it('should show a custom nextLabel on a non-final step when provided', () => {
+    renderWithProviders(
+      <CheckoutStepper
+        steps={steps}
+        activeStep={1}
+        onBack={vi.fn()}
+        onNext={vi.fn()}
+        canProceed={true}
+        isLastStep={false}
+        isSubmitting={false}
+        nextLabel="Continue to payment"
+      />
+    )
+    expect(screen.getByRole('button', { name: /continue to payment/i })).toBeInTheDocument()
+  })
+
+  it('should hide the Back/Next action bar when hideActions is true', () => {
+    renderWithProviders(
+      <CheckoutStepper
+        steps={steps}
+        activeStep={2}
+        onBack={vi.fn()}
+        onNext={vi.fn()}
+        canProceed={false}
+        isLastStep={true}
+        isSubmitting={false}
+        hideActions
+      />
+    )
+    expect(screen.queryByRole('button', { name: /back/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /place order/i })).not.toBeInTheDocument()
+    steps.forEach((label) => {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    })
+  })
 })

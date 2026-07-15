@@ -19,6 +19,11 @@ interface CheckoutStepperProps {
   isLastStep: boolean
   isFirstStep?: boolean
   isSubmitting: boolean
+  /** Overrides the default "Next" label for a non-final step (e.g. "Continue to payment"). */
+  nextLabel?: string
+  /** Hides the Back/Next action bar entirely — used on steps that drive their own completion
+   * action (e.g. the Payment step's embedded Stripe "Pay now" button). */
+  hideActions?: boolean
 }
 
 export default function CheckoutStepper({
@@ -29,6 +34,8 @@ export default function CheckoutStepper({
   canProceed,
   isLastStep,
   isSubmitting,
+  nextLabel,
+  hideActions = false,
 }: CheckoutStepperProps) {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
@@ -47,47 +54,49 @@ export default function CheckoutStepper({
         ))}
       </Stepper>
 
-      <Stack direction="row" justifyContent="space-between" sx={{ mt: 3 }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          disabled={activeStep === 0}
-          startIcon={<ArrowBackIcon />}
-          sx={{
-            transition: 'all 0.2s ease',
-            '&:not(:disabled):hover': { transform: 'translateX(-2px)' },
-          }}
-        >
-          Back
-        </Button>
+      {!hideActions && (
+        <Stack direction="row" justifyContent="space-between" sx={{ mt: 3 }}>
+          <Button
+            variant="outlined"
+            onClick={onBack}
+            disabled={activeStep === 0}
+            startIcon={<ArrowBackIcon />}
+            sx={{
+              transition: 'all 0.2s ease',
+              '&:not(:disabled):hover': { transform: 'translateX(-2px)' },
+            }}
+          >
+            Back
+          </Button>
 
-        <Button
-          variant="contained"
-          onClick={onNext}
-          disabled={!canProceed || isSubmitting}
-          endIcon={
-            isSubmitting ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : isLastStep ? (
-              <ShoppingBagIcon />
-            ) : (
-              <ArrowForwardIcon />
-            )
-          }
-          sx={{
-            minWidth: 160,
-            py: 1.25,
-            fontWeight: 600,
-            transition: 'all 0.2s ease',
-            '&:not(:disabled):hover': {
-              transform: 'translateY(-1px)',
-              boxShadow: '0 4px 12px rgba(26,26,46,0.25)',
-            },
-          }}
-        >
-          {isSubmitting ? 'Placing order...' : isLastStep ? 'Place Order' : 'Next'}
-        </Button>
-      </Stack>
+          <Button
+            variant="contained"
+            onClick={onNext}
+            disabled={!canProceed || isSubmitting}
+            endIcon={
+              isSubmitting ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : isLastStep ? (
+                <ShoppingBagIcon />
+              ) : (
+                <ArrowForwardIcon />
+              )
+            }
+            sx={{
+              minWidth: 160,
+              py: 1.25,
+              fontWeight: 600,
+              transition: 'all 0.2s ease',
+              '&:not(:disabled):hover': {
+                transform: 'translateY(-1px)',
+                boxShadow: '0 4px 12px rgba(26,26,46,0.25)',
+              },
+            }}
+          >
+            {isSubmitting ? 'Placing order...' : isLastStep ? 'Place Order' : nextLabel ?? 'Next'}
+          </Button>
+        </Stack>
+      )}
     </Box>
   )
 }

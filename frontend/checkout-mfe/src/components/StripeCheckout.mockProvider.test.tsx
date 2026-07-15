@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from '../test/renderWithProviders'
 
-// Provider=mock => empty publishable key. Verifies loadStripe is NEVER called with an empty key.
+// No publishable key configured. Verifies loadStripe is NEVER called with an empty key, and
+// that there is no raw-card-form fallback (PCI SAQ-A) — just a configuration error.
 vi.mock('../config/payments', () => ({
   STRIPE_PUBLISHABLE_KEY: '',
 }))
@@ -10,10 +11,6 @@ vi.mock('../config/payments', () => ({
 const loadStripe = vi.fn((..._args: unknown[]) => Promise.resolve({}))
 vi.mock('@stripe/stripe-js', () => ({
   loadStripe: (...args: unknown[]) => loadStripe(...args),
-}))
-
-vi.mock('../api/paymentService', () => ({
-  createPaymentIntent: vi.fn(() => new Promise(() => {})),
 }))
 
 vi.mock('@stripe/react-stripe-js', () => ({
@@ -25,10 +22,7 @@ vi.mock('./StripePaymentForm', () => ({ default: () => <div /> }))
 import StripeCheckout from './StripeCheckout'
 
 const props = {
-  orderId: 'order-1',
-  userId: 'user-1',
-  amount: 42,
-  currency: 'USD',
+  clientSecret: 'pi_test_123_secret_abc',
   onConfirmed: vi.fn(),
 }
 
