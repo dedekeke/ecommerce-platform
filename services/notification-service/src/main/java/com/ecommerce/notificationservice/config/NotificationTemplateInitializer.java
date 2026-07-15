@@ -125,6 +125,45 @@ public class NotificationTemplateInitializer implements CommandLineRunner {
             log.info("Created PROMOTION_ANNOUNCEMENT template");
         }
 
+        // Refund + RMA templates. These back the customer-facing refund/RMA
+        // consumers, which route through NotificationService.sendNotification so
+        // a transient email failure is retried by NotificationRetryScheduler
+        // (the scheduler re-sends by templateCode, so the row MUST exist here).
+        // body = the Thymeleaf template file name under resources/templates.
+        seedEmailTemplate("REFUND_COMPLETED", "Refund Completed",
+                "Email sent when a customer refund is processed",
+                "Your refund has been processed", "refund-completed");
+        seedEmailTemplate("RMA_REQUESTED", "RMA Requested",
+                "Email sent when a return is authorized",
+                "Your return has been authorized", "rma-requested");
+        seedEmailTemplate("RMA_COMPLETED", "RMA Completed",
+                "Email sent when a return is completed",
+                "Your return has been completed", "rma-completed");
+        seedEmailTemplate("RMA_REJECTED", "RMA Rejected",
+                "Email sent when a return is rejected",
+                "Your return has been rejected", "rma-rejected");
+
         log.info("Notification templates initialization completed");
+    }
+
+    private void seedEmailTemplate(String code, String name, String description,
+                                   String subject, String body) {
+        if (templateRepository.existsByCode(code)) {
+            return;
+        }
+        Map<String, Object> defaultVars = new HashMap<>();
+        defaultVars.put("companyName", "E-Commerce Platform");
+
+        templateRepository.save(NotificationTemplate.builder()
+                .code(code)
+                .name(name)
+                .description(description)
+                .type(NotificationType.EMAIL)
+                .subject(subject)
+                .body(body)
+                .defaultVariables(defaultVars)
+                .active(true)
+                .build());
+        log.info("Created {} template", code);
     }
 }

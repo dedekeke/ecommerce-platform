@@ -1,11 +1,8 @@
 package com.ecommerce.notificationservice.kafka;
 
-import com.ecommerce.notificationservice.domain.NotificationLog;
-import com.ecommerce.notificationservice.domain.NotificationStatus;
 import com.ecommerce.notificationservice.kafka.dedup.NotificationEventDeduplicator;
 import com.ecommerce.notificationservice.kafka.event.RefundCompletedEvent;
-import com.ecommerce.notificationservice.repository.NotificationLogRepository;
-import com.ecommerce.notificationservice.service.EmailService;
+import com.ecommerce.notificationservice.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,11 +19,12 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -36,13 +34,10 @@ import static org.mockito.Mockito.when;
 class RefundEventConsumerTest {
 
     @Mock
-    private NotificationLogRepository notificationLogRepository;
+    private NotificationService notificationService;
 
     @Mock
     private NotificationEventDeduplicator deduplicator;
-
-    @Mock
-    private EmailService emailService;
 
     private ObjectMapper objectMapper;
     private RefundEventConsumer consumer;
@@ -51,10 +46,8 @@ class RefundEventConsumerTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
-        consumer = new RefundEventConsumer(notificationLogRepository, deduplicator, emailService, objectMapper);
+        consumer = new RefundEventConsumer(notificationService, deduplicator, objectMapper);
         lenient().when(deduplicator.claim(anyString(), anyString())).thenReturn(true);
-        lenient().when(notificationLogRepository.save(any(NotificationLog.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
     }
 
     private RefundCompletedEvent sampleEvent() {
@@ -79,36 +72,23 @@ class RefundEventConsumerTest {
     }
 
     @Test
-    @DisplayName("should_sendEmailWithCorrectVariables_when_eventReceived")
-    void should_sendEmailWithCorrectVariables_when_eventReceived() throws Exception {
+    @DisplayName("should_routeThroughRetryCapableNotificationService_when_eventReceived")
+    void should_routeThroughRetryCapableNotificationService_when_eventReceived() throws Exception {
         consumer.handleRefundCompleted(objectMapper.writeValueAsString(sampleEvent()));
 
         ArgumentCaptor<Map<String, Object>> varsCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(emailService).sendEmail(
+        verify(notificationService).sendNotification(
+                eq("user-1"),
                 eq("user@example.com"),
-                eq("Your refund has been processed"),
-                eq(RefundEventConsumer.TEMPLATE_NAME),
-                varsCaptor.capture());
+                eq(RefundEventConsumer.TEMPLATE_CODE),
+                varsCaptor.capture(),
+                eq("order-1"),
+                eq(RefundEventConsumer.ENTITY_TYPE));
         Map<String, Object> vars = varsCaptor.getValue();
         assertThat(vars).containsEntry("orderNumber", "ORD-1");
         assertThat(vars).containsEntry("orderId", "order-1");
         assertThat(vars).containsEntry("amount", new BigDecimal("19.99"));
         assertThat(vars).containsEntry("refundTransactionId", "rfd-tx-1");
-    }
-
-    @Test
-    @DisplayName("should_persistSentLog_when_emailSendSucceeds")
-    void should_persistSentLog_when_emailSendSucceeds() throws Exception {
-        consumer.handleRefundCompleted(objectMapper.writeValueAsString(sampleEvent()));
-
-        ArgumentCaptor<NotificationLog> logCaptor = ArgumentCaptor.forClass(NotificationLog.class);
-        verify(notificationLogRepository, times(2)).save(logCaptor.capture());
-
-        NotificationLog finalLog = logCaptor.getAllValues().get(1);
-        assertThat(finalLog.getStatus()).isEqualTo(NotificationStatus.SENT);
-        assertThat(finalLog.getSentAt()).isNotNull();
-        assertThat(finalLog.getRelatedEntityType()).isEqualTo("REFUND");
-        assertThat(finalLog.getTemplateCode()).isEqualTo(RefundEventConsumer.TEMPLATE_CODE);
     }
 
     @Test
@@ -118,24 +98,20 @@ class RefundEventConsumerTest {
 
         consumer.handleRefundCompleted(objectMapper.writeValueAsString(sampleEvent()));
 
-        verify(notificationLogRepository, never()).save(any());
-        verifyNoInteractions(emailService);
+        verifyNoInteractions(notificationService);
     }
 
     @Test
-    @DisplayName("should_persistFailedLog_when_emailSenderThrows")
-    void should_persistFailedLog_when_emailSenderThrows() throws Exception {
-        org.mockito.Mockito.doThrow(new RuntimeException("smtp down"))
-                .when(emailService).sendEmail(anyString(), anyString(), anyString(), any());
+    @DisplayName("should_swallowDispatchError_so_partitionDoesNotStall")
+    void should_swallowDispatchError_so_partitionDoesNotStall() throws Exception {
+        doThrow(new RuntimeException("dispatch boom"))
+                .when(notificationService).sendNotification(
+                        anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
 
         consumer.handleRefundCompleted(objectMapper.writeValueAsString(sampleEvent()));
 
-        ArgumentCaptor<NotificationLog> logCaptor = ArgumentCaptor.forClass(NotificationLog.class);
-        verify(notificationLogRepository, times(2)).save(logCaptor.capture());
-
-        NotificationLog finalLog = logCaptor.getAllValues().get(1);
-        assertThat(finalLog.getStatus()).isEqualTo(NotificationStatus.FAILED);
-        assertThat(finalLog.getErrorMessage()).contains("smtp down");
+        verify(notificationService).sendNotification(
+                anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
     }
 
     @Test
@@ -147,8 +123,7 @@ class RefundEventConsumerTest {
         consumer.handleRefundCompleted(objectMapper.writeValueAsString(invalid));
 
         verifyNoInteractions(deduplicator);
-        verifyNoInteractions(notificationLogRepository);
-        verifyNoInteractions(emailService);
+        verifyNoInteractions(notificationService);
     }
 
     @Test
@@ -157,7 +132,6 @@ class RefundEventConsumerTest {
         consumer.handleRefundCompleted("not-json");
 
         verifyNoInteractions(deduplicator);
-        verifyNoInteractions(notificationLogRepository);
-        verifyNoInteractions(emailService);
+        verifyNoInteractions(notificationService);
     }
 }
