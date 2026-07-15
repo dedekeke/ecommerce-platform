@@ -82,11 +82,10 @@ public class ProductSearchService {
     public AutocompleteResponse autocomplete(String prefix) {
         log.info("Getting autocomplete suggestions for: {}", prefix);
         
-        List<ProductDocument> products = repository.findByNameAutocompleteContaining(prefix);
+        List<ProductDocument> products = repository.findTop10ByNameAutocompleteContaining(prefix);
         List<String> suggestions = products.stream()
                 .map(ProductDocument::getName)
                 .distinct()
-                .limit(10)
                 .collect(Collectors.toList());
 
         return AutocompleteResponse.builder()
