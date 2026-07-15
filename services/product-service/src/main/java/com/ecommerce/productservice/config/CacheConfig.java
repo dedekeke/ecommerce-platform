@@ -55,8 +55,19 @@ public class CacheConfig {
         "categories",
         "product-search",
         "category-tree",
-        "popular-products"
+        "popular-products",
+        "product-listings"
     };
+
+    /** Cache name for the paginated browse listings (see ProductListingCache). */
+    private static final String PRODUCT_LISTINGS_CACHE = "product-listings";
+
+    /**
+     * L2 TTL for the browse listing caches. Short + env-tunable: bounds how long a
+     * stale page survives after a write/TTL expiry. Default 45s.
+     */
+    @org.springframework.beans.factory.annotation.Value("${product-cache.listings-ttl-seconds:45}")
+    private long listingsTtlSeconds;
 
     /** L1 maximum size — guards heap usage. 5k entries is plenty for a hot-key cache. */
     private static final int L1_MAX_SIZE = 5_000;
@@ -76,8 +87,12 @@ public class CacheConfig {
         return manager;
     }
 
-    @Bean
-    public RedisCacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
+    /**
+     * The exact ObjectMapper/serializer used for the L2 (Redis) payloads.
+     * Package-private so tests can round-trip cached values through the real
+     * production serialization config without booting Redis.
+     */
+    public GenericJackson2JsonRedisSerializer redisSerializer() {
         // SECURITY: type-allowlist validator restricts polymorphic deserialization to known
         // application packages, preventing Jackson gadget attacks via crafted Redis payloads.
         PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
@@ -98,7 +113,12 @@ public class CacheConfig {
             JsonTypeInfo.As.PROPERTY
         );
 
-        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(objectMapper);
+        return new GenericJackson2JsonRedisSerializer(objectMapper);
+    }
+
+    @Bean
+    public RedisCacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
+        GenericJackson2JsonRedisSerializer serializer = redisSerializer();
 
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
             .entryTtl(Duration.ofMinutes(30))
@@ -110,18 +130,27 @@ public class CacheConfig {
             )
             .disableCachingNullValues();
 
+        return RedisCacheManager.builder(connectionFactory)
+            .cacheDefaults(defaultConfig)
+            .withInitialCacheConfigurations(buildCacheConfigurations(defaultConfig))
+            .transactionAware()
+            .build();
+    }
+
+    /**
+     * Per-cache TTL overrides. Extracted (package-private) so the TTL wiring can be
+     * asserted without booting a RedisCacheManager — {@code getCacheConfigurations()}
+     * is unusable once {@code transactionAware()} wraps the caches.
+     */
+    Map<String, RedisCacheConfiguration> buildCacheConfigurations(RedisCacheConfiguration defaultConfig) {
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
         cacheConfigurations.put("products",          defaultConfig.entryTtl(Duration.ofHours(1)));
         cacheConfigurations.put("categories",        defaultConfig.entryTtl(Duration.ofHours(2)));
         cacheConfigurations.put("product-search",    defaultConfig.entryTtl(Duration.ofMinutes(15)));
         cacheConfigurations.put("category-tree",     defaultConfig.entryTtl(Duration.ofHours(2)));
         cacheConfigurations.put("popular-products",  defaultConfig.entryTtl(Duration.ofMinutes(30)));
-
-        return RedisCacheManager.builder(connectionFactory)
-            .cacheDefaults(defaultConfig)
-            .withInitialCacheConfigurations(cacheConfigurations)
-            .transactionAware()
-            .build();
+        cacheConfigurations.put(PRODUCT_LISTINGS_CACHE, defaultConfig.entryTtl(Duration.ofSeconds(listingsTtlSeconds)));
+        return cacheConfigurations;
     }
 
     /**
