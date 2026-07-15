@@ -4,27 +4,31 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for {@link OrderCompletedConsumer}.
+ * Unit tests for {@link OrderCompletedConsumer} — the messaging adapter.
+ * The transactional dedup/spend logic is verified against a real datastore in
+ * {@link OrderCompletedProcessorTest}.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OrderCompletedConsumer")
@@ -36,10 +40,7 @@ class OrderCompletedConsumerTest {
     private ObjectMapper objectMapper;
 
     @Mock
-    private LoyaltyService loyaltyService;
-
-    @Mock
-    private ProcessedLoyaltyEventRepository processedEventRepository;
+    private OrderCompletedProcessor processor;
 
     @InjectMocks
     private OrderCompletedConsumer consumer;
@@ -49,8 +50,8 @@ class OrderCompletedConsumerTest {
     }
 
     @Test
-    @DisplayName("should_recordSpend_when_eventHasUserIdAndTotalAmount")
-    void should_recordSpend_when_eventHasUserIdAndTotalAmount() throws Exception {
+    @DisplayName("should_delegateToProcessorWithEventId_when_eventValidAndHeaderPresent")
+    void should_delegateToProcessorWithEventId_when_eventValidAndHeaderPresent() throws Exception {
         OrderCompletedEvent event = OrderCompletedEvent.builder()
                 .orderId("order-1")
                 .userId("user-1")
@@ -61,10 +62,11 @@ class OrderCompletedConsumerTest {
 
         consumer.handle("{}", header(EVENT_ID));
 
-        verify(loyaltyService, times(1)).recordSpend(
+        verify(processor, times(1)).process(
                 eq("user-1"),
                 eq(new BigDecimal("199.99")),
-                eq(LocalDateTime.parse("2026-04-29T10:00:00")));
+                eq(LocalDateTime.parse("2026-04-29T10:00:00")),
+                eq(EVENT_ID));
     }
 
     @Test
@@ -79,7 +81,7 @@ class OrderCompletedConsumerTest {
 
         consumer.handle("{}", header(EVENT_ID));
 
-        verify(loyaltyService).recordSpend(eq("user-1"), eq(new BigDecimal("50.00")), eq(null));
+        verify(processor).process(eq("user-1"), eq(new BigDecimal("50.00")), isNull(), eq(EVENT_ID));
     }
 
     @Test
@@ -94,7 +96,7 @@ class OrderCompletedConsumerTest {
 
         consumer.handle("{}", header(EVENT_ID));
 
-        verify(loyaltyService, never()).recordSpend(anyString(), any(), any());
+        verifyNoInteractions(processor);
     }
 
     @Test
@@ -105,77 +107,53 @@ class OrderCompletedConsumerTest {
 
         consumer.handle("garbage", header(EVENT_ID));
 
-        verify(loyaltyService, never()).recordSpend(anyString(), any(), any());
-        verifyNoInteractions(processedEventRepository);
+        verifyNoInteractions(processor);
     }
 
     // ---------------------------------------------------------------------
-    // Idempotence / deduplication on the outbox-event-id header (PR#112 gate)
+    // Idempotence / dedup on the outbox-event-id header (PR#112 gate)
     // ---------------------------------------------------------------------
 
     @Test
-    @DisplayName("should_recordSpendOnce_when_sameOutboxEventIdDeliveredTwice")
-    void should_recordSpendOnce_when_sameOutboxEventIdDeliveredTwice() throws Exception {
-        OrderCompletedEvent event = OrderCompletedEvent.builder()
-                .orderId("order-1")
-                .userId("user-1")
-                .totalAmount(new BigDecimal("199.99"))
-                .timestamp(LocalDateTime.parse("2026-04-29T10:00:00"))
-                .build();
-        when(objectMapper.readValue(anyString(), eq(OrderCompletedEvent.class))).thenReturn(event);
-        // First delivery: not yet processed. Second (duplicate): already recorded.
-        when(processedEventRepository.existsById(EVENT_ID)).thenReturn(false, true);
-
-        consumer.handle("{}", header(EVENT_ID));
-        consumer.handle("{}", header(EVENT_ID));
-
-        // Lifetime spend must be incremented exactly once despite duplicate delivery.
-        verify(loyaltyService, times(1)).recordSpend(
-                eq("user-1"), eq(new BigDecimal("199.99")), any());
-        // The processed-event ledger row is written exactly once (first delivery).
-        verify(processedEventRepository, times(1)).save(any(ProcessedLoyaltyEvent.class));
-    }
-
-    @Test
-    @DisplayName("should_persistProcessedEventRow_when_firstDelivery")
-    void should_persistProcessedEventRow_when_firstDelivery() throws Exception {
-        OrderCompletedEvent event = OrderCompletedEvent.builder()
-                .orderId("order-1")
-                .userId("user-1")
-                .totalAmount(new BigDecimal("10.00"))
-                .build();
-        when(objectMapper.readValue(anyString(), eq(OrderCompletedEvent.class))).thenReturn(event);
-        when(processedEventRepository.existsById(EVENT_ID)).thenReturn(false);
-
-        consumer.handle("{}", header(EVENT_ID));
-
-        ArgumentCaptor<ProcessedLoyaltyEvent> captor =
-                ArgumentCaptor.forClass(ProcessedLoyaltyEvent.class);
-        verify(processedEventRepository).save(captor.capture());
-        assertThat(captor.getValue().getEventId()).isEqualTo(EVENT_ID);
-        assertThat(captor.getValue().getConsumedAt()).isNotNull();
-    }
-
-    @Test
-    @DisplayName("should_skipSpend_when_duplicateEventIdAlreadyProcessed")
-    void should_skipSpend_when_duplicateEventIdAlreadyProcessed() throws Exception {
+    @DisplayName("should_swallowDuplicateAndNotRetry_when_processorReportsDuplicateKey")
+    void should_swallowDuplicateAndNotRetry_when_processorReportsDuplicateKey() throws Exception {
         OrderCompletedEvent event = OrderCompletedEvent.builder()
                 .orderId("order-1")
                 .userId("user-1")
                 .totalAmount(new BigDecimal("199.99"))
                 .build();
         when(objectMapper.readValue(anyString(), eq(OrderCompletedEvent.class))).thenReturn(event);
-        when(processedEventRepository.existsById(EVENT_ID)).thenReturn(true);
+        // A redelivery / concurrent replica: the ledger INSERT fails on the PK.
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .when(processor).process(anyString(), any(), any(), eq(EVENT_ID));
 
-        consumer.handle("{}", header(EVENT_ID));
-
-        verify(loyaltyService, never()).recordSpend(anyString(), any(), any());
-        verify(processedEventRepository, never()).save(any());
+        // Must NOT rethrow: a benign duplicate is an idempotent success, so the
+        // offset is committed and the container does not retry or route to DLT.
+        assertThatCode(() -> consumer.handle("{}", header(EVENT_ID))).doesNotThrowAnyException();
     }
 
     @Test
-    @DisplayName("should_processWithWarningAndNoDedup_when_outboxEventIdHeaderMissing")
-    void should_processWithWarningAndNoDedup_when_outboxEventIdHeaderMissing() throws Exception {
+    @DisplayName("should_propagate_when_processorFailsWithTransientError")
+    void should_propagate_when_processorFailsWithTransientError() throws Exception {
+        OrderCompletedEvent event = OrderCompletedEvent.builder()
+                .orderId("order-1")
+                .userId("user-1")
+                .totalAmount(new BigDecimal("199.99"))
+                .build();
+        when(objectMapper.readValue(anyString(), eq(OrderCompletedEvent.class))).thenReturn(event);
+        // A genuine failure (e.g. DB unavailable) must reach the container error
+        // handler so it can back off, retry, and eventually route to the DLT.
+        doThrow(new RuntimeException("DB down"))
+                .when(processor).process(anyString(), any(), any(), eq(EVENT_ID));
+
+        assertThatThrownBy(() -> consumer.handle("{}", header(EVENT_ID)))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("DB down");
+    }
+
+    @Test
+    @DisplayName("should_passNullEventId_when_outboxEventIdHeaderMissing")
+    void should_passNullEventId_when_outboxEventIdHeaderMissing() throws Exception {
         // Legacy / manual publish has no outbox-event-id header. We accept the
         // event (process-with-warning) but cannot dedup it — documented behavior.
         OrderCompletedEvent event = OrderCompletedEvent.builder()
@@ -187,13 +165,12 @@ class OrderCompletedConsumerTest {
 
         consumer.handle("{}", null);
 
-        verify(loyaltyService, times(1)).recordSpend(eq("user-1"), eq(new BigDecimal("25.00")), any());
-        verifyNoInteractions(processedEventRepository);
+        verify(processor).process(eq("user-1"), eq(new BigDecimal("25.00")), any(), isNull());
     }
 
     @Test
-    @DisplayName("should_processWithWarning_when_outboxEventIdHeaderBlank")
-    void should_processWithWarning_when_outboxEventIdHeaderBlank() throws Exception {
+    @DisplayName("should_passNullEventId_when_outboxEventIdHeaderBlank")
+    void should_passNullEventId_when_outboxEventIdHeaderBlank() throws Exception {
         OrderCompletedEvent event = OrderCompletedEvent.builder()
                 .orderId("order-blank")
                 .userId("user-1")
@@ -203,7 +180,6 @@ class OrderCompletedConsumerTest {
 
         consumer.handle("{}", header("   "));
 
-        verify(loyaltyService, times(1)).recordSpend(eq("user-1"), eq(new BigDecimal("25.00")), any());
-        verifyNoInteractions(processedEventRepository);
+        verify(processor).process(eq("user-1"), eq(new BigDecimal("25.00")), any(), isNull());
     }
 }

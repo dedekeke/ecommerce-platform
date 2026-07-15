@@ -3,15 +3,14 @@ package com.ecommerce.promotionservice.loyalty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 
 /**
  * Consumes {@code order.completed} events and accumulates lifetime spend
@@ -22,13 +21,18 @@ import java.time.Instant;
  * {@code outbox-event-id} header. Without dedup a redelivery would increment a
  * user's lifetime spend twice, inflating their loyalty tier and handing out
  * unearned discounts. This consumer is the consumer-side exactly-once safety
- * net the outbox redesign relies on: it records each processed id in
- * {@link ProcessedLoyaltyEvent} and drops duplicates. The whole handler runs
- * in one transaction, so the spend increment and the ledger insert commit
- * atomically — under concurrent replicas the duplicate insert violates the
- * primary key, rolls the loser's transaction back, and the spend is not
- * double-counted. Mirrors the choreography dedup in
- * {@link com.ecommerce.promotionservice.saga.replenishment.PromotionStockListener}.
+ * net the outbox redesign relies on: it delegates to {@link OrderCompletedProcessor},
+ * which claims the event id in the {@link ProcessedLoyaltyEvent} ledger and
+ * accumulates spend in one transaction. A duplicate fails the ledger INSERT
+ * ({@link DataIntegrityViolationException}) and rolls the spend back; we catch
+ * that here and return normally, so a benign duplicate is an idempotent success
+ * — it neither double-counts nor triggers a retry/DLT.
+ *
+ * <p><b>Error handling.</b> Genuine failures (DB down, etc.) propagate and are
+ * handled by the container's {@code DefaultErrorHandler} (see
+ * {@code KafkaConsumerErrorConfig}): retried with backoff, then routed to the
+ * {@code <topic>.DLT} dead-letter topic once retries are exhausted, so a poison
+ * message never spins the partition forever.
  *
  * <p><b>Missing header.</b> Legacy or manual publishes without the
  * {@code outbox-event-id} header cannot be deduplicated. Such events are
@@ -45,11 +49,9 @@ public class OrderCompletedConsumer {
     static final String EVENT_ID_HEADER = "outbox-event-id";
 
     private final ObjectMapper objectMapper;
-    private final LoyaltyService loyaltyService;
-    private final ProcessedLoyaltyEventRepository processedEventRepository;
+    private final OrderCompletedProcessor processor;
 
     @KafkaListener(topics = TOPIC, groupId = "promotion-service-loyalty")
-    @Transactional
     public void handle(@Payload String message,
                        @Header(name = EVENT_ID_HEADER, required = false) byte[] eventIdHeader) {
         OrderCompletedEvent event;
@@ -75,22 +77,18 @@ public class OrderCompletedConsumer {
         if (eventId == null) {
             log.warn("order.completed without {} header (legacy/manual publish) — "
                     + "processing WITHOUT dedup: orderId={}", EVENT_ID_HEADER, event.getOrderId());
-        } else if (processedEventRepository.existsById(eventId)) {
-            log.warn("Skipping duplicate order.completed eventId={} orderId={}",
-                    eventId, event.getOrderId());
-            return;
         }
 
-        loyaltyService.recordSpend(userId, amount, event.getTimestamp());
-        if (eventId != null) {
-            processedEventRepository.save(ProcessedLoyaltyEvent.builder()
-                    .eventId(eventId)
-                    .topic(TOPIC)
-                    .consumedAt(Instant.now())
-                    .build());
+        try {
+            processor.process(userId, amount, event.getTimestamp(), eventId);
+            log.info("Recorded loyalty spend for userId={} orderId={} amount={} eventId={}",
+                    userId, event.getOrderId(), amount, eventId);
+        } catch (DataIntegrityViolationException duplicate) {
+            // Idempotent success: the event id is already in the ledger. Return
+            // normally so the offset is committed — no retry, no DLT.
+            log.warn("Skipping duplicate order.completed eventId={} orderId={}",
+                    eventId, event.getOrderId());
         }
-        log.info("Recorded loyalty spend for userId={} orderId={} amount={} eventId={}",
-                userId, event.getOrderId(), amount, eventId);
     }
 
     private String decodeEventId(byte[] header) {

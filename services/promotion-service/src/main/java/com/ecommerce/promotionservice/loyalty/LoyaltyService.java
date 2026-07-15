@@ -82,9 +82,8 @@ public class LoyaltyService {
 
     /**
      * Increment the user's lifetime spend by {@code amount}. Idempotency on
-     * the {@code outbox-event-id} is handled by the consumer layer (see
-     * {@link OrderCompletedConsumer}), which runs this call in the same
-     * transaction as its dedup-ledger insert.
+     * the {@code outbox-event-id} is handled by {@link OrderCompletedProcessor},
+     * which runs this call in the same transaction as its dedup-ledger insert.
      */
     @Transactional
     public CustomerSpend recordSpend(String userId, BigDecimal amount, LocalDateTime occurredAt) {
