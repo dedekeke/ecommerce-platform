@@ -1,8 +1,7 @@
 package com.ecommerce.notificationservice.kafka;
 
-import com.ecommerce.notificationservice.domain.NotificationStatus;
+import com.ecommerce.notificationservice.kafka.dedup.NotificationEventDeduplicator;
 import com.ecommerce.notificationservice.kafka.event.CartAbandonedEvent;
-import com.ecommerce.notificationservice.repository.NotificationLogRepository;
 import com.ecommerce.notificationservice.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -11,19 +10,18 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
  * Consumer for {@code cart.abandoned} events (§3.10).
  *
  * <p>Sends a "you left items in your cart" email using the
- * {@code CART_ABANDONED} template. Idempotency is enforced by the existing
- * notification log dedup pattern: if a notification for the same
- * {@code (cartId, CART_ABANDONED)} pair is already SENT/PENDING/RETRYING,
- * the event is dropped — this protects against Kafka at-least-once redelivery
- * and any same-day re-publishes from the cart-service. Producer-side
- * cool-off (7 days) is enforced by the {@code AbandonedCartScanner}.</p>
+ * {@code CART_ABANDONED} template. Idempotency is enforced insert-first via
+ * {@link NotificationEventDeduplicator}: the {@code CART_ABANDONED:<cartId>}
+ * dedup key is claimed on the unique {@code _id} index before dispatch, so a
+ * concurrent replica or a Kafka redelivery cannot email the same cart twice.
+ * This replaces the previous check-then-insert against the notification log.
+ * Producer-side cool-off (7 days) is enforced by the {@code AbandonedCartScanner}.</p>
  *
  * <p>If the event arrives without {@code userEmail} we skip with a warning.
  * Email resolution from the userId is intentionally out of scope for this
@@ -34,17 +32,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CartAbandonedConsumer {
 
+    static final String TOPIC = "cart.abandoned";
     static final String TEMPLATE_CODE = "CART_ABANDONED";
     static final String ENTITY_TYPE = "CART";
 
     private final NotificationService notificationService;
-    private final NotificationLogRepository notificationLogRepository;
+    private final NotificationEventDeduplicator deduplicator;
     private final ObjectMapper objectMapper;
 
-    private static final List<NotificationStatus> ACTIVE_STATUSES =
-            List.of(NotificationStatus.SENT, NotificationStatus.PENDING, NotificationStatus.RETRYING);
-
-    @KafkaListener(topics = "cart.abandoned", groupId = "notification-service")
+    @KafkaListener(topics = TOPIC, groupId = "notification-service")
     public void handle(String message) {
         CartAbandonedEvent event;
         try {
@@ -63,7 +59,7 @@ public class CartAbandonedConsumer {
             return;
         }
 
-        if (isDuplicate(event.getCartId())) {
+        if (!deduplicator.claim(TEMPLATE_CODE + ":" + event.getCartId(), TOPIC)) {
             log.info("Skipping duplicate cart.abandoned event for cartId={}", event.getCartId());
             return;
         }
@@ -89,10 +85,5 @@ public class CartAbandonedConsumer {
             log.error("Failed to dispatch cart.abandoned notification for cartId={}",
                     event.getCartId(), ex);
         }
-    }
-
-    private boolean isDuplicate(String cartId) {
-        return notificationLogRepository.existsByRelatedEntityIdAndTemplateCodeAndStatusIn(
-                cartId, TEMPLATE_CODE, ACTIVE_STATUSES);
     }
 }
