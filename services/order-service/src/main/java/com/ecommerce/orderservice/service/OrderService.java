@@ -309,6 +309,91 @@ public class OrderService {
     }
 
     /**
+     * Advance a PENDING order to CONFIRMED ("paid") in response to a settled
+     * payment, recording ORDER_UPDATED in the SAME transaction (outbox) so the
+     * state change and its event commit atomically.
+     *
+     * <p>Idempotent + convergent — safe to call for an at-least-once redelivery
+     * or after the client-confirm path already advanced the order:
+     * <ul>
+     *   <li>{@code PENDING} &rarr; {@code CONFIRMED} (+ ORDER_UPDATED): the real
+     *       transition.</li>
+     *   <li>{@code CONFIRMED}..{@code DELIVERED}: no-op — already paid/advanced;
+     *       we never re-emit or double-apply.</li>
+     *   <li>{@code CANCELLED}/{@code REFUNDED}: no-op + ERROR log — a payment
+     *       settled against a dead order is an ops signal, never a silent
+     *       resurrection.</li>
+     * </ul>
+     *
+     * @return {@code true} iff this call performed the PENDING&rarr;CONFIRMED transition
+     */
+    @Transactional
+    public boolean confirmOrderPaid(String orderId) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            log.warn("payment.completed for unknown order {} — ignoring", orderId);
+            return false;
+        }
+        OrderStatus status = order.getStatus();
+        if (status == OrderStatus.PENDING) {
+            order.updateStatus(OrderStatus.CONFIRMED);
+            Order saved = orderRepository.save(order);
+            orderEventPublisher.publishOrderUpdatedEvent(saved);
+            log.info("Order {} confirmed (PAID) from settled payment", saved.getOrderNumber());
+            return true;
+        }
+        if (status == OrderStatus.CANCELLED || status == OrderStatus.REFUNDED) {
+            log.error("payment.completed for order {} in terminal state {} — funds may be "
+                + "captured on a dead order; NOT resurrecting", orderId, status);
+            return false;
+        }
+        log.info("payment.completed for order {} already in {} — no-op (idempotent)", orderId, status);
+        return false;
+    }
+
+    /**
+     * Handle a settled-as-FAILED payment: cancel a still-PENDING order via the
+     * durable cancel + ORDER_CANCELLED path ({@link #compensateCancelOrder}) so
+     * the caller can release the inventory reservation.
+     *
+     * <p>Precedence (defines who wins on out-of-order / conflicting events):
+     * <ul>
+     *   <li>{@code PENDING} &rarr; {@code CANCELLED} via compensateCancelOrder;
+     *       returns {@code true} (reservation release needed).</li>
+     *   <li>{@code CONFIRMED}..{@code DELIVERED}: NO-OP — a late/stale
+     *       payment.failed must never downgrade an order whose payment already
+     *       succeeded (a completed payment wins over a subsequent failure).</li>
+     *   <li>{@code CANCELLED}/{@code REFUNDED}: no-op — already terminal, converges.</li>
+     * </ul>
+     *
+     * <p>Note: compensateCancelOrder alone would happily cancel a CONFIRMED order
+     * (CONFIRMED is a cancellable state), so the PENDING gate here is what
+     * enforces the no-downgrade rule before reusing it.
+     *
+     * @return {@code true} iff this call cancelled the order (reservation release needed)
+     */
+    @Transactional
+    public boolean failOrderPayment(String orderId) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            log.warn("payment.failed for unknown order {} — ignoring", orderId);
+            return false;
+        }
+        OrderStatus status = order.getStatus();
+        if (status == OrderStatus.PENDING) {
+            compensateCancelOrder(orderId);
+            return true;
+        }
+        if (status == OrderStatus.CANCELLED) {
+            log.info("payment.failed for already-CANCELLED order {} — no-op (idempotent)", orderId);
+            return false;
+        }
+        log.warn("payment.failed for order {} in state {} — payment already settled; "
+            + "NOT downgrading", orderId, status);
+        return false;
+    }
+
+    /**
      * Get order by payment intent ID
      */
     @Transactional(readOnly = true)
