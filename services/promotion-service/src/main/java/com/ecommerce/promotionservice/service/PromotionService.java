@@ -186,6 +186,7 @@ public class PromotionService {
                     .valid(false)
                     .message("Promotion has reached its maximum usage limit")
                     .promotionCode(request.getCode())
+                    .promotionName(validationResult.getPromotionName())
                     .build();
         }
 

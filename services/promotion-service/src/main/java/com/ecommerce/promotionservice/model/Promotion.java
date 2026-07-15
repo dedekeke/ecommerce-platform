@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.io.Serializable;
@@ -23,6 +24,11 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+// currentUses is a counter owned exclusively by the atomic redeemByCode update.
+// @DynamicUpdate means entity saves (admin create/update, saga active-toggle) emit
+// only dirty columns, so those paths never rewrite current_uses and cannot rewind
+// concurrent redemptions. @Version still guards the admin-editable fields.
+@DynamicUpdate
 public class Promotion implements Serializable {
 
     @Id

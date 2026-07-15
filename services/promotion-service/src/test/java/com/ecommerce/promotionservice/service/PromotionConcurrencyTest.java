@@ -1,6 +1,7 @@
 package com.ecommerce.promotionservice.service;
 
 import com.ecommerce.promotionservice.dto.DiscountResult;
+import com.ecommerce.promotionservice.dto.PromotionRequest;
 import com.ecommerce.promotionservice.dto.PromotionValidationRequest;
 import com.ecommerce.promotionservice.model.Promotion;
 import com.ecommerce.promotionservice.model.PromotionType;
@@ -150,6 +151,102 @@ class PromotionConcurrencyTest {
 
         int persistedUses = promotionRepository.findById(promotion.getId()).orElseThrow().getCurrentUses();
         assertThat(persistedUses).as("persisted currentUses equals maxUses").isEqualTo(maxUses);
+    }
+
+    @Test
+    @DisplayName("should_notRewindUsageCounter_when_adminUpdatesConcurrentlyWithRedemptions")
+    void should_notRewindUsageCounter_when_adminUpdatesConcurrentlyWithRedemptions() throws InterruptedException {
+        // Unlimited cap so every redemption succeeds and the expected total is exact.
+        Promotion promotion = persistUnlimitedPromotion("MIXED");
+        int redeemThreads = 8;
+        int redeemsPerThread = 25;
+        int adminUpdates = 40;
+        int expectedRedemptions = redeemThreads * redeemsPerThread;
+
+        ExecutorService pool = Executors.newFixedThreadPool(redeemThreads + 1);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(redeemThreads + 1);
+        AtomicInteger redeemed = new AtomicInteger();
+        AtomicInteger errored = new AtomicInteger();
+        AtomicReference<Throwable> firstError = new AtomicReference<>();
+
+        // Admin thread: repeatedly edits admin-editable fields (name) while
+        // redemptions run. A stale save must NOT roll back the usage counter.
+        pool.submit(() -> {
+            try {
+                start.await();
+                for (int i = 0; i < adminUpdates; i++) {
+                    PromotionRequest edit = PromotionRequest.builder()
+                            .code("MIXED")
+                            .name("Admin-" + i)
+                            .type(PromotionType.PERCENTAGE)
+                            .discountValue(BigDecimal.valueOf(15))
+                            .startDate(LocalDateTime.now().minusDays(1))
+                            .endDate(LocalDateTime.now().plusDays(1))
+                            .active(true)
+                            .build();
+                    promotionService.updatePromotion(promotion.getId(), edit);
+                }
+            } catch (Exception e) {
+                firstError.compareAndSet(null, e);
+                errored.incrementAndGet();
+            } finally {
+                done.countDown();
+            }
+        });
+
+        for (int t = 0; t < redeemThreads; t++) {
+            pool.submit(() -> {
+                try {
+                    start.await();
+                    for (int i = 0; i < redeemsPerThread; i++) {
+                        DiscountResult result = promotionService.applyPromotion(
+                                PromotionValidationRequest.builder()
+                                        .code("MIXED")
+                                        .purchaseAmount(BigDecimal.valueOf(100))
+                                        .build());
+                        if (result.isValid()) {
+                            redeemed.incrementAndGet();
+                        }
+                    }
+                } catch (Exception e) {
+                    firstError.compareAndSet(null, e);
+                    errored.incrementAndGet();
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+
+        start.countDown();
+        assertThat(done.await(60, TimeUnit.SECONDS)).as("all workers finished").isTrue();
+        pool.shutdownNow();
+
+        assertThat(errored.get()).as("no unexpected exceptions: %s", firstError.get()).isZero();
+        assertThat(redeemed.get()).as("every redemption succeeded (unlimited cap)").isEqualTo(expectedRedemptions);
+
+        Promotion persisted = promotionRepository.findById(promotion.getId()).orElseThrow();
+        assertThat(persisted.getCurrentUses())
+                .as("admin update must not rewind the usage counter — all redemptions counted")
+                .isEqualTo(expectedRedemptions);
+        assertThat(persisted.getName())
+                .as("admin edits still take effect")
+                .startsWith("Admin-");
+    }
+
+    private Promotion persistUnlimitedPromotion(String code) {
+        Promotion promotion = Promotion.builder()
+                .code(code)
+                .name("Original")
+                .type(PromotionType.PERCENTAGE)
+                .discountValue(BigDecimal.valueOf(10))
+                .maxUses(null)
+                .currentUses(0)
+                .startDate(LocalDateTime.now().minusDays(1))
+                .endDate(LocalDateTime.now().plusDays(1))
+                .active(true)
+                .build();
+        return promotionRepository.save(promotion);
     }
 
     private record RedemptionOutcome(int success, int rejected, int errored, Throwable firstError) {
