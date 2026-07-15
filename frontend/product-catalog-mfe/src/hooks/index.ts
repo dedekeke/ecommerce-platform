@@ -1,3 +1,7 @@
 export { useProducts, default as useProductsDefault } from './useProducts'
 export { useProduct, default as useProductDefault } from './useProduct'
 export { useCategories, default as useCategoriesDefault } from './useCategories'
+export { useAuthUserId, default as useAuthUserIdDefault } from './useAuthUserId'
+export { useReviewSummary, default as useReviewSummaryDefault } from './useReviewSummary'
+export { useProductReviews, default as useProductReviewsDefault } from './useProductReviews'
+export { useSubmitReview, default as useSubmitReviewDefault } from './useSubmitReview'
