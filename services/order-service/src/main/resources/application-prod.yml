@@ -20,3 +20,12 @@ logging:
     org.hibernate.SQL: WARN
     org.hibernate.orm.jdbc.bind: WARN
     org.hibernate.type.descriptor.sql.BasicBinder: WARN
+# Distributed-trace sampling — lowered for production (Perf P2).
+# Full-rate (1.0) sampling inherited from the base profile floods the single
+# Zipkin collector + single-node Elasticsearch backend under load. Env-tunable
+# (TRACING_SAMPLING_PROBABILITY_PROD) so ops can retune without a redeploy;
+# defaults to 10%. See docs/TRACING_SETUP.md.
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY_PROD:0.1}

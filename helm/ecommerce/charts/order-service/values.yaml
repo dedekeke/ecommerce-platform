@@ -24,6 +24,8 @@ config:
   EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: "http://eureka-server:8761/eureka/"
   SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
   MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: "http://zipkin:9411/api/v2/spans"
+  # Prod trace sampling (Perf P2); 10% default, override per env via values.
+  TRACING_SAMPLING_PROBABILITY_PROD: "0.1"
   SECURITY_ENABLED: "true"
 podDisruptionBudget:
   enabled: true
