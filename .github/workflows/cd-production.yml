@@ -40,6 +40,8 @@ jobs:
           - { service: search-service,       path: services/search-service }
           - { service: media-service,        path: services/media-service }
           - { service: promotion-service,    path: services/promotion-service }
+          - { service: review-service,       path: services/review-service }
+          - { service: recommendation-service, path: services/recommendation-service }
     permissions:
       contents: read
       packages: write
