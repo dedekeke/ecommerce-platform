@@ -1,6 +1,7 @@
 package com.ecommerce.orderservice.payment;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -8,25 +9,46 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.core.KafkaOperations;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.util.backoff.ExponentialBackOff;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Dedicated listener container factory for the payment-event consumer.
+ * Dedicated listener container factory + error handling for the payment-event
+ * consumer.
  *
  * <p>The service-wide default consumer deserializer is JSON, but the payment
- * outbox relay ships the payload as a raw JSON string. This factory therefore
- * uses {@link StringDeserializer} for both key and value so {@link
- * PaymentEventConsumer} can parse the body itself (matching notification-service).
- * It is isolated from the global config so nothing else is affected.
+ * outbox relay ships the payload as a raw JSON string, so this factory uses
+ * {@link StringDeserializer} for key and value ({@link PaymentEventConsumer}
+ * parses the body itself, matching notification-service). It is isolated from
+ * the global config so nothing else is affected.
+ *
+ * <p>Because this is a bespoke factory, a stray {@code CommonErrorHandler} bean
+ * would NOT be auto-applied to it — so we wire one explicitly, mirroring the
+ * repo convention (promotion-service {@code KafkaConsumerErrorConfig}, PR#119):
+ * transient failures are retried with bounded exponential backoff, then the
+ * record is published to {@code <topic>.DLT}; poison payloads are classified
+ * non-retryable and go straight to the DLT. This matters on a money-settlement
+ * topic — a dropped payment event would leave an order stuck PENDING forever,
+ * so nothing is silently swallowed; it is at least recoverable/alertable on the
+ * DLT. Benign dedup skips never reach this handler ({@link PaymentEventHandler}
+ * returns normally on a duplicate, so the record is acked, not dead-lettered).
  *
  * <p>{@code auto-startup} is a property (default true) so the {@code test}
- * profile can disable container startup — the H2 unit/integration tests drive
- * the handler and consumer directly and need no live broker.
+ * profile can disable container startup — the H2 tests drive the handler and
+ * consumer directly and need no live broker.
  */
 @Configuration
 public class PaymentConsumerConfig {
+
+    private static final long INITIAL_BACKOFF_MS = 1_000L;
+    private static final double BACKOFF_MULTIPLIER = 2.0;
+    private static final long MAX_BACKOFF_MS = 10_000L;
+    private static final long MAX_ELAPSED_MS = 30_000L;
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
@@ -49,11 +71,41 @@ public class PaymentConsumerConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, String> paymentEventListenerContainerFactory() {
+    public ConcurrentKafkaListenerContainerFactory<String, String> paymentEventListenerContainerFactory(
+        KafkaOperations<?, ?> kafkaTemplate
+    ) {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
             new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(paymentConsumerFactory());
+        factory.setCommonErrorHandler(paymentEventErrorHandler(deadLetterRecoverer(kafkaTemplate)));
         factory.setAutoStartup(autoStartup);
         return factory;
+    }
+
+    /**
+     * Publishes exhausted/poison records to {@code <topic>.DLT}. Partition -1
+     * lets Kafka choose, so it works regardless of the DLT topic's partitioning.
+     */
+    DeadLetterPublishingRecoverer deadLetterRecoverer(KafkaOperations<?, ?> kafkaTemplate) {
+        return new DeadLetterPublishingRecoverer(
+            kafkaTemplate,
+            (record, exception) -> new TopicPartition(record.topic() + ".DLT", -1));
+    }
+
+    /**
+     * Retries transient failures with exponential backoff (1s, 2s, 4s, ... capped
+     * at 10s/attempt, 30s total), then recovers to the DLT. A
+     * {@link PaymentEventProcessingException} (bad/incomplete payload) is
+     * non-retryable and is dead-lettered immediately.
+     */
+    DefaultErrorHandler paymentEventErrorHandler(DeadLetterPublishingRecoverer recoverer) {
+        ExponentialBackOff backOff = new ExponentialBackOff(INITIAL_BACKOFF_MS, BACKOFF_MULTIPLIER);
+        backOff.setMaxInterval(MAX_BACKOFF_MS);
+        backOff.setMaxElapsedTime(MAX_ELAPSED_MS);
+
+        DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
+        handler.setCommitRecovered(true);
+        handler.addNotRetryableExceptions(PaymentEventProcessingException.class);
+        return handler;
     }
 }

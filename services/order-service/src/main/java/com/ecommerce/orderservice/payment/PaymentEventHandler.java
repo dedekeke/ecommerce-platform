@@ -18,8 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
  *       redelivery is applied at most once;</li>
  *   <li>the precedence rules in {@link OrderService#confirmOrderPaid} /
  *       {@link OrderService#failOrderPayment} — a duplicate that slips past
- *       layer 1 (or the client-confirm path racing this consumer) still
- *       converges to the same terminal state and never downgrades a paid order.</li>
+ *       layer 1 (or an out-of-band status change, e.g. the admin status
+ *       endpoint, or a future client-confirm path) still converges to the same
+ *       terminal state and never downgrades a paid order.</li>
  * </ol>
  */
 @Service

@@ -69,35 +69,37 @@ public class PaymentEventConsumer {
     /** Package-visible core so unit tests can drive it without a broker. */
     void handlePaymentCompleted(String message, String eventId) {
         PaymentEventEnvelope event = parse(message, "payment.completed");
-        if (event == null) {
-            return;
-        }
         handler.onPaymentCompleted(eventId, event);
     }
 
     /** Package-visible core so unit tests can drive it without a broker. */
     void handlePaymentFailed(String message, String eventId) {
         PaymentEventEnvelope event = parse(message, "payment.failed");
-        if (event == null) {
-            return;
-        }
         if (handler.onPaymentFailed(eventId, event)) {
             releaseReservation(event.orderId());
         }
     }
 
+    /**
+     * Parse the payload. A malformed body or a missing orderId throws {@link
+     * PaymentEventProcessingException} — never swallowed — so the container's
+     * error handler dead-letters it (non-retryable) rather than losing a
+     * settlement event with only a log line. Transient failures happen later, in
+     * the handler, and propagate for retry.
+     */
     private PaymentEventEnvelope parse(String message, String topic) {
+        PaymentEventEnvelope event;
         try {
-            PaymentEventEnvelope event = objectMapper.readValue(message, PaymentEventEnvelope.class);
-            if (event.orderId() == null || event.orderId().isBlank()) {
-                log.error("{} event missing orderId — dropping poison message: {}", topic, message);
-                return null;
-            }
-            return event;
+            event = objectMapper.readValue(message, PaymentEventEnvelope.class);
         } catch (JsonProcessingException e) {
-            log.error("Failed to parse {} event — dropping poison message: {}", topic, message, e);
-            return null;
+            throw new PaymentEventProcessingException(
+                "Malformed " + topic + " payload — routing to DLT: " + message, e);
         }
+        if (event.orderId() == null || event.orderId().isBlank()) {
+            throw new PaymentEventProcessingException(
+                topic + " payload missing orderId — routing to DLT: " + message);
+        }
+        return event;
     }
 
     /**

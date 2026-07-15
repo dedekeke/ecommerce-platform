@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -88,17 +89,30 @@ class PaymentEventConsumerTest {
     }
 
     @Test
-    void should_dropPoisonMessageWithoutThrowing_when_payloadIsNotJson() {
-        assertThatCode(() -> consumer.handlePaymentCompleted("not-json", "evt-4"))
-            .doesNotThrowAnyException();
+    void should_throwForDeadLetter_when_payloadIsNotJson() {
+        // Non-retryable: the error handler dead-letters it instead of dropping.
+        assertThatThrownBy(() -> consumer.handlePaymentCompleted("not-json", "evt-4"))
+            .isInstanceOf(PaymentEventProcessingException.class);
 
         verifyNoInteractions(handler);
     }
 
     @Test
-    void should_dropMessageWithoutDelegating_when_orderIdMissing() {
-        consumer.handlePaymentCompleted("{\"eventType\":\"PAYMENT_COMPLETED\"}", "evt-5");
+    void should_throwForDeadLetter_when_orderIdMissing() {
+        assertThatThrownBy(() ->
+            consumer.handlePaymentCompleted("{\"eventType\":\"PAYMENT_COMPLETED\"}", "evt-5"))
+            .isInstanceOf(PaymentEventProcessingException.class);
 
         verifyNoInteractions(handler);
+    }
+
+    @Test
+    void should_ackWithoutThrowing_when_handlerDedupesOrNoops() {
+        // A dedup skip / no-op returns normally from the handler — the consumer
+        // must NOT throw, so the record is acked and never dead-lettered.
+        assertThatCode(() -> consumer.handlePaymentCompleted(COMPLETED_JSON, "evt-6"))
+            .doesNotThrowAnyException();
+
+        verify(handler).onPaymentCompleted(eq("evt-6"), any());
     }
 }
