@@ -32,24 +32,26 @@ sum over co-tenant services of ( hikari.maximum-pool-size x max_replicas )
 ## Worst-case replica ceilings (from the real manifests)
 
 Replica ceilings are taken as the **maximum across every deployment path**, because the
-platform can be rolled out via Kustomize (`k8s/`) or Helm (`helm/`), and some services
-carry both an HPA and a KEDA `ScaledObject`. The budget uses the highest ceiling so it
-holds regardless of which path/autoscaler wins.
+platform can be rolled out via Kustomize (`k8s/`) or Helm (`helm/`). The budget uses the
+highest ceiling so it holds regardless of which path/autoscaler wins.
+
+> Updated 2026-07-14 (PR #107): the order/payment dual-autoscaler smell flagged in the
+> original version of this doc is resolved — their CPU HPAs were removed and KEDA is the
+> single autoscaler, with `maxReplicaCount` raised to 8 (matching this budget). PR #107
+> also added CPU HPAs for api-gateway (not a SQL co-tenant), cart, and user — the latter
+> two pinned to max 2 to honour this budget.
 
 | Service | k8s HPA (`k8s/base/hpa.yaml`) | k8s KEDA (`k8s/base/scaling/*`) | Helm HPA (`helm/.../values-prod.yaml`) | **Ceiling used** |
 |---------|------------------------------|--------------------------------|----------------------------------------|------------------|
-| order     | max 8 | max 4 | max 8 | **8** |
-| payment   | max 8 | max 4 | max 8 | **8** |
+| order     | — (removed, PR #107) | max 8 | max 8 | **8** |
+| payment   | — (removed, PR #107) | max 8 | max 8 | **8** |
 | product   | max 8 | —     | max 8 | **8** |
 | inventory | —     | max 4 | fixed 2 (`replicaCount`) | **4** |
-| user      | —     | —     | fixed 2 | **2** |
-| cart      | —     | —     | fixed 2 | **2** |
+| user      | max 2 | —     | fixed 2 | **2** |
+| cart      | max 2 | —     | fixed 2 | **2** |
 | promotion | —     | —     | fixed 2 | **2** |
 
 Notes:
-- **order and payment carry two autoscalers** (a CPU HPA at max 8 in `k8s/base/hpa.yaml`
-  plus a Kafka/outbox-lag KEDA `ScaledObject` at max 4). That is a config smell worth
-  reconciling, but for budgeting we assume the higher ceiling (8).
 - search / notification / recommendation KEDA objects exist but those services are not
   SQL co-tenants (Elasticsearch / MongoDB), so they do not consume the pools above.
 - In `k8s/` and `helm/`, **PostgreSQL and MySQL are external/managed** (wired via
@@ -167,5 +169,3 @@ Recommended additional alert to catch pool starvation before it turns into 500s
 If you raise a pool size, a service's max replicas, or add a new co-tenant, re-check the
 subtotal against the server ceiling. If subtotal + reserve would exceed the ceiling,
 either raise `*_MAX_CONNECTIONS` (and provision DB memory accordingly) or lower the pool.
-If order/payment's dual HPA+KEDA autoscalers are reconciled to a single ceiling, update
-the replica table above.
