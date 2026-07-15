@@ -22,7 +22,12 @@ describe('AppComponent', () => {
 
   it('should render nav links', () => {
     const links = fixture.nativeElement.querySelectorAll('a[mat-list-item]');
-    expect(links.length).toBe(5);
+    expect(links.length).toBe(7);
+  });
+
+  it('should render Refunds and Returns nav links', () => {
+    expect(fixture.nativeElement.querySelector('a[aria-label="Refunds"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('a[aria-label="Returns"]')).toBeTruthy();
   });
 
   it('should have accessible aria-label on the navigation', () => {

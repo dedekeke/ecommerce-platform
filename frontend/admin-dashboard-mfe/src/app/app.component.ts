@@ -72,6 +72,24 @@ import { MatListModule } from '@angular/material/list';
           </a>
           <a
             mat-list-item
+            routerLink="/refunds"
+            routerLinkActive="active-link"
+            aria-label="Refunds"
+          >
+            <mat-icon matListItemIcon>currency_exchange</mat-icon>
+            <span matListItemTitle>Refunds</span>
+          </a>
+          <a
+            mat-list-item
+            routerLink="/returns"
+            routerLinkActive="active-link"
+            aria-label="Returns"
+          >
+            <mat-icon matListItemIcon>assignment_return</mat-icon>
+            <span matListItemTitle>Returns</span>
+          </a>
+          <a
+            mat-list-item
             routerLink="/analytics"
             routerLinkActive="active-link"
             aria-label="Analytics"

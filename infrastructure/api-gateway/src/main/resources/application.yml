@@ -231,10 +231,14 @@ spring:
                 redis-rate-limiter.requestedTokens: 1
 
         # ---------- Order Service ----------
+        # /api/returns/** (saga/rma RmaController) also lives in order-service,
+        # alongside /api/orders/** — shared route, same pattern as cart/carts
+        # and products/categories below. Previously missing here, so returns
+        # requests never reached order-service through the gateway.
         - id: order-service
           uri: lb://order-service
           predicates:
-            - Path=/api/orders/**
+            - Path=/api/orders/**,/api/returns/**
           filters:
             - name: RequestRateLimiter
               args:
@@ -247,7 +251,7 @@ spring:
         - id: order-service-v1
           uri: lb://order-service
           predicates:
-            - Path=/api/v1/orders/**
+            - Path=/api/v1/orders/**,/api/v1/returns/**
           filters:
             - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
             - AddRequestHeader=X-API-Version, v1
