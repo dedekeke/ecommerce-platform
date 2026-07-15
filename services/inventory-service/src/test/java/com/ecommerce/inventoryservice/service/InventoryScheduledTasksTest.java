@@ -87,44 +87,44 @@ class InventoryScheduledTasksTest {
     class CleanupOldReservationsTests {
 
         @Test
-        @DisplayName("Should cleanup old reservations when found")
-        void shouldCleanupOldReservationsWhenFound() {
+        @DisplayName("should_useDeleteReturnValueForMetric_when_recordsDeleted")
+        void should_useDeleteReturnValueForMetric_when_recordsDeleted() {
             // Given
-            when(reservationRepository.count()).thenReturn(100L, 90L);
+            when(reservationRepository.deleteByCreatedAtBefore(any())).thenReturn(10L);
+
+            // When
+            scheduledTasks.cleanupOldReservations();
+
+            // Then — count() no longer used, deleted total comes from the delete result
+            verify(reservationRepository).deleteByCreatedAtBefore(any());
+            verify(reservationRepository, never()).count();
+        }
+
+        @Test
+        @DisplayName("should_handleGracefully_when_noOldReservations")
+        void should_handleGracefully_when_noOldReservations() {
+            // Given
+            when(reservationRepository.deleteByCreatedAtBefore(any())).thenReturn(0L);
 
             // When
             scheduledTasks.cleanupOldReservations();
 
             // Then
             verify(reservationRepository).deleteByCreatedAtBefore(any());
-            verify(reservationRepository, times(2)).count();
         }
 
         @Test
-        @DisplayName("Should handle no old reservations gracefully")
-        void shouldHandleNoOldReservationsGracefully() {
+        @DisplayName("should_notThrow_when_deleteFails")
+        void should_notThrow_when_deleteFails() {
             // Given
-            when(reservationRepository.count()).thenReturn(100L, 100L);
-
-            // When
-            scheduledTasks.cleanupOldReservations();
-
-            // Then
-            verify(reservationRepository).deleteByCreatedAtBefore(any());
-        }
-
-        @Test
-        @DisplayName("Should handle exception gracefully during cleanup")
-        void shouldHandleExceptionGracefully() {
-            // Given
-            when(reservationRepository.count())
+            when(reservationRepository.deleteByCreatedAtBefore(any()))
                     .thenThrow(new RuntimeException("Database error"));
 
             // When - should not throw
             scheduledTasks.cleanupOldReservations();
 
             // Then
-            verify(reservationRepository).count();
+            verify(reservationRepository).deleteByCreatedAtBefore(any());
         }
     }
 

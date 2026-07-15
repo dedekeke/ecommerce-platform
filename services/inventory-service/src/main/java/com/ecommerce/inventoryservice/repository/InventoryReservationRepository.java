@@ -2,6 +2,7 @@ package com.ecommerce.inventoryservice.repository;
 
 import com.ecommerce.inventoryservice.domain.entity.InventoryReservation;
 import com.ecommerce.inventoryservice.domain.enums.ReservationStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -35,10 +36,14 @@ public interface InventoryReservationRepository extends JpaRepository<InventoryR
     List<InventoryReservation> findByStatus(ReservationStatus status);
 
     /**
-     * Find expired reservations that are still in RESERVED status
+     * Find expired reservations that are still in RESERVED status.
+     *
+     * <p>Paged deliberately: the release job must never load an unbounded
+     * backlog into the heap if it falls behind. Callers iterate in fixed-size
+     * batches (see {@code InventoryService#releaseExpiredReservations}).
      */
-    @Query("SELECT r FROM InventoryReservation r WHERE r.status = 'RESERVED' AND r.expiresAt < :currentTime")
-    List<InventoryReservation> findExpiredReservations(@Param("currentTime") LocalDateTime currentTime);
+    @Query("SELECT r FROM InventoryReservation r WHERE r.status = 'RESERVED' AND r.expiresAt < :currentTime ORDER BY r.expiresAt ASC")
+    List<InventoryReservation> findExpiredReservations(@Param("currentTime") LocalDateTime currentTime, Pageable pageable);
 
     /**
      * Find active reservations for a product
@@ -47,7 +52,10 @@ public interface InventoryReservationRepository extends JpaRepository<InventoryR
     List<InventoryReservation> findActiveReservationsByProductId(@Param("productId") String productId, @Param("currentTime") LocalDateTime currentTime);
 
     /**
-     * Delete reservations older than specified date
+     * Delete reservations older than the specified date.
+     *
+     * @return the number of records deleted — used directly for the cleanup
+     * metric to avoid a count-before/count-after race with concurrent writes.
      */
-    void deleteByCreatedAtBefore(LocalDateTime date);
+    long deleteByCreatedAtBefore(LocalDateTime date);
 }

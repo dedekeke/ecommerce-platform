@@ -76,7 +76,8 @@ public class InventoryGrpcServiceImpl extends InventoryServiceGrpc.InventoryServ
             Map<String, Integer> productQuantities = request.getItemsList().stream()
                     .collect(Collectors.toMap(
                             CheckAvailabilityRequest::getProductId,
-                            CheckAvailabilityRequest::getQuantity
+                            CheckAvailabilityRequest::getQuantity,
+                            Integer::sum
                     ));
 
             Map<String, Boolean> availabilityMap = inventoryService.bulkCheckAvailability(productQuantities);
@@ -133,7 +134,8 @@ public class InventoryGrpcServiceImpl extends InventoryServiceGrpc.InventoryServ
             Map<String, Integer> productQuantities = request.getItemsList().stream()
                     .collect(Collectors.toMap(
                             StockItem::getProductId,
-                            StockItem::getQuantity
+                            StockItem::getQuantity,
+                            Integer::sum
                     ));
 
             int expirationMinutes = request.getExpirationMinutes() > 0 ? request.getExpirationMinutes() : null;

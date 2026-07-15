@@ -97,12 +97,7 @@ public class InventoryScheduledTasks {
         cleanupOldTimer.record(() -> {
             try {
                 LocalDateTime cutoffDate = LocalDateTime.now().minusDays(cleanupDaysThreshold);
-                long countBefore = reservationRepository.count();
-
-                reservationRepository.deleteByCreatedAtBefore(cutoffDate);
-
-                long countAfter = reservationRepository.count();
-                long deletedCount = countBefore - countAfter;
+                long deletedCount = reservationRepository.deleteByCreatedAtBefore(cutoffDate);
 
                 if (deletedCount > 0) {
                     cleanedReservationsCounter.increment(deletedCount);

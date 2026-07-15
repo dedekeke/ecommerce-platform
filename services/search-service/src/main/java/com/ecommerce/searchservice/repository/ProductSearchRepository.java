@@ -27,5 +27,11 @@ public interface ProductSearchRepository extends ElasticsearchRepository<Product
     
     Page<ProductDocument> findByActiveTrue(Pageable pageable);
     
-    List<ProductDocument> findByNameAutocompleteContaining(String prefix);
+    /**
+     * Autocomplete lookup capped at the query/ES level (size=10) via the
+     * {@code Top10} keyword, so the shard never materialises an unbounded hit
+     * set for a broad prefix. The legacy service-side {@code .limit(10)} became
+     * redundant once the cap moved down here.
+     */
+    List<ProductDocument> findTop10ByNameAutocompleteContaining(String prefix);
 }

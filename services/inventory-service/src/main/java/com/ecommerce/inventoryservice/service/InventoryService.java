@@ -20,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -41,6 +43,9 @@ public class InventoryService {
 
     @Value("${inventory.reservation.default-expiration-minutes:15}")
     private int defaultExpirationMinutes;
+
+    @Value("${inventory.reservation.expired-release-batch-size:200}")
+    private int expiredReleaseBatchSize;
 
     private static final String INVENTORY_UPDATED_TOPIC = "inventory-updated";
     private static final String STOCK_LOW_TOPIC = "stock-low";
@@ -344,36 +349,61 @@ public class InventoryService {
     public int releaseExpiredReservations() {
         log.info("Checking for expired reservations...");
 
-        List<InventoryReservation> expiredReservations =
-                reservationRepository.findExpiredReservations(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        Pageable batch = PageRequest.of(0, expiredReleaseBatchSize);
+        int totalReleased = 0;
 
-        if (expiredReservations.isEmpty()) {
-            log.info("No expired reservations found");
-            return 0;
-        }
+        while (true) {
+            List<InventoryReservation> expired = reservationRepository.findExpiredReservations(now, batch);
+            if (expired.isEmpty()) {
+                break;
+            }
 
-        log.info("Found {} expired reservations", expiredReservations.size());
+            int releasedInBatch = 0;
+            for (InventoryReservation reservation : expired) {
+                if (releaseSingleExpiredReservation(reservation)) {
+                    releasedInBatch++;
+                }
+            }
+            totalReleased += releasedInBatch;
 
-        for (InventoryReservation reservation : expiredReservations) {
-            try {
-                Inventory inventory = inventoryRepository.findByProductIdForUpdate(reservation.getProductId())
-                        .orElseThrow(() -> new InventoryNotFoundException("Inventory not found for product: " + reservation.getProductId()));
-
-                inventory.releaseReservedStock(reservation.getQuantity());
-                reservation.expire();
-
-                inventoryRepository.save(inventory);
-                reservationRepository.save(reservation);
-
-                publishInventoryUpdatedEvent(inventory, "EXPIRE", "Reservation expired: " + reservation.getId());
-
-                log.info("Released expired reservation: {}", reservation.getId());
-            } catch (Exception e) {
-                log.error("Error releasing reservation {}: {}", reservation.getId(), e.getMessage(), e);
+            // Re-query page 0 each pass: expired rows released above no longer
+            // match (status flips to EXPIRED), so this acts as a sliding window.
+            // Stop when the page was not full (drained) or nothing could be
+            // released (persistent errors keep rows RESERVED) to avoid re-fetching
+            // the same stuck rows forever.
+            if (expired.size() < expiredReleaseBatchSize || releasedInBatch == 0) {
+                break;
             }
         }
 
-        return expiredReservations.size();
+        if (totalReleased == 0) {
+            log.info("No expired reservations released");
+        } else {
+            log.info("Released {} expired reservations", totalReleased);
+        }
+        return totalReleased;
+    }
+
+    private boolean releaseSingleExpiredReservation(InventoryReservation reservation) {
+        try {
+            Inventory inventory = inventoryRepository.findByProductIdForUpdate(reservation.getProductId())
+                    .orElseThrow(() -> new InventoryNotFoundException("Inventory not found for product: " + reservation.getProductId()));
+
+            inventory.releaseReservedStock(reservation.getQuantity());
+            reservation.expire();
+
+            inventoryRepository.save(inventory);
+            reservationRepository.save(reservation);
+
+            publishInventoryUpdatedEvent(inventory, "EXPIRE", "Reservation expired: " + reservation.getId());
+
+            log.info("Released expired reservation: {}", reservation.getId());
+            return true;
+        } catch (Exception e) {
+            log.error("Error releasing reservation {}: {}", reservation.getId(), e.getMessage(), e);
+            return false;
+        }
     }
 
     /**
