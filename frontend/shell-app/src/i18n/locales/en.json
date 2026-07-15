@@ -22,7 +22,8 @@
     "currency": "Currency",
     "language": "Language",
     "shoppingCart": "shopping cart",
-    "menu": "menu"
+    "menu": "menu",
+    "userMenu": "User menu"
   },
   "cart": {
     "title": "Your Cart",

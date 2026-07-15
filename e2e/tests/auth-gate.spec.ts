@@ -12,6 +12,11 @@ import { test, expect } from '@playwright/test'
  * The 403 page is rendered synchronously once the RoleGuard evaluates — no
  * backend round-trip is needed so the tests work against a running shell-app
  * without live Auth0 credentials.
+ *
+ * Under mock auth mode (VITE_AUTH_MODE=mock) the visitor is authenticated as
+ * "e2e|test-user" with no roles claim, so the same 403 page renders. Both
+ * branches of the .or() locator then resolve (testid + heading), hence the
+ * .first() to satisfy strict mode.
  */
 
 test.describe('Admin route auth gate', () => {
@@ -20,7 +25,7 @@ test.describe('Admin route auth gate', () => {
     await expect(
       page.getByTestId('forbidden-page').or(
         page.getByRole('heading', { name: /403/i })
-      )
+      ).first()
     ).toBeVisible({ timeout: 10000 })
   })
 
@@ -29,7 +34,7 @@ test.describe('Admin route auth gate', () => {
     await expect(
       page.getByTestId('forbidden-page').or(
         page.getByRole('heading', { name: /403/i })
-      )
+      ).first()
     ).toBeVisible({ timeout: 10000 })
   })
 
@@ -38,7 +43,7 @@ test.describe('Admin route auth gate', () => {
     await expect(
       page.getByTestId('forbidden-page').or(
         page.getByRole('heading', { name: /403/i })
-      )
+      ).first()
     ).toBeVisible({ timeout: 10000 })
   })
 
@@ -46,7 +51,7 @@ test.describe('Admin route auth gate', () => {
     await page.goto('/admin')
     const heading = page.getByTestId('forbidden-page').or(
       page.getByRole('heading', { name: /403/i })
-    )
+    ).first()
     await expect(heading).toBeVisible({ timeout: 10000 })
 
     await expect(page.getByRole('link', { name: /go home/i })).toBeVisible()
@@ -57,7 +62,7 @@ test.describe('Admin route auth gate', () => {
     await expect(
       page.getByTestId('forbidden-page').or(
         page.getByRole('heading', { name: /403/i })
-      )
+      ).first()
     ).toBeVisible({ timeout: 10000 })
 
     await page.getByRole('link', { name: /go home/i }).click()

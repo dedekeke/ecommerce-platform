@@ -27,4 +27,17 @@ export default defineConfig({
       use: { ...devices['Desktop Safari'] },
     },
   ],
+  // Starts the shell dev server in local test auth mode (VITE_AUTH_MODE=mock) so
+  // auth-gated specs run without Auth0 egress. MFE dev servers and backends are
+  // still started manually — see README.md. If a shell is already running on
+  // :5173 it is reused, so start it with `npm run dev:e2e` for auth-gated specs.
+  webServer: [
+    {
+      command: 'npm run dev:e2e',
+      cwd: '../frontend/shell-app',
+      url: 'http://localhost:5173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 })

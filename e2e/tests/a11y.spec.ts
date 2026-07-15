@@ -58,6 +58,9 @@ test.describe('Accessibility: WCAG 2.1 AA', () => {
   })
 
   test('/cart (with items) has no WCAG 2.1 AA violations', async ({ page }) => {
+    // Must be on the app origin before touching localStorage — page.evaluate on
+    // the initial about:blank throws SecurityError in chromium.
+    await page.goto('/')
     await page.evaluate(() => {
       localStorage.setItem('cart-storage', JSON.stringify({
         state: {

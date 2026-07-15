@@ -87,6 +87,12 @@ describe('Header', () => {
     expect(screen.getByTestId('user-menu-button')).toBeInTheDocument()
   })
 
+  it('should give the user menu button an accessible name (WCAG 4.1.2)', () => {
+    mockedUseAuth0.mockReturnValue(authenticatedAuth0Mock)
+    renderHeader()
+    expect(screen.getByTestId('user-menu-button')).toHaveAccessibleName(/user menu/i)
+  })
+
   it('should call onMenuClick when menu button is clicked on mobile', () => {
     const onMenuClick = vi.fn()
     render(

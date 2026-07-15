@@ -101,7 +101,7 @@ export default function CartSummary({ subtotal, onCheckout }: CartSummaryProps) 
         <Typography variant="body1" fontWeight={700}>
           Total
         </Typography>
-        <Typography variant="body1" fontWeight={700} color="primary.main">
+        <Typography variant="body1" fontWeight={700} color="primary.main" data-testid="cart-total">
           ${total.toFixed(2)}
         </Typography>
       </Stack>
