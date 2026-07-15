@@ -44,6 +44,21 @@ jobs:
       - name: Guard against DEBUG/TRACE in production profiles
         run: bash scripts/check-prod-log-levels.sh
 
+  # ---- Fast build-pipeline guard: reactor Dockerfiles vs root pom <modules> ----
+  # A hermetic multi-stage Dockerfile that COPYs the aggregator root pom.xml must
+  # stage a pom for every reactor module, or the in-container build aborts with
+  # "Child module ... does not exist". This drift is invisible to `mvn` (all
+  # module dirs exist on disk) and only bites in the Docker build. Pure bash,
+  # no build — fails fast, ahead of the heavier jobs.
+  dockerfile-reactor-poms:
+    name: Dockerfile reactor-pom guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard reactor Dockerfiles against root pom.xml module drift
+        run: bash scripts/check-dockerfile-reactor-poms.sh
+
   # ---- Backend: build + unit tests with JaCoCo coverage ----
   backend:
     name: Backend build, test & coverage
