@@ -12,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +28,8 @@ import java.util.List;
 public class MediaController {
 
     private static final Logger logger = LoggerFactory.getLogger(MediaController.class);
+
+    private static final String ADMIN_AUTHORITY = "SCOPE_admin";
 
     private final MediaService mediaService;
 
@@ -51,11 +54,12 @@ public class MediaController {
     @Operation(summary = "Get media metadata by ID")
     public ResponseEntity<MediaResponse> getMedia(
             @PathVariable String id,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication) {
 
         logger.debug("Get media request for id: {}", id);
 
-        MediaResponse response = mediaService.getMediaById(id);
+        MediaResponse response = mediaService.getMediaById(id, jwt.getSubject(), isAdmin(authentication));
         return ResponseEntity.ok(response);
     }
 
@@ -63,12 +67,15 @@ public class MediaController {
     @Operation(summary = "Download media file")
     public ResponseEntity<Resource> downloadFile(
             @PathVariable String id,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication) {
 
         logger.debug("Download request for media id: {}", id);
 
-        MediaResponse media = mediaService.getMediaById(id);
-        Resource resource = mediaService.loadMediaFile(id);
+        String userId = jwt.getSubject();
+        boolean admin = isAdmin(authentication);
+        MediaResponse media = mediaService.getMediaById(id, userId, admin);
+        Resource resource = mediaService.loadMediaFile(id, userId, admin);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(media.getContentType()))
@@ -81,12 +88,13 @@ public class MediaController {
     @Operation(summary = "Delete media file")
     public ResponseEntity<Void> deleteMedia(
             @PathVariable String id,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication) {
 
         String userId = jwt.getSubject();
         logger.info("Delete request from user: {} for media: {}", userId, id);
 
-        mediaService.deleteMedia(id, userId);
+        mediaService.deleteMedia(id, userId, isAdmin(authentication));
         return ResponseEntity.noContent().build();
     }
 
@@ -94,11 +102,18 @@ public class MediaController {
     @Operation(summary = "Get all media for a user")
     public ResponseEntity<List<MediaResponse>> getUserMedia(
             @PathVariable String userId,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication) {
 
         logger.debug("Get user media request for userId: {}", userId);
 
-        List<MediaResponse> mediaList = mediaService.getMediaByUser(userId);
+        List<MediaResponse> mediaList =
+                mediaService.getMediaByUser(userId, jwt.getSubject(), isAdmin(authentication));
         return ResponseEntity.ok(mediaList);
+    }
+
+    private boolean isAdmin(Authentication authentication) {
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> ADMIN_AUTHORITY.equals(a.getAuthority()));
     }
 }
