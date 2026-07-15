@@ -4,7 +4,6 @@ import com.ecommerce.recommendationservice.domain.CoOccurrenceDocument;
 import com.ecommerce.recommendationservice.domain.ConsumedOrderDocument;
 import com.ecommerce.recommendationservice.domain.UserPurchaseDocument;
 import com.ecommerce.recommendationservice.repository.ConsumedOrderRepository;
-import com.ecommerce.recommendationservice.repository.UserPurchaseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -15,10 +14,8 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Updates the co-occurrence matrix and per-user purchase set in response to an
@@ -43,7 +40,6 @@ import java.util.Set;
 public class CoOccurrenceUpdater {
 
     private final MongoTemplate mongoTemplate;
-    private final UserPurchaseRepository userPurchaseRepository;
     private final ConsumedOrderRepository consumedOrderRepository;
 
     /**
@@ -96,19 +92,21 @@ public class CoOccurrenceUpdater {
         }
     }
 
+    /**
+     * Atomically merge {@code productIds} into the user's purchase set.
+     *
+     * <p>Uses a single {@code $addToSet ... $each} upsert rather than a
+     * findById → merge → save round-trip: the latter races on concurrent order
+     * events for the same user (last write wins, silently dropping purchase
+     * history). {@code $addToSet} is applied server-side and is set-safe, so
+     * concurrent deliveries compose instead of clobbering each other.
+     */
     private void upsertUserPurchases(String userId, List<String> productIds) {
-        UserPurchaseDocument existing = userPurchaseRepository.findById(userId)
-                .orElseGet(() -> UserPurchaseDocument.builder()
-                        .userId(userId)
-                        .productIds(new HashSet<>())
-                        .build());
-        Set<String> merged = existing.getProductIds() == null
-                ? new HashSet<>()
-                : new HashSet<>(existing.getProductIds());
-        merged.addAll(productIds);
-        existing.setProductIds(merged);
-        existing.setUpdatedAt(Instant.now());
-        userPurchaseRepository.save(existing);
+        Query query = new Query(Criteria.where("_id").is(userId));
+        Update update = new Update()
+                .addToSet("productIds").each(productIds.toArray())
+                .set("updatedAt", Instant.now());
+        mongoTemplate.upsert(query, update, UserPurchaseDocument.class);
     }
 
     /**

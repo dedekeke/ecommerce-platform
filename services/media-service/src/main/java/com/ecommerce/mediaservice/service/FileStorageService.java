@@ -11,6 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,6 +56,9 @@ public class FileStorageService {
             throw new IllegalArgumentException("Failed to store empty file");
         }
 
+        if (file.getOriginalFilename() == null) {
+            throw new IllegalArgumentException("Failed to store file with no filename");
+        }
         String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
 
         try {
@@ -68,9 +72,13 @@ public class FileStorageService {
             String extension = getFileExtension(originalFilename);
             String uniqueFilename = UUID.randomUUID().toString() + extension;
 
-            // Copy file to storage location
+            // Copy file to storage location. Files.copy closes the OutputStream it
+            // opens but NOT the source stream, so close it explicitly to avoid a
+            // file-descriptor leak under upload load.
             Path targetLocation = this.storageLocation.resolve(uniqueFilename);
-            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+            try (InputStream in = file.getInputStream()) {
+                Files.copy(in, targetLocation, StandardCopyOption.REPLACE_EXISTING);
+            }
 
             logger.info("Stored file: {} as {}", originalFilename, uniqueFilename);
             return uniqueFilename;
