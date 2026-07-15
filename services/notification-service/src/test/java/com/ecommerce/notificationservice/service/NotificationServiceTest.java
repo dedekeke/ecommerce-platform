@@ -81,6 +81,10 @@ class NotificationServiceTest {
         variables = new HashMap<>();
         variables.put("orderNumber", "ORD-12345");
         variables.put("userName", "John Doe");
+
+        // In production Spring injects the async proxy here; default to the real
+        // instance so non-retry tests exercise the actual send path.
+        notificationService.setSelf(notificationService);
     }
 
     @Test
@@ -272,6 +276,37 @@ class NotificationServiceTest {
         // before delegating to sendNotification.
         assertThat(capturedRetryCount.get()).isEqualTo(2);
         assertThat(capturedStatus.get()).isEqualTo(NotificationStatus.RETRYING);
+    }
+
+    @Test
+    void should_dispatch_retry_send_through_async_proxy_not_self_invocation() {
+        // Given — a distinct proxy stands in for the Spring async proxy.
+        NotificationService asyncProxy = mock(NotificationService.class);
+        notificationService.setSelf(asyncProxy);
+
+        NotificationLog failedLog = NotificationLog.builder()
+                .id("log123")
+                .userId("user123")
+                .recipient("test@example.com")
+                .templateCode("ORDER_CONFIRMATION")
+                .variables(variables)
+                .status(NotificationStatus.RETRYING)
+                .retryCount(1)
+                .relatedEntityId("order123")
+                .relatedEntityType("ORDER")
+                .build();
+        when(logRepository.findById("log123")).thenReturn(Optional.of(failedLog));
+        when(logRepository.save(any(NotificationLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // When
+        notificationService.retryNotification("log123");
+
+        // Then — the resend goes through the proxy (so @Async takes effect),
+        // NOT inline via this.sendNotification.
+        verify(asyncProxy).sendNotification(
+                "user123", "test@example.com", "ORDER_CONFIRMATION",
+                variables, "order123", "ORDER");
+        verify(emailService, never()).sendEmail(anyString(), anyString(), anyString(), any());
     }
 
     @Test

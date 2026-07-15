@@ -5,6 +5,8 @@ import com.ecommerce.notificationservice.repository.NotificationLogRepository;
 import com.ecommerce.notificationservice.repository.NotificationTemplateRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
@@ -27,6 +29,21 @@ public class NotificationService {
     private final NotificationTemplateRepository templateRepository;
     private final EmailService emailService;
     private final SmsService smsService;
+
+    /**
+     * Self-reference obtained through the Spring proxy. Retry sends must be
+     * dispatched via this proxy so {@code @Async} actually takes effect — a plain
+     * {@code this.sendNotification(...)} is a self-invocation that bypasses the
+     * proxy and would run synchronously on the retry scheduler's single thread,
+     * where one hung SMTP connection stalls the whole retry batch. {@code @Lazy}
+     * breaks the constructor-time self-dependency cycle.
+     */
+    private NotificationService self;
+
+    @Autowired
+    public void setSelf(@Lazy NotificationService self) {
+        this.self = self;
+    }
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
 
@@ -122,8 +139,9 @@ public class NotificationService {
         notification.setStatus(NotificationStatus.RETRYING);
         logRepository.save(notification);
 
-        // Re-send notification
-        sendNotification(
+        // Re-send through the proxy so the @Async dispatch actually happens off
+        // the retry scheduler thread.
+        self.sendNotification(
                 notification.getUserId(),
                 notification.getRecipient(),
                 notification.getTemplateCode(),
