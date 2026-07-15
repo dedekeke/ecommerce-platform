@@ -20,6 +20,10 @@ WORKDIR /build
 # `-pl ... -am`. Staging only a subset of poms makes Maven abort with
 # "Child module ... does not exist", so all reactor poms are copied first
 # (poms only -> maximises layer-cache reuse before sources change).
+#
+# reactor-pom-check: enforce
+# The COPY list below MUST stay in sync with root pom.xml <modules>; the drift
+# guard (scripts/check-dockerfile-reactor-poms.sh) fails the build otherwise.
 COPY pom.xml ./
 COPY common-logging/pom.xml ./common-logging/
 COPY common-library/pom.xml ./common-library/

@@ -1,5 +1,11 @@
 # Runtime-only Dockerfile for API Gateway
 # Prerequisite: Build the JAR first with: mvn clean package -pl infrastructure/api-gateway -DskipTests
+#
+# NOTE: docker-compose.yml no longer uses this file — the api-gateway service
+# now builds from the standalone hermetic `Dockerfile` (aligned with
+# eureka-server and config-server). This runtime variant is retained only for
+# the manual fast-local path where a host JAR already exists. It pins the
+# SNAPSHOT JAR name below, so it must be updated on every version bump.
 
 FROM eclipse-temurin:21-jre-alpine
 

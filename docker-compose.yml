@@ -1,3 +1,20 @@
+# =============================================================================
+# Local development stack.
+#
+# Backend image build strategy
+# -----------------------------
+# Infrastructure tier (eureka-server, config-server, api-gateway) builds from
+# the standalone hermetic multi-stage `Dockerfile`. These stage the full
+# reactor pom list (guarded by scripts/check-dockerfile-reactor-poms.sh) and
+# build inside Docker with NO pre-built host JAR, so `docker compose up --build`
+# works from a clean checkout and matches the CD image builds.
+#
+# Some service-tier entries still build from `Dockerfile.runtime`, which wraps a
+# host-built JAR (run `mvn clean install -DskipTests` first). Their standalone
+# `Dockerfile`s stage an incomplete reactor pom list and are NOT yet hermetic;
+# migrating the service tier to standalone Dockerfiles is tracked as a follow-up
+# (the drift guard reports them as advisory warnings).
+# =============================================================================
 services:
   # ============================================
   # DATABASES
@@ -281,10 +298,14 @@ services:
       - ecommerce-network
 
   # API Gateway - Entry point for all client requests
+  # Builds from the standalone hermetic multi-stage Dockerfile (fixed in PR#98),
+  # matching eureka-server and config-server. This needs no pre-built host JAR,
+  # keeps compose consistent with the CD image builds, and avoids the
+  # version-pinned Dockerfile.runtime (which hardcodes the SNAPSHOT JAR name).
   api-gateway:
     build:
       context: .
-      dockerfile: infrastructure/api-gateway/Dockerfile.runtime
+      dockerfile: infrastructure/api-gateway/Dockerfile
     container_name: ecommerce-gateway
     depends_on:
       eureka-server:
