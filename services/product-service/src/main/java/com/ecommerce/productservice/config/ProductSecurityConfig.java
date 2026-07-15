@@ -82,12 +82,19 @@ public class ProductSecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/categories", "/api/v1/categories/**").permitAll()
 
-                // Admin operations require authentication and admin scope
+                // Admin operations require authentication and admin scope.
+                // PATCH is enumerated alongside POST/PUT/DELETE so partial mutations
+                // (PATCH /api/products/{id}/stock, PATCH /api/v1/categories/{id}/move)
+                // cannot fall through to plain authenticated(). This mirrors the gateway
+                // matchers from PR#108; the service layer is the real defense because
+                // internal callers (cart/order via load-balanced WebClient) BYPASS the gateway.
                 .requestMatchers(HttpMethod.POST, "/api/products/**").hasAuthority("SCOPE_admin")
                 .requestMatchers(HttpMethod.PUT, "/api/products/**").hasAuthority("SCOPE_admin")
+                .requestMatchers(HttpMethod.PATCH, "/api/products/**").hasAuthority("SCOPE_admin")
                 .requestMatchers(HttpMethod.DELETE, "/api/products/**").hasAuthority("SCOPE_admin")
                 .requestMatchers(HttpMethod.POST, "/api/v1/categories/**").hasAuthority("SCOPE_admin")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/categories/**").hasAuthority("SCOPE_admin")
+                .requestMatchers(HttpMethod.PATCH, "/api/v1/categories/**").hasAuthority("SCOPE_admin")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/categories/**").hasAuthority("SCOPE_admin")
 
                 // All other requests require authentication
