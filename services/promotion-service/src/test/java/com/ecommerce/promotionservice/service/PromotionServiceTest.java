@@ -13,7 +13,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -380,7 +379,7 @@ class PromotionServiceTest {
     class ApplyPromotionTests {
 
         @Test
-        @DisplayName("Should apply promotion and increment usage")
+        @DisplayName("Should apply promotion via atomic redeem when capacity remains")
         void shouldApplyPromotionAndIncrementUsage() {
             PromotionValidationRequest request = PromotionValidationRequest.builder()
                     .code("SAVE20")
@@ -389,20 +388,17 @@ class PromotionServiceTest {
 
             when(promotionRepository.findValidPromotionByCode(eq("SAVE20"), any(LocalDateTime.class)))
                     .thenReturn(Optional.of(validPromotion));
-            when(promotionRepository.save(any(Promotion.class))).thenReturn(validPromotion);
+            when(promotionRepository.redeemByCode(eq("SAVE20"), any(LocalDateTime.class))).thenReturn(1);
 
             DiscountResult result = promotionService.applyPromotion(request);
 
             assertThat(result.isValid()).isTrue();
             assertThat(result.getDiscountAmount()).isEqualByComparingTo(BigDecimal.valueOf(40.00));
-
-            ArgumentCaptor<Promotion> captor = ArgumentCaptor.forClass(Promotion.class);
-            verify(promotionRepository).save(captor.capture());
-            assertThat(captor.getValue().getCurrentUses()).isEqualTo(51);
+            verify(promotionRepository).redeemByCode(eq("SAVE20"), any(LocalDateTime.class));
         }
 
         @Test
-        @DisplayName("Should not increment usage when validation fails")
+        @DisplayName("Should not redeem when validation fails")
         void shouldNotIncrementUsageWhenValidationFails() {
             PromotionValidationRequest request = PromotionValidationRequest.builder()
                     .code("SAVE20")
@@ -415,7 +411,28 @@ class PromotionServiceTest {
             DiscountResult result = promotionService.applyPromotion(request);
 
             assertThat(result.isValid()).isFalse();
-            verify(promotionRepository, never()).save(any(Promotion.class));
+            verify(promotionRepository, never()).redeemByCode(any(), any(LocalDateTime.class));
+        }
+
+        @Test
+        @DisplayName("Should reject when the atomic redeem finds no remaining capacity")
+        void shouldRejectWhenUsageLimitReachedBeforeRedeem() {
+            PromotionValidationRequest request = PromotionValidationRequest.builder()
+                    .code("SAVE20")
+                    .purchaseAmount(BigDecimal.valueOf(200))
+                    .build();
+
+            // Validation passes, but the atomic redeem updates zero rows because a
+            // concurrent redemption took the last slot (currentUses < maxUses no
+            // longer holds).
+            when(promotionRepository.findValidPromotionByCode(eq("SAVE20"), any(LocalDateTime.class)))
+                    .thenReturn(Optional.of(validPromotion));
+            when(promotionRepository.redeemByCode(eq("SAVE20"), any(LocalDateTime.class))).thenReturn(0);
+
+            DiscountResult result = promotionService.applyPromotion(request);
+
+            assertThat(result.isValid()).isFalse();
+            assertThat(result.getMessage()).contains("maximum usage limit");
         }
     }
 }

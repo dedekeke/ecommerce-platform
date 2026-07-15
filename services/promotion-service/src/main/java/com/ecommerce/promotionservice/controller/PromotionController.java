@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -63,6 +64,7 @@ public class PromotionController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
     @Operation(summary = "Create promotion (Admin)", description = "Create a new promotion (requires admin role)")
     public ResponseEntity<PromotionResponse> createPromotion(@Valid @RequestBody PromotionRequest request) {
         log.info("POST /api/promotions - Creating new promotion: {}", request.getCode());
@@ -71,6 +73,7 @@ public class PromotionController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
     @Operation(summary = "Update promotion (Admin)", description = "Update an existing promotion (requires admin role)")
     public ResponseEntity<PromotionResponse> updatePromotion(
             @PathVariable Long id,
@@ -81,6 +84,7 @@ public class PromotionController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
     @Operation(summary = "Delete promotion (Admin)", description = "Delete a promotion (requires admin role)")
     public ResponseEntity<Void> deletePromotion(@PathVariable Long id) {
         log.info("DELETE /api/promotions/{} - Deleting promotion", id);

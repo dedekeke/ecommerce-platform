@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.io.Serializable;
@@ -23,11 +24,27 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+// currentUses is a counter owned exclusively by the atomic redeemByCode update.
+// @DynamicUpdate means entity saves (admin create/update, saga active-toggle) emit
+// only dirty columns, so those paths never rewrite current_uses and cannot rewind
+// concurrent redemptions. @Version still guards the admin-editable fields.
+@DynamicUpdate
 public class Promotion implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /**
+     * Optimistic-lock guard. Concurrent redemptions of a limited-use code each
+     * read then increment {@code currentUses}; the version check makes the
+     * increment atomic so two writers cannot both commit off the same read and
+     * push usage past {@code maxUses}. Managed by Hibernate.
+     */
+    @Version
+    @Column(nullable = false)
+    @Builder.Default
+    private Long version = 0L;
 
     @Column(nullable = false, unique = true, length = 50)
     @NotBlank(message = "Promotion code is required")
