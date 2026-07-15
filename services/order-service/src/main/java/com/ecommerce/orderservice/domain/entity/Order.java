@@ -2,6 +2,7 @@ package com.ecommerce.orderservice.domain.entity;
 
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -86,8 +87,15 @@ public class Order {
     /**
      * Stripe PaymentIntent client secret, persisted so an idempotent checkout
      * replay can re-serve it to the owning session for payment confirmation.
-     * Safe to expose to the paying customer's browser (that is its purpose).
+     *
+     * <p>{@code @JsonIgnore}: the raw Order entity is serialized directly by the
+     * order-detail/history/cancel/admin endpoints, so this must never leak
+     * there. It is exposed ONLY through {@link
+     * com.ecommerce.orderservice.dto.CheckoutResponse}, which reads it via the
+     * getter (not entity JSON) on the checkout create/replay path that
+     * legitimately needs it.</p>
      */
+    @JsonIgnore
     @Column(name = "payment_client_secret")
     private String paymentClientSecret;
 

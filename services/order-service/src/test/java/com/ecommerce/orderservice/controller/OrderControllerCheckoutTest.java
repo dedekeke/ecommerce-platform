@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -68,6 +69,7 @@ class OrderControllerCheckoutTest {
         order.setShippingCost(new BigDecimal("5.99"));
         order.setTotal(new BigDecimal("70.77"));
         order.setPaymentIntentId("pi_1");
+        order.setPaymentClientSecret("pi_1_secret");
         return order;
     }
 
@@ -103,7 +105,10 @@ class OrderControllerCheckoutTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(BODY))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.orderId").value("order-1"));
+                .andExpect(jsonPath("$.orderId").value("order-1"))
+                // Replay must re-serve the persisted client secret so the owning
+                // session can still complete payment.
+                .andExpect(jsonPath("$.clientSecret").value("pi_1_secret"));
     }
 
     @Test
@@ -135,5 +140,19 @@ class OrderControllerCheckoutTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"userId\":\"" + USER + "\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void should_notLeakClientSecret_when_gettingOrderDetail() throws Exception {
+        // The raw Order entity is serialized by GET order-detail; the persisted
+        // Stripe secret must never appear there (@JsonIgnore) — it is exposed
+        // ONLY via the checkout CheckoutResponse.
+        when(orderService.getOrder("order-1", USER)).thenReturn(order());
+
+        mockMvc.perform(get("/api/orders/order-1").header("X-User-Id", USER))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentIntentId").value("pi_1"))
+                .andExpect(jsonPath("$.paymentClientSecret").doesNotExist())
+                .andExpect(jsonPath("$.clientSecret").doesNotExist());
     }
 }
