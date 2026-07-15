@@ -24,6 +24,12 @@ outbox:
     poll-interval-ms: 500
     batch-size: 100
 
+# Payment-event Kafka listeners are driven directly in tests (H2, no broker),
+# so keep their containers from trying to connect during context load.
+payment:
+  consumer:
+    auto-startup: false
+
 security:
   enabled: false
 
