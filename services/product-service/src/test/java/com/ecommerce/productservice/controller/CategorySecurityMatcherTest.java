@@ -2,16 +2,14 @@ package com.ecommerce.productservice.controller;
 
 import com.ecommerce.productservice.config.ProductSecurityConfig;
 import com.ecommerce.productservice.mapper.CategoryMapper;
-import com.ecommerce.productservice.mapper.ProductMapper;
 import com.ecommerce.productservice.model.Category;
-import com.ecommerce.productservice.model.Product;
 import com.ecommerce.productservice.service.CategoryService;
-import com.ecommerce.productservice.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -30,65 +28,56 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
 import java.util.Collections;
 
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Authorization tests for the catalog PATCH endpoints, closing — in the service's
- * OWN filter chain — the gap PR#108 fixed at the gateway. Internal service-to-service
- * callers reach product-service via load-balanced clients that BYPASS the gateway, so
- * the service layer is the real defense. No internal caller PATCHes product stock
- * (order placement reserves stock in inventory-service over gRPC; cart/order product
- * clients are GET-only), therefore both PATCH endpoints require {@code SCOPE_admin}.
+ * Authorization drift guard for the category endpoints in product-service's OWN
+ * filter chain ({@link ProductSecurityConfig}).
  *
- * The test wires a minimal web context containing ONLY the real
- * {@link ProductSecurityConfig} filter chain and the two controllers — no persistence
- * or discovery layer — so it exercises the authorization rules directly and fast. The
- * {@code jwt()} post-processor supplies the principal; {@link JwtDecoder} is mocked so
- * no Auth0 call is made (the config's decoder bean is never instantiated).
+ * <p>The gateway rewrites both {@code /api/categories/**} and {@code /api/v1/categories/**}
+ * to the unversioned {@code /api/categories/**} before forwarding, and internal
+ * service-to-service callers reach product-service via load-balanced clients that
+ * BYPASS the gateway. The service layer is therefore the real defense and its matchers
+ * must key on the post-rewrite {@code /api/categories/**} shape — the same path the
+ * {@link CategoryController} now maps. Reads are public; POST/PUT/PATCH/DELETE require
+ * {@code SCOPE_admin}. If a matcher regressed to {@code /api/v1/categories} it would
+ * stop matching real traffic and these tests would fail.
+ *
+ * <p>Only {@link CategoryController} is wired so requests map to a handler; the config's
+ * {@link JwtDecoder} bean is mocked (config methods are CGLIB-proxied so the real
+ * Auth0 discovery call is never made) and {@code jwt()} supplies the principal.
  */
 @ExtendWith(SpringExtension.class)
 @WebAppConfiguration
-@ContextConfiguration(classes = PatchAuthorizationSecurityTest.TestContext.class)
+@ContextConfiguration(classes = CategorySecurityMatcherTest.TestContext.class)
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
         "security.enabled=true",
         "auth0.domain=test-tenant.auth0.com",
         "auth0.audience=https://api.test/"
 })
-class PatchAuthorizationSecurityTest {
+class CategorySecurityMatcherTest {
 
     @Configuration
     @EnableWebMvc
     @Import(ProductSecurityConfig.class)
     static class TestContext {
-
-        @org.springframework.context.annotation.Bean
-        ProductController productController(ProductService productService,
-                                            ProductMapper productMapper,
-                                            CategoryService categoryService) {
-            return new ProductController(productService, productMapper, categoryService);
-        }
-
-        @org.springframework.context.annotation.Bean
+        @Bean
         CategoryController categoryController(CategoryService categoryService,
                                               CategoryMapper categoryMapper) {
             return new CategoryController(categoryService, categoryMapper);
         }
     }
-
-    @MockBean
-    private ProductService productService;
-
-    @MockBean
-    private ProductMapper productMapper;
 
     @MockBean
     private CategoryService categoryService;
@@ -120,34 +109,11 @@ class PatchAuthorizationSecurityTest {
     }
 
     @Test
-    void should_return403_when_nonAdminPatchesStock() throws Exception {
-        mockMvc.perform(patch("/api/products/1/stock")
-                        .param("quantity", "5")
-                        .with(nonAdmin()))
-                .andExpect(status().isForbidden());
+    void should_allowPublicRead_when_getCategoriesAnonymously() throws Exception {
+        when(categoryService.getAllCategories()).thenReturn(Collections.emptyList());
 
-        verify(productService, never()).updateStockQuantity(anyLong(), anyInt());
-    }
-
-    @Test
-    void should_allowStockPatch_when_adminScope() throws Exception {
-        when(productService.updateStockQuantity(1L, 5)).thenReturn(new Product());
-
-        mockMvc.perform(patch("/api/products/1/stock")
-                        .param("quantity", "5")
-                        .with(admin()))
+        mockMvc.perform(get("/api/categories"))
                 .andExpect(status().isOk());
-
-        verify(productService).updateStockQuantity(1L, 5);
-    }
-
-    @Test
-    void should_return401_when_unauthenticatedPatchesStock() throws Exception {
-        mockMvc.perform(patch("/api/products/1/stock")
-                        .param("quantity", "5"))
-                .andExpect(status().isUnauthorized());
-
-        verify(productService, never()).updateStockQuantity(anyLong(), anyInt());
     }
 
     @Test
@@ -173,10 +139,37 @@ class PatchAuthorizationSecurityTest {
     }
 
     @Test
-    void should_allowPublicRead_when_getCategoriesAnonymously() throws Exception {
-        when(categoryService.getAllCategories()).thenReturn(Collections.emptyList());
+    void should_return401_when_unauthenticatedMovesCategory() throws Exception {
+        mockMvc.perform(patch("/api/categories/1/move")
+                        .param("newParentId", "2"))
+                .andExpect(status().isUnauthorized());
 
-        mockMvc.perform(get("/api/categories"))
-                .andExpect(status().isOk());
+        verify(categoryService, never()).moveCategory(anyLong(), anyLong());
+    }
+
+    @Test
+    void should_return403_when_nonAdminDeletesCategory() throws Exception {
+        mockMvc.perform(delete("/api/categories/1").with(nonAdmin()))
+                .andExpect(status().isForbidden());
+
+        verify(categoryService, never()).deleteCategory(anyLong());
+    }
+
+    @Test
+    void should_return403_when_nonAdminCreatesCategory() throws Exception {
+        mockMvc.perform(post("/api/categories")
+                        .contentType("application/json")
+                        .content("{\"name\":\"x\",\"slug\":\"x\"}")
+                        .with(nonAdmin()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void should_return403_when_nonAdminUpdatesCategory() throws Exception {
+        mockMvc.perform(put("/api/categories/1")
+                        .contentType("application/json")
+                        .content("{\"name\":\"x\",\"slug\":\"x\"}")
+                        .with(nonAdmin()))
+                .andExpect(status().isForbidden());
     }
 }
