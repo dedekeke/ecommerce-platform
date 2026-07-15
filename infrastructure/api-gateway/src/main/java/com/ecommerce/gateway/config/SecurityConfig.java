@@ -88,6 +88,18 @@ public class SecurityConfig {
                     // rather than being short-circuited by the filter chain.
                     .pathMatchers("/graphql", "/graphiql", "/graphiql/**").permitAll()
 
+                    // Stripe webhook — Stripe cannot present a JWT, so this POST must
+                    // pass the gateway unauthenticated and let payment-service
+                    // authenticate it by the Stripe-Signature HMAC. Without this the
+                    // catch-all below 401s Stripe at the edge and the webhook never
+                    // reaches the service. POST-only + exact paths so nothing else
+                    // under /api/payments/** is widened. Both the unversioned and the
+                    // /api/v1 path are listed because the gateway authorizes the
+                    // ORIGINAL request path before the v1 RewritePath runs during
+                    // routing (Lore 2b8c4227).
+                    .pathMatchers(HttpMethod.POST,
+                        "/api/payments/webhook", "/api/v1/payments/webhook").permitAll()
+
                     // Admin endpoints require admin role
                     .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
                     // Catalog writes require admin on BOTH versions. Any write method

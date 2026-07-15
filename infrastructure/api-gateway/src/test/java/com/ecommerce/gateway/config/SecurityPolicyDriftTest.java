@@ -171,6 +171,41 @@ class SecurityPolicyDriftTest {
         assertThat(runGet("/api/v1/recommendations").denied401()).isTrue();
     }
 
+    // --- Stripe webhook: POST must be public on BOTH versions (Stripe carries no
+    //     JWT; payment-service authenticates via the Stripe-Signature HMAC), while
+    //     every other /api/payments/** call and other methods stay authenticated. ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/payments/webhook", "/api/v1/payments/webhook"})
+    void should_permitUnauthenticatedPost_when_stripeWebhookPath(String path) {
+        AuthzResult result = runPost(path);
+        assertThat(result.reachedBackend())
+                .as("POST %s must be public so Stripe (no JWT) reaches the service", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/payments/webhook", "/api/v1/payments/webhook"})
+    void should_denyUnauthenticatedGet_when_stripeWebhookPath(String path) {
+        // The exemption is POST-only: a GET to the same path stays authenticated.
+        assertThat(runGet(path).denied401())
+                .as("GET %s must not inherit the POST-only webhook exemption", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/payments/intents",
+            "/api/v1/payments/intents",
+            "/api/payments/webhook/extra",   // exact-path exemption must not match sub-paths
+            "/api/payments"
+    })
+    void should_denyUnauthenticatedPost_when_nonWebhookPaymentPath(String path) {
+        assertThat(runPost(path).denied401())
+                .as("POST %s must stay authenticated (only the exact webhook path is public)", path)
+                .isTrue();
+    }
+
     // --- Authenticated matrix: catalog writes require SCOPE_admin on both versions.
     //     A non-admin JWT must be FORBIDDEN (403); an admin JWT must pass through.
     //     PATCH is the red-first case: without a PATCH matcher it fell through to
