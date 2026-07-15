@@ -22,9 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Service for order management and business logic
@@ -47,42 +45,6 @@ public class OrderService {
 
     @Value("${order.shipping.free-threshold:50.00}")
     private Double freeShippingThreshold;
-
-    /**
-     * Create order from cart (for testing) and publish ORDER_CREATED so the
-     * notification-service can render the order confirmation email.
-     */
-    @Transactional
-    public Order createOrderFromCart(String userId, Map<String, Object> request) {
-        log.info("Creating order from cart for user: {}", userId);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> addressMap = (Map<String, Object>) request.get("shippingAddress");
-        Address shippingAddress = Address.builder()
-            .street((String) addressMap.get("street"))
-            .city((String) addressMap.get("city"))
-            .state((String) addressMap.get("state"))
-            .postalCode((String) addressMap.get("postalCode"))
-            .country((String) addressMap.get("country"))
-            .build();
-
-        String promotionCode = (String) request.getOrDefault("promotionCode", "");
-        String userEmail = (String) request.get("userEmail");
-        String userName = (String) request.get("userName");
-
-        List<OrderItem> items = new ArrayList<>();
-        OrderItem item = OrderItem.builder()
-            .productId("1")
-            .productName("Test Product")
-            .price(BigDecimal.valueOf(10.00))
-            .quantity(1)
-            .build();
-        items.add(item);
-
-        Order order = createOrder(userId, items, shippingAddress, promotionCode);
-        orderEventPublisher.publishOrderCreatedEvent(order, userEmail, userName);
-        return order;
-    }
 
     /**
      * Create a new order
@@ -287,6 +249,63 @@ public class OrderService {
 
         order.setPaymentIntentId(paymentIntentId);
         return orderRepository.save(order);
+    }
+
+    /**
+     * Finalize a successful checkout: persist the PaymentIntent id + client
+     * secret AND record ORDER_CREATED in a SINGLE transaction. Because the
+     * outbox row commits atomically with the order mutation, the confirmation
+     * event can never disagree with the persisted state. The client secret is
+     * stored so an idempotent replay can re-serve it to the owning session
+     * (payment-service exposes no lookup-by-intent RPC).
+     */
+    @Transactional
+    public Order finalizeSuccessfulOrder(
+        String orderId,
+        String paymentIntentId,
+        String paymentClientSecret,
+        String userEmail,
+        String userName
+    ) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new OrderNotFoundException("Order not found: " + orderId));
+
+        order.setPaymentIntentId(paymentIntentId);
+        order.setPaymentClientSecret(paymentClientSecret);
+        Order saved = orderRepository.save(order);
+
+        orderEventPublisher.publishOrderCreatedEvent(saved, userEmail, userName);
+        log.info("Finalized order {} with payment intent {}", order.getOrderNumber(), paymentIntentId);
+        return saved;
+    }
+
+    /**
+     * Compensating cancel for the order-creation saga: transition the order to
+     * CANCELLED AND record ORDER_CANCELLED in the SAME transaction. This commits
+     * independently of the (non-transactional) saga orchestration, so a failed
+     * checkout leaves the DB and the emitted event in agreement — never a
+     * PENDING row alongside an ORDER_CANCELLED event. Idempotent: an
+     * already-cancelled order is a no-op.
+     */
+    @Transactional
+    public void compensateCancelOrder(String orderId) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            log.warn("Compensation cancel skipped — order {} not found", orderId);
+            return;
+        }
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return;
+        }
+        if (!order.getStatus().canTransitionTo(OrderStatus.CANCELLED)) {
+            log.warn("Compensation cancel skipped — order {} in non-cancellable status {}",
+                orderId, order.getStatus());
+            return;
+        }
+        order.updateStatus(OrderStatus.CANCELLED);
+        Order cancelled = orderRepository.save(order);
+        orderEventPublisher.publishOrderCancelledEvent(cancelled);
+        log.info("Compensation cancelled order {}", cancelled.getOrderNumber());
     }
 
     /**

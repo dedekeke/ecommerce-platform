@@ -2,6 +2,8 @@ package com.ecommerce.orderservice.controller;
 
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
+import com.ecommerce.orderservice.dto.CheckoutResponse;
+import com.ecommerce.orderservice.service.CheckoutService;
 import com.ecommerce.orderservice.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,6 +57,9 @@ class OrderControllerJwtIdentityTest {
     private OrderService orderService;
 
     @MockBean
+    private CheckoutService checkoutService;
+
+    @MockBean
     private JwtDecoder jwtDecoder;
 
     private static Order orderOwnedBy(String userId) {
@@ -65,53 +70,66 @@ class OrderControllerJwtIdentityTest {
         return order;
     }
 
+    /** Valid checkout body; the cart is fetched server-side so only the address is required. */
+    private static String checkoutBody(String userId) {
+        String userIdField = userId == null ? "" : "\"userId\":\"" + userId + "\",";
+        return "{" + userIdField + "\"shippingAddress\":{"
+            + "\"street\":\"1 Main St\",\"city\":\"SF\",\"state\":\"CA\","
+            + "\"postalCode\":\"94105\",\"country\":\"USA\"}}";
+    }
+
+    private static CheckoutService.Outcome checkoutOutcome(String userId) {
+        CheckoutResponse response = CheckoutResponse.fromExistingOrder(orderOwnedBy(userId), "USD");
+        return new CheckoutService.Outcome(response, false);
+    }
+
     // ---- createOrder --------------------------------------------------------
 
     @Test
     void should_reject_when_createOrder_bodyUserId_differs_from_jwtSub() throws Exception {
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + USER_B + "\"}")
+                        .content(checkoutBody(USER_B))
                         .with(jwt().jwt(j -> j.subject(USER_A))))
                 .andExpect(status().isForbidden());
 
-        verify(orderService, never()).createOrderFromCart(any(), any());
+        verify(checkoutService, never()).checkout(any(), any(), any());
     }
 
     @Test
     void should_useJwtSub_when_createOrder_bodyUserId_matches() throws Exception {
-        when(orderService.createOrderFromCart(eq(USER_A), any())).thenReturn(orderOwnedBy(USER_A));
+        when(checkoutService.checkout(eq(USER_A), any(), any())).thenReturn(checkoutOutcome(USER_A));
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + USER_A + "\"}")
+                        .content(checkoutBody(USER_A))
                         .with(jwt().jwt(j -> j.subject(USER_A))))
                 .andExpect(status().isCreated());
 
-        verify(orderService).createOrderFromCart(eq(USER_A), any());
+        verify(checkoutService).checkout(eq(USER_A), any(), any());
     }
 
     @Test
     void should_overrideWithJwtSub_when_createOrder_bodyUserId_absent() throws Exception {
-        when(orderService.createOrderFromCart(eq(USER_A), any())).thenReturn(orderOwnedBy(USER_A));
+        when(checkoutService.checkout(eq(USER_A), any(), any())).thenReturn(checkoutOutcome(USER_A));
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}")
+                        .content(checkoutBody(null))
                         .with(jwt().jwt(j -> j.subject(USER_A))))
                 .andExpect(status().isCreated());
 
-        verify(orderService).createOrderFromCart(eq(USER_A), any());
+        verify(checkoutService).checkout(eq(USER_A), any(), any());
     }
 
     @Test
     void should_return401_when_createOrder_unauthenticated() throws Exception {
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + USER_A + "\"}"))
+                        .content(checkoutBody(USER_A)))
                 .andExpect(status().isUnauthorized());
 
-        verify(orderService, never()).createOrderFromCart(any(), any());
+        verify(checkoutService, never()).checkout(any(), any(), any());
     }
 
     // ---- getOrder -----------------------------------------------------------
@@ -197,16 +215,16 @@ class OrderControllerJwtIdentityTest {
 
     @Test
     void should_allowAdmin_when_createOrder_bodyUserId_differsFromAdminSub() throws Exception {
-        when(orderService.createOrderFromCart(eq(USER_B), any())).thenReturn(orderOwnedBy(USER_B));
+        when(checkoutService.checkout(eq(USER_B), any(), any())).thenReturn(checkoutOutcome(USER_B));
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + USER_B + "\"}")
+                        .content(checkoutBody(USER_B))
                         .with(jwt().jwt(j -> j.subject("auth0|admin"))
                                 .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isCreated());
 
-        verify(orderService).createOrderFromCart(eq(USER_B), any());
+        verify(checkoutService).checkout(eq(USER_B), any(), any());
     }
 
     @Test

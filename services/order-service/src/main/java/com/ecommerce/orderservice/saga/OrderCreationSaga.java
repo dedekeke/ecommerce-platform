@@ -5,8 +5,7 @@ import com.ecommerce.orderservice.client.dto.DiscountResult;
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
-import com.ecommerce.orderservice.domain.enums.OrderStatus;
-import com.ecommerce.orderservice.event.OrderEventPublisher;
+import com.ecommerce.orderservice.exception.EmptyCartException;
 import com.ecommerce.orderservice.grpc.proto.cart.CartItem;
 import com.ecommerce.orderservice.grpc.proto.cart.CartServiceGrpc;
 import com.ecommerce.orderservice.grpc.proto.cart.ClearCartRequest;
@@ -25,7 +24,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -46,8 +44,17 @@ import java.util.stream.Collectors;
 public class OrderCreationSaga {
 
     private final OrderService orderService;
-    private final OrderEventPublisher eventPublisher;
     private final PromotionServiceClient promotionServiceClient;
+
+    private static final String PAYMENT_CURRENCY = "USD";
+
+    /**
+     * Outcome of a successful checkout saga. Carries the persisted order plus the
+     * Stripe PaymentIntent details the browser needs to confirm payment — the
+     * {@code paymentClientSecret} is otherwise dropped after the gRPC call.
+     */
+    public record CheckoutResult(Order order, String paymentIntentId, String paymentClientSecret, String currency) {
+    }
 
     /*
      * Virtual-thread executor used to fan out the two independent saga steps
@@ -80,9 +87,23 @@ public class OrderCreationSaga {
      * Delegates to the enriched overload with null userEmail/userName so the
      * notification-service falls back to its lookup path.
      */
-    @Transactional
     public Order executeOrderCreationSaga(String userId, Address shippingAddress, String promotionCode) {
         return executeOrderCreationSaga(userId, shippingAddress, promotionCode, null, null);
+    }
+
+    /**
+     * Backwards-compatible overload returning only the persisted order. Prefer
+     * {@link #executeCheckout} on the REST checkout path, which also surfaces the
+     * PaymentIntent client secret required by the browser.
+     */
+    public Order executeOrderCreationSaga(
+        String userId,
+        Address shippingAddress,
+        String promotionCode,
+        String userEmail,
+        String userName
+    ) {
+        return executeCheckout(userId, shippingAddress, promotionCode, userEmail, userName).order();
     }
 
     /**
@@ -97,10 +118,18 @@ public class OrderCreationSaga {
      * 7. Publish OrderCreatedEvent to Kafka with recipient details so the
      *    notification-service can render the order confirmation email.
      *
-     * If any step fails, compensate previous steps
+     * If any step fails, compensate previous steps.
+     *
+     * <p>Deliberately NOT {@code @Transactional}: the saga orchestrates several
+     * blocking gRPC calls, and each local DB mutation is its own short
+     * transaction on {@link OrderService} ({@code createOrder},
+     * {@code finalizeSuccessfulOrder}, {@code compensateCancelOrder}). This means
+     * (a) no pooled DB connection is held across the remote round-trips, and
+     * (b) compensation commits in an INDEPENDENT transaction that is not undone
+     * by this method's failure — with the state change and its outbox event
+     * committed atomically, so the DB and Kafka never disagree.</p>
      */
-    @Transactional
-    public Order executeOrderCreationSaga(
+    public CheckoutResult executeCheckout(
         String userId,
         Address shippingAddress,
         String promotionCode,
@@ -109,25 +138,28 @@ public class OrderCreationSaga {
     ) {
         log.info("Starting order creation saga for user: {}", userId);
 
+        // Step 1: Get cart items. No resources are allocated yet, so failures
+        // here need no compensation and propagate with their natural mapping:
+        // a gRPC error -> SagaException (502, retryable); an empty cart ->
+        // EmptyCartException (400, non-retryable client condition).
+        log.info("Saga Step 1: Getting cart items for user: {}", userId);
+        GetCartResponse cartResponse = getCartItems(userId);
+        if (!cartResponse.getSuccess()) {
+            throw new SagaException("Cart could not be retrieved: " + cartResponse.getMessage());
+        }
+        if (cartResponse.getItemsList().isEmpty()) {
+            throw new EmptyCartException("Cannot check out with an empty cart");
+        }
+        List<OrderItem> orderItems = convertCartItemsToOrderItems(cartResponse.getItemsList());
+
         String reservationId = null;
-        String paymentIntentId = null;
         Order order = null;
-        boolean promotionApplied = false;
 
         try {
-            // Step 1: Get cart items
-            log.info("Saga Step 1: Getting cart items for user: {}", userId);
-            GetCartResponse cartResponse = getCartItems(userId);
-            if (!cartResponse.getSuccess() || cartResponse.getItemsList().isEmpty()) {
-                throw new SagaException("Cart is empty or could not be retrieved");
-            }
-
-            List<OrderItem> orderItems = convertCartItemsToOrderItems(cartResponse.getItemsList());
-
-            // Steps 2 & 3 are independent of each other (createOrder does not
-            // need the reservationId; reserveStock does not need the persisted
-            // order) so we fan them out on virtual threads. Wall-clock cost
-            // becomes max(stepA, stepB) instead of stepA + stepB.
+            // Steps 2 & 3 are independent (createOrder does not need the
+            // reservationId; reserveStock does not need the persisted order) so
+            // we fan them out on virtual threads: wall-clock cost is
+            // max(stepA, stepB) instead of stepA + stepB.
             log.info("Saga Steps 2+3 (parallel): Reserving stock for {} items and creating order", orderItems.size());
             CompletableFuture<ReserveStockResponse> reserveFuture =
                 CompletableFuture.supplyAsync(() -> reserveStock(orderItems), SAGA_FANOUT_EXECUTOR);
@@ -137,47 +169,57 @@ public class OrderCreationSaga {
                     SAGA_FANOUT_EXECUTOR
                 );
 
-            ReserveStockResponse reserveResponse;
-            try {
-                CompletableFuture.allOf(reserveFuture, createOrderFuture).join();
-                reserveResponse = reserveFuture.join();
+            // Wait for BOTH legs to settle before inspecting either, so a leg
+            // that THROWS never hides the sibling's already-allocated resource
+            // from compensation. (exceptionally() swallows so join() does not
+            // fail fast on the first exceptional completion.)
+            CompletableFuture.allOf(reserveFuture, createOrderFuture)
+                .exceptionally(ex -> null)
+                .join();
+
+            // Capture each leg's resource the moment it is available — even if
+            // the sibling failed — so compensation always has the orderId /
+            // reservationId it needs to undo.
+            if (!createOrderFuture.isCompletedExceptionally()) {
                 order = createOrderFuture.join();
-            } catch (CompletionException ce) {
-                Throwable cause = ce.getCause() != null ? ce.getCause() : ce;
-                if (cause instanceof RuntimeException re) {
-                    throw re;
+            }
+            ReserveStockResponse reserveResponse = null;
+            if (!reserveFuture.isCompletedExceptionally()) {
+                reserveResponse = reserveFuture.join();
+                if (reserveResponse.getSuccess()) {
+                    reservationId = reserveResponse.getReservationId();
                 }
-                throw new SagaException("Parallel saga step failed: " + cause.getMessage(), cause);
             }
 
+            // Now surface any failure; the catch below has both ids captured.
+            if (createOrderFuture.isCompletedExceptionally()) {
+                throw unwrapFailure(createOrderFuture);
+            }
+            if (reserveFuture.isCompletedExceptionally()) {
+                throw unwrapFailure(reserveFuture);
+            }
             if (!reserveResponse.getSuccess()) {
                 throw new SagaException("Failed to reserve stock: " + reserveResponse.getMessage());
             }
-            reservationId = reserveResponse.getReservationId();
             log.info("Stock reserved successfully. Reservation ID: {}", reservationId);
             log.info("Order created: {}", order.getOrderNumber());
 
-            // Step 4: Apply promotion (increment usage) if promotion was successfully applied to order
+            // Step 4: Apply promotion (increment usage) if one was applied.
             if (order.getPromotionCode() != null && order.getDiscountAmount() != null) {
                 log.info("Saga Step 4: Applying promotion to increment usage: {}", order.getPromotionCode());
                 try {
                     DiscountResult applyResult = promotionServiceClient.applyPromotion(order.getPromotionCode());
-                    if (applyResult.isValid()) {
-                        promotionApplied = true;
-                        log.info("Promotion applied successfully: {}", order.getPromotionCode());
-                    } else {
+                    if (!applyResult.isValid()) {
                         log.warn("Failed to apply promotion: {}", applyResult.getMessage());
-                        // Continue order creation even if promotion application fails
                     }
                 } catch (Exception e) {
                     log.error("Error applying promotion, continuing order creation", e);
-                    // Continue order creation even if promotion application fails
                 }
             } else {
                 log.info("Saga Step 4: Skipped (no valid promotion)");
             }
 
-            // Step 5: Create payment intent
+            // Step 5: Create payment intent.
             log.info("Saga Step 5: Creating payment intent for order: {}", order.getId());
             CreatePaymentIntentResponse paymentResponse = createPaymentIntent(
                 order.getId(),
@@ -187,41 +229,60 @@ public class OrderCreationSaga {
             if (!paymentResponse.getSuccess()) {
                 throw new SagaException("Failed to create payment intent: " + paymentResponse.getMessage());
             }
-            paymentIntentId = paymentResponse.getPaymentIntentId();
+            String paymentIntentId = paymentResponse.getPaymentIntentId();
+            String paymentClientSecret = paymentResponse.getClientSecret();
             log.info("Payment intent created: {}", paymentIntentId);
 
-            // Update order with payment intent ID
-            orderService.setPaymentIntent(order.getId(), paymentIntentId);
+            // Steps 6+7 (atomic): persist the payment intent + client secret and
+            // record ORDER_CREATED in ONE transaction (outbox), so the confirmed
+            // state and its event commit together.
+            Order finalizedOrder = orderService.finalizeSuccessfulOrder(
+                order.getId(), paymentIntentId, paymentClientSecret, userEmail, userName);
 
-            // Step 6: Clear cart
-            log.info("Saga Step 6: Clearing cart for user: {}", userId);
+            // Step 8: Clear cart (best-effort — not critical to order creation).
+            log.info("Saga Step 8: Clearing cart for user: {}", userId);
             clearCart(userId);
 
-            // Step 7: Publish event with recipient details so the
-            // notification-service can render the personalised confirmation email.
-            log.info("Saga Step 7: Publishing order created event");
-            eventPublisher.publishOrderCreatedEvent(order, userEmail, userName);
-
-            log.info("Order creation saga completed successfully for order: {}", order.getOrderNumber());
-            return order;
+            log.info("Order creation saga completed successfully for order: {}", finalizedOrder.getOrderNumber());
+            return new CheckoutResult(finalizedOrder, paymentIntentId, paymentClientSecret, PAYMENT_CURRENCY);
 
         } catch (Exception e) {
             log.error("Order creation saga failed. Starting compensation...", e);
-
-            // Compensate in reverse order
-            compensate(order, reservationId, paymentIntentId, userId, promotionApplied);
-
+            compensate(order, reservationId, userId);
+            if (e instanceof SagaException se) {
+                throw se;
+            }
             throw new SagaException("Order creation failed: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Compensate saga steps in reverse order
+     * Unwrap the failure captured by an exceptionally-completed future into the
+     * original {@link RuntimeException} so its natural status mapping survives.
      */
-    private void compensate(Order order, String reservationId, String paymentIntentId, String userId, boolean promotionApplied) {
+    private RuntimeException unwrapFailure(CompletableFuture<?> future) {
+        try {
+            future.join();
+            return new SagaException("Expected a failed saga step but it completed normally");
+        } catch (CompletionException ce) {
+            Throwable cause = ce.getCause() != null ? ce.getCause() : ce;
+            if (cause instanceof RuntimeException re) {
+                return re;
+            }
+            return new SagaException("Saga step failed: " + cause.getMessage(), cause);
+        }
+    }
+
+    /**
+     * Compensate saga steps in reverse order. Each undo commits in its own
+     * transaction (independent of the failing orchestration), and the order
+     * cancellation records its ORDER_CANCELLED event atomically with the state
+     * change so consumers are never told about a cancellation the DB did not make.
+     */
+    private void compensate(Order order, String reservationId, String userId) {
         log.warn("Compensating order creation saga for user: {}", userId);
 
-        // Compensation Step 1: Release stock reservation
+        // Compensation Step 1: Release stock reservation.
         if (reservationId != null) {
             try {
                 log.info("Compensation: Releasing stock reservation: {}", reservationId);
@@ -231,12 +292,12 @@ public class OrderCreationSaga {
             }
         }
 
-        // Compensation Step 2: Cancel order if created
+        // Compensation Step 2: Cancel the order if it was created (durable +
+        // event-consistent — see OrderService.compensateCancelOrder).
         if (order != null) {
             try {
                 log.info("Compensation: Cancelling order: {}", order.getId());
-                orderService.updateOrderStatus(order.getId(), OrderStatus.CANCELLED);
-                eventPublisher.publishOrderCancelledEvent(order);
+                orderService.compensateCancelOrder(order.getId());
             } catch (Exception e) {
                 log.error("Failed to cancel order during compensation", e);
             }
@@ -307,7 +368,7 @@ public class OrderCreationSaga {
                 .setOrderId(orderId)
                 .setUserId(userId)
                 .setAmount(amount.doubleValue())
-                .setCurrency("USD")
+                .setCurrency(PAYMENT_CURRENCY)
                 .build();
             return paymentServiceStub.createPaymentIntent(request);
         } catch (Exception e) {

@@ -2,6 +2,8 @@ package com.ecommerce.orderservice.controller;
 
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
+import com.ecommerce.orderservice.dto.CheckoutResponse;
+import com.ecommerce.orderservice.service.CheckoutService;
 import com.ecommerce.orderservice.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +46,9 @@ class OrderControllerLocalDevIdentityTest {
     @MockBean
     private OrderService orderService;
 
+    @MockBean
+    private CheckoutService checkoutService;
+
     private static Order orderOwnedBy(String userId) {
         Order order = new Order();
         order.setId("order-123");
@@ -54,14 +59,20 @@ class OrderControllerLocalDevIdentityTest {
 
     @Test
     void should_useBodyUserId_when_createOrder_andSecurityDisabled() throws Exception {
-        when(orderService.createOrderFromCart(eq(USER_A), any())).thenReturn(orderOwnedBy(USER_A));
+        CheckoutResponse response = CheckoutResponse.fromExistingOrder(orderOwnedBy(USER_A), "USD");
+        when(checkoutService.checkout(eq(USER_A), any(), any()))
+                .thenReturn(new CheckoutService.Outcome(response, false));
+
+        String body = "{\"userId\":\"" + USER_A + "\",\"shippingAddress\":{"
+                + "\"street\":\"1 Main St\",\"city\":\"SF\",\"state\":\"CA\","
+                + "\"postalCode\":\"94105\",\"country\":\"USA\"}}";
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + USER_A + "\"}"))
+                        .content(body))
                 .andExpect(status().isCreated());
 
-        verify(orderService).createOrderFromCart(eq(USER_A), any());
+        verify(checkoutService).checkout(eq(USER_A), any(), any());
     }
 
     @Test

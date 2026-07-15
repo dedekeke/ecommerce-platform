@@ -1,6 +1,9 @@
 package com.ecommerce.orderservice.controller;
 
+import com.ecommerce.orderservice.exception.ConcurrentCheckoutException;
+import com.ecommerce.orderservice.exception.EmptyCartException;
 import com.ecommerce.orderservice.exception.UserMismatchException;
+import com.ecommerce.orderservice.saga.OrderCreationSaga;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,5 +31,48 @@ public class OrderApiExceptionHandler {
         body.put("status", HttpStatus.FORBIDDEN.value());
         body.put("message", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
+    /**
+     * A checkout is already in flight for the supplied Idempotency-Key. 409 (not
+     * a 5xx) so the checkout-mfe's axios-retry does NOT replay it — replaying a
+     * genuine concurrent double-submit is exactly what we must avoid.
+     */
+    @ExceptionHandler(ConcurrentCheckoutException.class)
+    public ResponseEntity<Map<String, Object>> handleConcurrentCheckout(ConcurrentCheckoutException ex) {
+        log.warn("Concurrent checkout rejected: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorBody(HttpStatus.CONFLICT, ex.getMessage()));
+    }
+
+    /**
+     * Empty cart is a non-transient client condition — 400, never a retryable
+     * 5xx (retrying an empty cart can never succeed).
+     */
+    @ExceptionHandler(EmptyCartException.class)
+    public ResponseEntity<Map<String, Object>> handleEmptyCart(EmptyCartException ex) {
+        log.warn("Checkout rejected — empty cart: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(errorBody(HttpStatus.BAD_REQUEST, ex.getMessage()));
+    }
+
+    /**
+     * The order-creation saga failed on a cart/inventory/payment dependency.
+     * 502 keeps this in the 5xx band so a transient failure is retried by the
+     * client; compensation has already released any partial work (reservation +
+     * speculative order) inside the saga.
+     */
+    @ExceptionHandler(OrderCreationSaga.SagaException.class)
+    public ResponseEntity<Map<String, Object>> handleSagaFailure(OrderCreationSaga.SagaException ex) {
+        log.error("Order creation saga failed: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+            .body(errorBody(HttpStatus.BAD_GATEWAY, ex.getMessage()));
+    }
+
+    private Map<String, Object> errorBody(HttpStatus status, String message) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("status", status.value());
+        body.put("message", message);
+        return body;
     }
 }

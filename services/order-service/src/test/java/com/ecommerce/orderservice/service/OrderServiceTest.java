@@ -107,31 +107,6 @@ class OrderServiceTest {
     }
 
     @Test
-    void should_publishOrderCreatedWithRecipient_when_creatingOrderFromCart() {
-        when(orderNumberGenerator.generateOrderNumber()).thenReturn("ORD-2026-00099");
-        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
-
-        java.util.Map<String, Object> address = new java.util.HashMap<>();
-        address.put("street", "1 Infinite Loop");
-        address.put("city", "Cupertino");
-        address.put("state", "CA");
-        address.put("postalCode", "95014");
-        address.put("country", "USA");
-
-        java.util.Map<String, Object> request = new java.util.HashMap<>();
-        request.put("shippingAddress", address);
-        request.put("userEmail", "buyer@example.com");
-        request.put("userName", "Buyer");
-
-        Order order = orderService.createOrderFromCart(userId, request);
-
-        assertNotNull(order);
-        verify(orderEventPublisher, times(1))
-            .publishOrderCreatedEvent(any(Order.class), org.mockito.ArgumentMatchers.eq("buyer@example.com"),
-                org.mockito.ArgumentMatchers.eq("Buyer"));
-    }
-
-    @Test
     void should_applyLoyaltyDiscountAndReduceTotal_when_userHasTier() {
         when(orderNumberGenerator.generateOrderNumber()).thenReturn("ORD-2026-00100");
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
@@ -183,6 +158,58 @@ class OrderServiceTest {
         assertEquals(0, BigDecimal.valueOf(2.88).compareTo(order.getTax()));
         // 50 - 10 (promo) - 4 (loyalty) + 2.88 (tax) + 0 (shipping) = 38.88
         assertEquals(0, BigDecimal.valueOf(38.88).compareTo(order.getTotal()));
+    }
+
+    @Test
+    void should_persistIntentSecretAndPublishCreated_when_finalizingSuccessfulOrder() {
+        Order pending = pendingOrder("order-1", "ORD-2026-9001");
+        when(orderRepository.findById("order-1")).thenReturn(Optional.of(pending));
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        Order result = orderService.finalizeSuccessfulOrder(
+            "order-1", "pi_1", "pi_1_secret", "buyer@example.com", "Buyer");
+
+        assertEquals("pi_1", result.getPaymentIntentId());
+        assertEquals("pi_1_secret", result.getPaymentClientSecret());
+        verify(orderEventPublisher).publishOrderCreatedEvent(result, "buyer@example.com", "Buyer");
+    }
+
+    @Test
+    void should_cancelAndPublishCancelled_when_compensating() {
+        Order pending = pendingOrder("order-2", "ORD-2026-9002");
+        when(orderRepository.findById("order-2")).thenReturn(Optional.of(pending));
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        orderService.compensateCancelOrder("order-2");
+
+        assertEquals(OrderStatus.CANCELLED, pending.getStatus());
+        verify(orderEventPublisher).publishOrderCancelledEvent(pending);
+    }
+
+    @Test
+    void should_beNoOp_when_compensatingAlreadyCancelledOrder() {
+        Order cancelled = pendingOrder("order-3", "ORD-2026-9003");
+        cancelled.setStatus(OrderStatus.CANCELLED);
+        when(orderRepository.findById("order-3")).thenReturn(Optional.of(cancelled));
+
+        orderService.compensateCancelOrder("order-3");
+
+        verify(orderRepository, never()).save(any(Order.class));
+        verify(orderEventPublisher, never()).publishOrderCancelledEvent(any(Order.class));
+    }
+
+    private Order pendingOrder(String id, String orderNumber) {
+        return Order.builder()
+            .id(id)
+            .orderNumber(orderNumber)
+            .userId(userId)
+            .subtotal(BigDecimal.valueOf(50.00))
+            .tax(BigDecimal.valueOf(4.00))
+            .shippingCost(BigDecimal.ZERO)
+            .total(BigDecimal.valueOf(54.00))
+            .status(OrderStatus.PENDING)
+            .shippingAddress(shippingAddress)
+            .build();
     }
 
     @Test
