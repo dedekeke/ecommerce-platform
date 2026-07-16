@@ -28,13 +28,13 @@ class OrderStatusTest {
     void testConfirmedTransitions() {
         OrderStatus confirmed = OrderStatus.CONFIRMED;
 
-        // Valid transitions
+        // Valid transitions — a paid order may ship directly, or via PROCESSING.
         assertTrue(confirmed.canTransitionTo(OrderStatus.PROCESSING));
+        assertTrue(confirmed.canTransitionTo(OrderStatus.SHIPPED));
         assertTrue(confirmed.canTransitionTo(OrderStatus.CANCELLED));
 
         // Invalid transitions
         assertFalse(confirmed.canTransitionTo(OrderStatus.PENDING));
-        assertFalse(confirmed.canTransitionTo(OrderStatus.SHIPPED));
         assertFalse(confirmed.canTransitionTo(OrderStatus.DELIVERED));
         assertFalse(confirmed.canTransitionTo(OrderStatus.REFUNDED));
     }

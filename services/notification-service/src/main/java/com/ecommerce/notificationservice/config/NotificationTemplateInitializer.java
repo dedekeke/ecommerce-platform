@@ -151,13 +151,14 @@ public class NotificationTemplateInitializer implements CommandLineRunner {
                 "Hi ${userName}, your order #${orderNumber} is confirmed. Total: ${totalAmount}.");
         seedSmsTemplate("SHIPPING_NOTIFICATION_SMS", "Shipping Notification SMS",
                 "SMS sent when an order is shipped",
-                "Good news ${userName}! Your order #${orderNumber} has shipped.");
+                "Good news ${userName}! Your order #${orderNumber} has shipped via ${carrier}. "
+                        + "Track: ${trackingNumber}.");
         seedPushTemplate("ORDER_CONFIRMATION_PUSH", "Order Confirmation Push",
                 "Push sent when an order is confirmed",
                 "Order confirmed", "Your order #${orderNumber} is confirmed.");
         seedPushTemplate("SHIPPING_NOTIFICATION_PUSH", "Shipping Notification Push",
                 "Push sent when an order is shipped",
-                "Order shipped", "Your order #${orderNumber} is on its way!");
+                "Order shipped", "Your order #${orderNumber} is on its way! ${carrier} tracking: ${trackingNumber}.");
 
         log.info("Notification templates initialization completed");
     }

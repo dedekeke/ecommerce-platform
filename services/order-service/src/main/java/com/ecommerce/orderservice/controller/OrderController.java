@@ -5,6 +5,7 @@ import com.ecommerce.orderservice.domain.enums.OrderStatus;
 import com.ecommerce.orderservice.dto.CheckoutRequest;
 import com.ecommerce.orderservice.dto.CheckoutResponse;
 import com.ecommerce.orderservice.dto.GuestCheckoutRequest;
+import com.ecommerce.orderservice.dto.MarkShippedRequest;
 import com.ecommerce.orderservice.dto.OrderResponse;
 import com.ecommerce.orderservice.dto.PageResponse;
 import com.ecommerce.orderservice.exception.GuestCheckoutAuthenticationException;
@@ -138,6 +139,34 @@ public class OrderController {
     ) {
         log.info("REST: Update order {} status to {}", orderId, status);
         Order order = orderService.updateOrderStatus(orderId, status);
+        return ResponseEntity.ok(OrderResponse.from(order));
+    }
+
+    @PostMapping("/{orderId}/mark-shipped")
+    @Operation(summary = "Mark an order as shipped with carrier + tracking (admin only)",
+        description = "Admin-only. Transitions a CONFIRMED/PROCESSING order to SHIPPED, records the "
+            + "carrier + tracking number, stamps shippedAt, and emits the shipping notification. "
+            + "Invalid source states are rejected with 409.")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
+    public ResponseEntity<OrderResponse> markShipped(
+        @PathVariable String orderId,
+        @Valid @RequestBody MarkShippedRequest request
+    ) {
+        log.info("REST: Mark order {} shipped (carrier={})", orderId, request.carrier());
+        Order order = orderService.markOrderShipped(orderId, request.carrier(), request.trackingNumber());
+        return ResponseEntity.ok(OrderResponse.from(order));
+    }
+
+    @PostMapping("/{orderId}/mark-delivered")
+    @Operation(summary = "Mark an order as delivered (admin only)",
+        description = "Admin-only. Transitions a SHIPPED order to DELIVERED and stamps deliveredAt. "
+            + "Invalid source states are rejected with 409.")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
+    public ResponseEntity<OrderResponse> markDelivered(
+        @PathVariable String orderId
+    ) {
+        log.info("REST: Mark order {} delivered", orderId);
+        Order order = orderService.markOrderDelivered(orderId);
         return ResponseEntity.ok(OrderResponse.from(order));
     }
 

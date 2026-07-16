@@ -40,6 +40,10 @@ public record OrderResponse(
     ShippingAddress shippingAddress,
     String paymentIntentId,
     boolean guestOrder,
+    String carrier,
+    String trackingNumber,
+    LocalDateTime shippedAt,
+    LocalDateTime deliveredAt,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -109,6 +113,10 @@ public record OrderResponse(
             ShippingAddress.from(order.getShippingAddress()),
             order.getPaymentIntentId(),
             order.isGuestOrder(),
+            order.getCarrier(),
+            order.getTrackingNumber(),
+            order.getShippedAt(),
+            order.getDeliveredAt(),
             order.getCreatedAt(),
             order.getUpdatedAt()
         );

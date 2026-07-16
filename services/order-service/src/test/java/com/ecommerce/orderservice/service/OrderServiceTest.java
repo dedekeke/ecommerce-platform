@@ -46,6 +46,9 @@ class OrderServiceTest {
     @Mock
     private OrderEventPublisher orderEventPublisher;
 
+    @Mock
+    private com.ecommerce.orderservice.shipping.ShippingProvider shippingProvider;
+
     @InjectMocks
     private OrderService orderService;
 
@@ -315,6 +318,78 @@ class OrderServiceTest {
         assertThrows(InvalidOrderStatusTransitionException.class, () ->
             orderService.updateOrderStatus("order123", OrderStatus.DELIVERED)
         );
+    }
+
+    @Test
+    void should_setShipmentFieldsAndPublishEvent_when_markingConfirmedOrderShipped() {
+        Order confirmed = pendingOrder("order-ship-1", "ORD-2026-9100");
+        confirmed.setStatus(OrderStatus.CONFIRMED);
+        when(orderRepository.findById("order-ship-1")).thenReturn(Optional.of(confirmed));
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+        when(shippingProvider.createShipment(any()))
+            .thenReturn(new com.ecommerce.orderservice.shipping.ShippingProvider.Shipment("UPS", "1Z999"));
+
+        Order shipped = orderService.markOrderShipped("order-ship-1", "UPS", "1Z999");
+
+        assertEquals(OrderStatus.SHIPPED, shipped.getStatus());
+        assertEquals("UPS", shipped.getCarrier());
+        assertEquals("1Z999", shipped.getTrackingNumber());
+        assertNotNull(shipped.getShippedAt());
+        verify(orderEventPublisher, times(1)).publishOrderShippedEvent(shipped);
+    }
+
+    @Test
+    void should_useProviderReturnedTracking_when_markingShipped() {
+        Order processing = pendingOrder("order-ship-2", "ORD-2026-9101");
+        processing.setStatus(OrderStatus.PROCESSING);
+        when(orderRepository.findById("order-ship-2")).thenReturn(Optional.of(processing));
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+        // Provider is authoritative: it can override the operator hint.
+        when(shippingProvider.createShipment(any()))
+            .thenReturn(new com.ecommerce.orderservice.shipping.ShippingProvider.Shipment("DHL", "CARRIER-ASSIGNED"));
+
+        Order shipped = orderService.markOrderShipped("order-ship-2", "DHL", "operator-hint");
+
+        assertEquals("CARRIER-ASSIGNED", shipped.getTrackingNumber());
+        assertEquals("DHL", shipped.getCarrier());
+    }
+
+    @Test
+    void should_rejectAndNotPublish_when_markingPendingOrderShipped() {
+        Order pending = pendingOrder("order-ship-3", "ORD-2026-9102");
+        when(orderRepository.findById("order-ship-3")).thenReturn(Optional.of(pending));
+
+        assertThrows(InvalidOrderStatusTransitionException.class, () ->
+            orderService.markOrderShipped("order-ship-3", "UPS", "1Z999"));
+
+        verify(orderRepository, never()).save(any(Order.class));
+        verify(orderEventPublisher, never()).publishOrderShippedEvent(any(Order.class));
+        verifyNoInteractions(shippingProvider);
+    }
+
+    @Test
+    void should_setDeliveredFields_when_markingShippedOrderDelivered() {
+        Order shipped = pendingOrder("order-del-1", "ORD-2026-9200");
+        shipped.setStatus(OrderStatus.SHIPPED);
+        when(orderRepository.findById("order-del-1")).thenReturn(Optional.of(shipped));
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        Order delivered = orderService.markOrderDelivered("order-del-1");
+
+        assertEquals(OrderStatus.DELIVERED, delivered.getStatus());
+        assertNotNull(delivered.getDeliveredAt());
+    }
+
+    @Test
+    void should_reject_when_markingNonShippedOrderDelivered() {
+        Order confirmed = pendingOrder("order-del-2", "ORD-2026-9201");
+        confirmed.setStatus(OrderStatus.CONFIRMED);
+        when(orderRepository.findById("order-del-2")).thenReturn(Optional.of(confirmed));
+
+        assertThrows(InvalidOrderStatusTransitionException.class, () ->
+            orderService.markOrderDelivered("order-del-2"));
+
+        verify(orderRepository, never()).save(any(Order.class));
     }
 
     @Test

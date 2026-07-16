@@ -179,6 +179,12 @@ outbox:
     batch-size: ${OUTBOX_RELAY_BATCH_SIZE:100}
 
 # Application-specific configuration
+# Shipping/fulfillment provider seam. `noop` (default) records the carrier +
+# tracking an operator enters manually; `external` selects the (not-yet-built)
+# real carrier integration. Mirrors payment.provider / notification.sms.provider.
+shipping:
+  provider: ${SHIPPING_PROVIDER:noop}
+
 order:
   number:
     prefix: ORD

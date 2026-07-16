@@ -57,6 +57,8 @@ class OrderEventConsumerTest {
         orderEvent.setUserEmail("john.doe@example.com");
         orderEvent.setTotalAmount(new BigDecimal("199.99"));
         orderEvent.setShippingAddress("123 Main St, City, Country");
+        orderEvent.setCarrier("UPS");
+        orderEvent.setTrackingNumber("1Z999AA10123456784");
 
         orderEventJson = "{\"orderId\":\"order123\",\"orderNumber\":\"ORD-12345\"}";
     }
@@ -165,6 +167,22 @@ class OrderEventConsumerTest {
         verify(notificationService).sendNotification(
                 eq("user123"), eq("john.doe@example.com"), eq("SHIPPING_NOTIFICATION"),
                 anyMap(), eq("order123"), eq("SHIPMENT"));
+    }
+
+    @Test
+    void should_carryCarrierAndTracking_when_orderShipped() throws Exception {
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
+
+        orderEventConsumer.handleOrderShipped(orderEventJson);
+
+        ArgumentCaptor<Map<String, Object>> variablesCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(notificationService).sendNotification(
+                eq("user123"), eq("john.doe@example.com"), eq("SHIPPING_NOTIFICATION"),
+                variablesCaptor.capture(), eq("order123"), eq("SHIPMENT"));
+
+        Map<String, Object> variables = variablesCaptor.getValue();
+        assertThat(variables.get("carrier")).isEqualTo("UPS");
+        assertThat(variables.get("trackingNumber")).isEqualTo("1Z999AA10123456784");
     }
 
     @Test

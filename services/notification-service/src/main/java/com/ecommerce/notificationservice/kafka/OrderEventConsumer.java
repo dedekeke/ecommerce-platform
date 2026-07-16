@@ -99,6 +99,8 @@ public class OrderEventConsumer {
         variables.put("orderNumber", event.getOrderNumber());
         variables.put("userName", event.getUserName());
         variables.put("shippingAddress", event.getShippingAddress());
+        variables.put("carrier", event.getCarrier());
+        variables.put("trackingNumber", event.getTrackingNumber());
 
         send(event, event.getUserEmail(), "SHIPPING_NOTIFICATION", "SHIPMENT", variables);
         dispatchAncillaryChannels(event, "SHIPPING_NOTIFICATION_SMS", "SHIPPING_NOTIFICATION_PUSH", "SHIPMENT", variables);
