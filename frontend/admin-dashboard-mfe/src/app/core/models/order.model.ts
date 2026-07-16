@@ -61,6 +61,39 @@ export interface PagedOrders {
   number: number;
 }
 
+/**
+ * Admin-list view of an order, mirroring order-service's `AdminOrderResponse`
+ * (admin list endpoint `GET /api/orders`). Unlike the customer-facing `Order`
+ * (`OrderResponse`), it RESTORES the customer identity an admin needs to manage
+ * an order — `userId`, `guestEmail`, and the `guestOrder` flag — while the
+ * backend still withholds payment secrets. It also carries a precomputed
+ * `itemCount` alongside the item lines.
+ */
+export interface AdminOrder {
+  orderId: string;
+  orderNumber: string;
+  userId: string;
+  guestEmail: string | null;
+  guestOrder: boolean;
+  status: OrderStatus;
+  currency: string;
+  total: number;
+  itemCount: number;
+  items: OrderItem[];
+  carrier: string | null;
+  trackingNumber: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PagedAdminOrders {
+  content: AdminOrder[];
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+}
+
 export interface OrderFilterParams {
   status?: OrderStatus;
   page: number;

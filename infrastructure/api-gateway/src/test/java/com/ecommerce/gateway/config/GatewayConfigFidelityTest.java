@@ -5,8 +5,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.server.PathContainer;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -140,6 +144,44 @@ class GatewayConfigFidelityTest {
                 assertThat(p).contains("/api/orders/**").contains("/api/returns/**"));
         assertThat(orderPredicates).anySatisfy(p ->
                 assertThat(p).contains("/api/v1/orders/**").contains("/api/v1/returns/**"));
+    }
+
+    /**
+     * The admin order list ({@code GET /api/orders}, no path variable) must
+     * resolve through the order-service route. Its predicate is
+     * {@code /api/orders/**}, and Spring Cloud Gateway's {@link PathPattern}
+     * treats a trailing {@code /**} as matching zero-or-more segments — so the
+     * bare collection path is served and is NOT shadowed by the
+     * {@code /api/orders/{id}} single-order mapping (that distinction is made
+     * on the service side by Spring MVC). Pinned so a future edit that narrows
+     * the predicate (e.g. to {@code /api/orders/*}) and silently drops the
+     * collection request at the edge is caught in CI.
+     */
+    @Test
+    void should_routeBareOrdersCollection_throughOrderService() {
+        Pattern idKey = Pattern.compile("spring\\.cloud\\.gateway\\.routes\\[(\\d+)]\\.id");
+        PathPatternParser parser = PathPatternParser.defaultInstance;
+
+        boolean collectionMatched = props.entrySet().stream()
+                .filter(e -> {
+                    Matcher m = idKey.matcher(e.getKey());
+                    return m.matches() && "order-service".equals(String.valueOf(e.getValue()));
+                })
+                .map(e -> {
+                    Matcher m = idKey.matcher(e.getKey());
+                    m.matches();
+                    return props.get("spring.cloud.gateway.routes[" + m.group(1) + "].predicates[0]");
+                })
+                .filter(p -> p != null)
+                .flatMap(predicate -> Arrays.stream(
+                        predicate.replace("Path=", "").split(",")))
+                .map(String::trim)
+                .anyMatch(pattern -> parser.parse(pattern)
+                        .matches(PathContainer.parsePath("/api/orders")));
+
+        assertThat(collectionMatched)
+                .as("GET /api/orders (collection) must resolve through the order-service route")
+                .isTrue();
     }
 
     /**

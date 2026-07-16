@@ -2,6 +2,7 @@ package com.ecommerce.orderservice.controller;
 
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
+import com.ecommerce.orderservice.dto.AdminOrderResponse;
 import com.ecommerce.orderservice.dto.CheckoutRequest;
 import com.ecommerce.orderservice.dto.CheckoutResponse;
 import com.ecommerce.orderservice.dto.GuestCheckoutRequest;
@@ -10,6 +11,7 @@ import com.ecommerce.orderservice.dto.OrderResponse;
 import com.ecommerce.orderservice.dto.PageResponse;
 import com.ecommerce.orderservice.exception.GuestCheckoutAuthenticationException;
 import com.ecommerce.orderservice.exception.OrderNotFoundException;
+import com.ecommerce.orderservice.mapper.AdminOrderMapper;
 import com.ecommerce.orderservice.security.UserIdentityResolver;
 import com.ecommerce.orderservice.service.CheckoutService;
 import com.ecommerce.orderservice.service.OrderService;
@@ -20,6 +22,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +45,7 @@ public class OrderController {
     private final OrderService orderService;
     private final CheckoutService checkoutService;
     private final UserIdentityResolver userIdentityResolver;
+    private final AdminOrderMapper adminOrderMapper;
 
     @PostMapping
     @Operation(summary = "Create an order from the authenticated user's cart via the checkout saga")
@@ -89,6 +94,25 @@ public class OrderController {
         CheckoutService.Outcome outcome = checkoutService.guestCheckout(idempotencyKey, request);
         HttpStatus status = outcome.replay() ? HttpStatus.OK : HttpStatus.CREATED;
         return ResponseEntity.status(status).body(outcome.response());
+    }
+
+    @GetMapping
+    @Operation(summary = "List all orders (admin only)",
+        description = "Admin-scoped, paginated order list backing the admin dashboard. Optional "
+            + "status filter; results are sorted newest-first (createdAt desc). Returns "
+            + "AdminOrderResponse, which — unlike the customer-facing OrderResponse — includes "
+            + "the customer identity (userId, guestEmail, guestOrder flag) needed to manage "
+            + "orders. Payment secrets are never exposed.")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
+    public ResponseEntity<PageResponse<AdminOrderResponse>> listOrders(
+        @RequestParam(required = false) OrderStatus status,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size
+    ) {
+        log.info("REST: Admin list orders (status={}, page={}, size={})", status, page, size);
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Order> orders = orderService.getAllOrders(status, pageable);
+        return ResponseEntity.ok(PageResponse.from(orders.map(adminOrderMapper::toAdminResponse)));
     }
 
     @GetMapping("/{orderId}")

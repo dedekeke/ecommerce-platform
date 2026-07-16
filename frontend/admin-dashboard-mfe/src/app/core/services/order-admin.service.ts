@@ -3,7 +3,7 @@ import { Observable } from 'rxjs';
 import { ApiClientService } from './api-client.service';
 import {
   Order,
-  PagedOrders,
+  PagedAdminOrders,
   OrderFilterParams,
   UpdateOrderStatusPayload,
 } from '../models/order.model';
@@ -12,13 +12,13 @@ import {
 export class OrderAdminService {
   private readonly api = inject(ApiClientService);
 
-  getOrders(params: OrderFilterParams): Observable<PagedOrders> {
+  getOrders(params: OrderFilterParams): Observable<PagedAdminOrders> {
     const queryParams: Record<string, string | number | boolean> = {
       page: params.page,
       size: params.size,
     };
     if (params.status) queryParams['status'] = params.status;
-    return this.api.get<PagedOrders>('/orders', queryParams);
+    return this.api.get<PagedAdminOrders>('/orders', queryParams);
   }
 
   getOrderById(id: string): Observable<Order> {

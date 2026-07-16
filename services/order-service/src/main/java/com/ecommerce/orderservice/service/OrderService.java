@@ -205,6 +205,19 @@ public class OrderService {
     }
 
     /**
+     * Admin: list every order (optionally filtered by status), paginated.
+     * Sort order is carried by the {@link Pageable} (the controller pins
+     * createdAt desc). A {@code null} status returns all orders.
+     */
+    @Transactional(readOnly = true)
+    public Page<Order> getAllOrders(OrderStatus status, Pageable pageable) {
+        log.debug("Admin fetching orders (statusFilter={})", status);
+        return status == null
+            ? orderRepository.findAll(pageable)
+            : orderRepository.findByStatus(status, pageable);
+    }
+
+    /**
      * Get orders by user and status
      */
     @Transactional(readOnly = true)

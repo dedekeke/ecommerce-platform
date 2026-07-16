@@ -11,9 +11,9 @@ import { DataTableComponent, TableColumn } from '../../shared/components/data-ta
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { OrderAdminService } from '../../core/services/order-admin.service';
-import { Order, OrderStatus, OrderFilterParams } from '../../core/models/order.model';
+import { AdminOrder, OrderStatus, OrderFilterParams } from '../../core/models/order.model';
 
-type OrderRow = Record<string, unknown> & Order;
+type OrderRow = Record<string, unknown> & AdminOrder;
 
 const ORDER_STATUSES: OrderStatus[] = [
   'PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED',
@@ -72,8 +72,10 @@ const ORDER_STATUSES: OrderStatus[] = [
           {{ row['total'] | currency }}
         } @else if (col.key === 'createdAt') {
           {{ row['createdAt'] | date: 'mediumDate' }}
-        } @else if (col.key === 'items') {
-          {{ row['items']?.length ?? 0 }}
+        } @else if (col.key === 'itemCount') {
+          {{ row['itemCount'] ?? row['items']?.length ?? 0 }}
+        } @else if (col.key === 'customer') {
+          {{ customerLabel(row) }}
         } @else {
           {{ row[col.key] }}
         }
@@ -89,6 +91,10 @@ const ORDER_STATUSES: OrderStatus[] = [
             <div class="order-detail__row">
               <span class="order-detail__label">Order Type</span>
               <span>{{ selectedOrder()!.guestOrder ? 'Guest' : 'Registered customer' }}</span>
+            </div>
+            <div class="order-detail__row">
+              <span class="order-detail__label">Customer</span>
+              <span data-testid="customer-identity">{{ customerLabel(selectedOrder()!) }}</span>
             </div>
             <div class="order-detail__row">
               <span class="order-detail__label">Total</span>
@@ -158,7 +164,7 @@ export class OrdersAdminPage implements OnInit {
   readonly pageIndex = signal(0);
   readonly statusFilter = signal<OrderStatus | ''>('');
   readonly drawerOpen = signal(false);
-  readonly selectedOrder = signal<Order | null>(null);
+  readonly selectedOrder = signal<AdminOrder | null>(null);
   readonly newStatus = signal<OrderStatus>('PENDING');
   readonly updatingStatus = signal(false);
 
@@ -166,8 +172,9 @@ export class OrdersAdminPage implements OnInit {
 
   readonly columns: TableColumn[] = [
     { key: 'orderNumber', label: 'Order #' },
+    { key: 'customer', label: 'Customer' },
     { key: 'createdAt', label: 'Date' },
-    { key: 'items', label: 'Items' },
+    { key: 'itemCount', label: 'Items' },
     { key: 'status', label: 'Status' },
     { key: 'total', label: 'Total' },
   ];
@@ -210,9 +217,20 @@ export class OrdersAdminPage implements OnInit {
   }
 
   onRowClick(row: OrderRow): void {
-    this.selectedOrder.set(row as unknown as Order);
+    this.selectedOrder.set(row as unknown as AdminOrder);
     this.newStatus.set(row['status'] as OrderStatus);
     this.drawerOpen.set(true);
+  }
+
+  /** Human-readable customer identity: guest email for guest orders, else the userId. */
+  customerLabel(order: AdminOrder | Record<string, unknown>): string {
+    const guest = order['guestOrder'] as boolean;
+    const guestEmail = order['guestEmail'] as string | null;
+    const userId = order['userId'] as string | null;
+    if (guest) {
+      return guestEmail ?? 'Guest';
+    }
+    return userId ?? '—';
   }
 
   closeDrawer(): void {
@@ -227,7 +245,9 @@ export class OrdersAdminPage implements OnInit {
     this.orderService.updateOrderStatus(order.orderId, { status: this.newStatus() }).subscribe({
       next: (updated) => {
         this.updatingStatus.set(false);
-        this.selectedOrder.set(updated);
+        // updateOrderStatus returns the customer-facing OrderResponse; reflect
+        // only the new status onto the admin view we already hold.
+        this.selectedOrder.set({ ...order, status: updated.status });
         this.snackBar.open('Status updated', 'Close', { duration: 3000 });
         this.loadOrders();
       },
