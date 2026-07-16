@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,6 +45,21 @@ public interface InventoryReservationRepository extends JpaRepository<InventoryR
      */
     @Query("SELECT r FROM InventoryReservation r WHERE r.status = 'RESERVED' AND r.expiresAt < :currentTime ORDER BY r.expiresAt ASC")
     List<InventoryReservation> findExpiredReservations(@Param("currentTime") LocalDateTime currentTime, Pageable pageable);
+
+    /**
+     * Same as {@link #findExpiredReservations} but skips the given reservation
+     * ids.
+     *
+     * <p>The release job excludes rows it already failed to release this run so
+     * a persistently-failing "poison" row (earliest {@code expiresAt}) cannot
+     * head-of-line-block the healthy rows ordered behind it. Callers must only
+     * invoke this with a non-empty {@code excludedIds} collection ({@code NOT IN
+     * ()} is invalid SQL).
+     */
+    @Query("SELECT r FROM InventoryReservation r WHERE r.status = 'RESERVED' AND r.expiresAt < :currentTime AND r.id NOT IN :excludedIds ORDER BY r.expiresAt ASC")
+    List<InventoryReservation> findExpiredReservationsExcluding(@Param("currentTime") LocalDateTime currentTime,
+                                                                @Param("excludedIds") Collection<String> excludedIds,
+                                                                Pageable pageable);
 
     /**
      * Find active reservations for a product

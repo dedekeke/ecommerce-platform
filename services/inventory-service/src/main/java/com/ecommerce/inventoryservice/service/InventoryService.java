@@ -24,10 +24,15 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,6 +45,14 @@ public class InventoryService {
     private final InventoryRestorationRepository restorationRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final PlatformTransactionManager transactionManager;
+
+    /**
+     * Lazily-built template that runs each expired-reservation release in its
+     * OWN (REQUIRES_NEW) transaction, so one failing row cannot roll back or
+     * block the rows released before/after it in the same job pass.
+     */
+    private TransactionTemplate requiresNewTx;
 
     @Value("${inventory.reservation.default-expiration-minutes:15}")
     private int defaultExpirationMinutes;
@@ -343,36 +356,52 @@ public class InventoryService {
     }
 
     /**
-     * Auto-release expired reservations (scheduled job)
+     * Auto-release expired reservations (scheduled job).
+     *
+     * <p>Deliberately NOT method-level {@code @Transactional}: each reservation
+     * is released in its own {@code REQUIRES_NEW} transaction
+     * ({@link #releaseSingleExpiredReservation}). A single poison row therefore
+     * neither rolls back the healthy rows released alongside it nor holds the
+     * {@code SELECT ... FOR UPDATE} locks for the whole run.
+     *
+     * <p>Progress guarantee / termination: rows that fail to release are
+     * recorded in {@code failedIds} and excluded from subsequent fetches. Every
+     * fetched row is thus removed from the eligible set each pass — either it
+     * flips to {@code EXPIRED} (released) or it is excluded (failed) — so the
+     * working set strictly shrinks and the loop always terminates. This is what
+     * lets healthy, later-expiring rows behind a persistently-failing head row
+     * still get released instead of being head-of-line blocked forever.
      */
-    @Transactional
     public int releaseExpiredReservations() {
         log.info("Checking for expired reservations...");
 
         LocalDateTime now = LocalDateTime.now();
         Pageable batch = PageRequest.of(0, expiredReleaseBatchSize);
+        Set<String> failedIds = new HashSet<>();
         int totalReleased = 0;
 
         while (true) {
-            List<InventoryReservation> expired = reservationRepository.findExpiredReservations(now, batch);
+            List<InventoryReservation> expired = failedIds.isEmpty()
+                    ? reservationRepository.findExpiredReservations(now, batch)
+                    : reservationRepository.findExpiredReservationsExcluding(now, failedIds, batch);
             if (expired.isEmpty()) {
                 break;
             }
 
-            int releasedInBatch = 0;
             for (InventoryReservation reservation : expired) {
                 if (releaseSingleExpiredReservation(reservation)) {
-                    releasedInBatch++;
+                    totalReleased++;
+                } else {
+                    // Exclude from the next fetch so a poison row at the head of
+                    // the expiresAt ordering cannot block the rows behind it.
+                    failedIds.add(reservation.getId());
                 }
             }
-            totalReleased += releasedInBatch;
 
-            // Re-query page 0 each pass: expired rows released above no longer
-            // match (status flips to EXPIRED), so this acts as a sliding window.
-            // Stop when the page was not full (drained) or nothing could be
-            // released (persistent errors keep rows RESERVED) to avoid re-fetching
-            // the same stuck rows forever.
-            if (expired.size() < expiredReleaseBatchSize || releasedInBatch == 0) {
+            // A partial page means we reached the tail of the eligible rows;
+            // failed rows stay parked in failedIds and get retried on the next
+            // scheduled run (when a transient failure may have cleared).
+            if (expired.size() < expiredReleaseBatchSize) {
                 break;
             }
         }
@@ -382,28 +411,43 @@ public class InventoryService {
         } else {
             log.info("Released {} expired reservations", totalReleased);
         }
+        if (!failedIds.isEmpty()) {
+            log.warn("{} expired reservations could not be released this run; will retry next run",
+                    failedIds.size());
+        }
         return totalReleased;
     }
 
     private boolean releaseSingleExpiredReservation(InventoryReservation reservation) {
         try {
-            Inventory inventory = inventoryRepository.findByProductIdForUpdate(reservation.getProductId())
-                    .orElseThrow(() -> new InventoryNotFoundException("Inventory not found for product: " + reservation.getProductId()));
+            return Boolean.TRUE.equals(requiresNewTx().execute(status -> {
+                Inventory inventory = inventoryRepository.findByProductIdForUpdate(reservation.getProductId())
+                        .orElseThrow(() -> new InventoryNotFoundException("Inventory not found for product: " + reservation.getProductId()));
 
-            inventory.releaseReservedStock(reservation.getQuantity());
-            reservation.expire();
+                inventory.releaseReservedStock(reservation.getQuantity());
+                reservation.expire();
 
-            inventoryRepository.save(inventory);
-            reservationRepository.save(reservation);
+                inventoryRepository.save(inventory);
+                reservationRepository.save(reservation);
 
-            publishInventoryUpdatedEvent(inventory, "EXPIRE", "Reservation expired: " + reservation.getId());
+                publishInventoryUpdatedEvent(inventory, "EXPIRE", "Reservation expired: " + reservation.getId());
 
-            log.info("Released expired reservation: {}", reservation.getId());
-            return true;
+                log.info("Released expired reservation: {}", reservation.getId());
+                return true;
+            }));
         } catch (Exception e) {
             log.error("Error releasing reservation {}: {}", reservation.getId(), e.getMessage(), e);
             return false;
         }
+    }
+
+    private TransactionTemplate requiresNewTx() {
+        if (requiresNewTx == null) {
+            TransactionTemplate template = new TransactionTemplate(transactionManager);
+            template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            requiresNewTx = template;
+        }
+        return requiresNewTx;
     }
 
     /**
