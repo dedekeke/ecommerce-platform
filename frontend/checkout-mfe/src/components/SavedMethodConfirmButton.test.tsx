@@ -1,79 +1,104 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Stripe } from '@stripe/stripe-js'
 import { renderWithProviders } from '../test/renderWithProviders'
 import SavedMethodConfirmButton from './SavedMethodConfirmButton'
 
-const confirmPayment = vi.fn()
-const fakeStripe = { confirmPayment } as unknown as Stripe
+const confirmSavedMethodPayment = vi.fn()
+vi.mock('../api/paymentMethodsService', () => ({
+  confirmSavedMethodPayment: (...args: unknown[]) => confirmSavedMethodPayment(...args),
+}))
 
 const props = {
-  clientSecret: 'pi_test_123_secret_abc',
-  providerId: 'pm_test_visa',
+  paymentIntentId: 'pi_test_123',
+  paymentMethodId: 'pm_test_visa',
   onConfirmed: vi.fn(),
 }
 
 describe('SavedMethodConfirmButton', () => {
   beforeEach(() => {
-    confirmPayment.mockReset()
+    confirmSavedMethodPayment.mockReset()
     props.onConfirmed.mockReset()
   })
 
-  it('should confirm the PaymentIntent with the saved payment_method id, without Elements', async () => {
-    confirmPayment.mockResolvedValue({ paymentIntent: { id: 'pi_saved_1', status: 'succeeded' } })
-    renderWithProviders(
-      <SavedMethodConfirmButton {...props} stripePromise={Promise.resolve(fakeStripe)} />
-    )
+  it('should confirm the PaymentIntent through the server, not Stripe.js', async () => {
+    confirmSavedMethodPayment.mockResolvedValue({
+      paymentId: 1,
+      paymentIntentId: 'pi_test_123',
+      clientSecret: 'pi_test_123_secret_abc',
+      status: 'COMPLETED',
+    })
+    renderWithProviders(<SavedMethodConfirmButton {...props} />)
 
     await userEvent.click(screen.getByRole('button', { name: /pay now/i }))
 
     await waitFor(() =>
-      expect(confirmPayment).toHaveBeenCalledWith({
-        clientSecret: props.clientSecret,
-        confirmParams: { payment_method: props.providerId },
-        redirect: 'if_required',
-      })
+      expect(confirmSavedMethodPayment).toHaveBeenCalledWith('pi_test_123', 'pm_test_visa')
     )
-    await waitFor(() => expect(props.onConfirmed).toHaveBeenCalledWith('pi_saved_1'))
+    await waitFor(() => expect(props.onConfirmed).toHaveBeenCalledWith('pi_test_123'))
   })
 
-  it('should show an error alert when Stripe returns a confirmation error', async () => {
-    confirmPayment.mockResolvedValue({ error: { message: 'Your card was declined.' } })
-    renderWithProviders(
-      <SavedMethodConfirmButton
-        {...props}
-        stripePromise={Promise.resolve(fakeStripe)}
-      />
-    )
+  it('should show an error alert and not confirm when the server reports a non-COMPLETED status', async () => {
+    confirmSavedMethodPayment.mockResolvedValue({
+      paymentId: 2,
+      paymentIntentId: 'pi_test_123',
+      clientSecret: 'pi_test_123_secret_abc',
+      status: 'FAILED',
+    })
+    renderWithProviders(<SavedMethodConfirmButton {...props} />)
 
     await userEvent.click(screen.getByRole('button', { name: /pay now/i }))
 
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/declined/i))
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/could not be completed/i)
+    )
     expect(props.onConfirmed).not.toHaveBeenCalled()
   })
 
-  it('should show an error when the intent does not succeed and no error is returned', async () => {
-    confirmPayment.mockResolvedValue({ paymentIntent: { id: 'pi_x', status: 'requires_action' } })
-    renderWithProviders(
-      <SavedMethodConfirmButton
-        {...props}
-        stripePromise={Promise.resolve(fakeStripe)}
-      />
-    )
+  it('should show a generic error and re-enable the button when the server request is rejected (e.g. 403)', async () => {
+    confirmSavedMethodPayment.mockRejectedValue({
+      response: { status: 403, data: { message: 'Forbidden' } },
+    })
+    renderWithProviders(<SavedMethodConfirmButton {...props} />)
+
+    const button = screen.getByRole('button', { name: /pay now/i })
+    await userEvent.click(button)
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(props.onConfirmed).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByRole('button', { name: /pay now/i })).toBeEnabled())
+  })
+
+  it('should show a generic error on a network failure', async () => {
+    confirmSavedMethodPayment.mockRejectedValue(new Error('network error'))
+    renderWithProviders(<SavedMethodConfirmButton {...props} />)
 
     await userEvent.click(screen.getByRole('button', { name: /pay now/i }))
 
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/not completed/i))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
     expect(props.onConfirmed).not.toHaveBeenCalled()
   })
 
-  it('should show a configuration error when the Stripe instance resolves to null', async () => {
-    renderWithProviders(<SavedMethodConfirmButton {...props} stripePromise={Promise.resolve(null)} />)
+  it('should show the accessible loading indicator while submitting', async () => {
+    let resolvePayment: (value: unknown) => void = () => {}
+    confirmSavedMethodPayment.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePayment = resolve
+        })
+    )
+    renderWithProviders(<SavedMethodConfirmButton {...props} />)
 
     await userEvent.click(screen.getByRole('button', { name: /pay now/i }))
 
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/not configured/i))
-    expect(confirmPayment).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/processing payment/i)).toBeInTheDocument()
+
+    resolvePayment({
+      paymentId: 1,
+      paymentIntentId: 'pi_test_123',
+      clientSecret: 'secret',
+      status: 'COMPLETED',
+    })
+    await waitFor(() => expect(props.onConfirmed).toHaveBeenCalled())
   })
 })

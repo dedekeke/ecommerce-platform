@@ -1,30 +1,33 @@
 import { useState } from 'react'
-import type { Stripe } from '@stripe/stripe-js'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
+import { confirmSavedMethodPayment } from '../api/paymentMethodsService'
 
 export interface SavedMethodConfirmButtonProps {
-  /** Resolves to the lazily-loaded Stripe.js instance (see StripeCheckout's module-scoped
-   * getStripe). Deliberately not wrapped in an `<Elements>` provider: a saved method is confirmed
-   * by its `payment_method` id alone, so no card-input Elements are ever mounted (PCI SAQ-A). */
-  stripePromise: Promise<Stripe | null>
-  clientSecret: string
+  paymentIntentId: string
   /** The saved Stripe payment_method id (`pm_...`) to charge — never raw card data. */
-  providerId: string
+  paymentMethodId: string
   onConfirmed: (paymentIntentId: string) => void
 }
 
+const GENERIC_ERROR_MESSAGE = 'Payment could not be processed. Please try again.'
+const NOT_COMPLETED_ERROR_MESSAGE =
+  'Payment could not be completed. Please try another method.'
+
 /**
- * Confirms the order's existing PaymentIntent using a previously-saved Stripe payment method,
- * without mounting Stripe Elements. Rendered instead of <StripePaymentForm> when a returning
- * shopper picks a saved card at the Payment step (see SavedMethodPicker).
+ * Confirms the order's existing PaymentIntent using a previously-saved Stripe payment method by
+ * calling the SERVER (`POST /api/payments/intents/confirm-saved`) — never Stripe.js directly.
+ * The server verifies the payment method belongs to the caller before charging (403 otherwise),
+ * so this component never trusts a client-controlled payment_method id to authorize a charge.
+ * Rendered instead of <StripePaymentForm> when a returning shopper picks a saved card at the
+ * Payment step (see SavedMethodPicker). No Stripe Elements are ever mounted for this path (PCI
+ * SAQ-A) — 3DS/`requires_action` on a saved card is handled server-side/via webhook, not here.
  */
 export default function SavedMethodConfirmButton({
-  stripePromise,
-  clientSecret,
-  providerId,
+  paymentIntentId,
+  paymentMethodId,
   onConfirmed,
 }: SavedMethodConfirmButtonProps) {
   const [submitting, setSubmitting] = useState(false)
@@ -34,31 +37,18 @@ export default function SavedMethodConfirmButton({
     setSubmitting(true)
     setError(null)
 
-    const stripe = await stripePromise
-    if (!stripe) {
-      setError('Payment is not configured. Please contact support.')
+    try {
+      const result = await confirmSavedMethodPayment(paymentIntentId, paymentMethodId)
+      if (result.status === 'COMPLETED') {
+        onConfirmed(result.paymentIntentId)
+      } else {
+        setError(NOT_COMPLETED_ERROR_MESSAGE)
+      }
+    } catch {
+      setError(GENERIC_ERROR_MESSAGE)
+    } finally {
       setSubmitting(false)
-      return
     }
-
-    const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
-      clientSecret,
-      confirmParams: { payment_method: providerId },
-      redirect: 'if_required',
-    })
-
-    if (confirmError) {
-      setError(confirmError.message ?? 'Payment could not be processed. Please try again.')
-      setSubmitting(false)
-      return
-    }
-
-    if (paymentIntent && paymentIntent.status === 'succeeded') {
-      onConfirmed(paymentIntent.id)
-    } else {
-      setError('Payment was not completed. Please try a different payment method.')
-    }
-    setSubmitting(false)
   }
 
   return (

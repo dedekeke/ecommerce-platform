@@ -111,3 +111,17 @@ export interface SavedPaymentMethod {
   isDefault: boolean
   createdAt: string
 }
+
+/**
+ * Response of `POST /api/payments/intents/confirm-saved` (payment-service). The server verifies
+ * that `paymentMethodId` belongs to the caller (403 if not) before charging — a saved-method
+ * confirmation is never trusted purely client-side. `status` is the backend `PaymentStatus` enum
+ * name; only `"COMPLETED"` means the charge succeeded. Callers must treat any other value
+ * ("FAILED" | "PROCESSING" | "PENDING" | "REFUNDED") as not-completed.
+ */
+export interface SavedMethodPaymentResult {
+  paymentId: number
+  paymentIntentId: string
+  clientSecret: string
+  status: string
+}

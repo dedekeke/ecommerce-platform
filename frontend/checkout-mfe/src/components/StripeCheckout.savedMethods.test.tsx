@@ -26,10 +26,13 @@ vi.mock('./StripePaymentForm', () => ({
 }))
 
 const listSavedMethods = vi.fn()
+const confirmSavedMethodPayment = vi.fn()
 vi.mock('../api/paymentMethodsService', () => ({
   listSavedMethods: (...args: unknown[]) => listSavedMethods(...args),
+  confirmSavedMethodPayment: (...args: unknown[]) => confirmSavedMethodPayment(...args),
 }))
 
+// The saved-card path must never call Stripe.js — this stays unused-but-asserted to prove that.
 const confirmPayment = vi.fn()
 const fakeStripeInstance = { confirmPayment }
 
@@ -59,6 +62,7 @@ describe('StripeCheckout — saved payment methods (authenticated)', () => {
     loadStripe.mockResolvedValue(fakeStripeInstance)
     confirmPayment.mockReset()
     listSavedMethods.mockReset()
+    confirmSavedMethodPayment.mockReset()
     baseProps.onConfirmed.mockReset()
   })
 
@@ -88,9 +92,14 @@ describe('StripeCheckout — saved payment methods (authenticated)', () => {
     await waitFor(() => expect(screen.getByTestId('stripe-payment-form')).toBeInTheDocument())
   })
 
-  it('should preselect the default saved method and confirm with its payment_method id (no Elements)', async () => {
+  it('should preselect the default saved method and confirm through the server (no Elements, no Stripe.js confirm)', async () => {
     listSavedMethods.mockResolvedValue([savedVisa])
-    confirmPayment.mockResolvedValue({ paymentIntent: { id: 'pi_saved_1', status: 'succeeded' } })
+    confirmSavedMethodPayment.mockResolvedValue({
+      paymentId: 1,
+      paymentIntentId: 'pi_test_123',
+      clientSecret: baseProps.clientSecret,
+      status: 'COMPLETED',
+    })
 
     renderWithProviders(<StripeCheckout {...baseProps} />)
 
@@ -102,13 +111,10 @@ describe('StripeCheckout — saved payment methods (authenticated)', () => {
     await userEvent.click(screen.getByRole('button', { name: /pay now/i }))
 
     await waitFor(() =>
-      expect(confirmPayment).toHaveBeenCalledWith({
-        clientSecret: baseProps.clientSecret,
-        confirmParams: { payment_method: 'pm_test_visa' },
-        redirect: 'if_required',
-      })
+      expect(confirmSavedMethodPayment).toHaveBeenCalledWith('pi_test_123', 'pm_test_visa')
     )
-    await waitFor(() => expect(baseProps.onConfirmed).toHaveBeenCalledWith('pi_saved_1'))
+    expect(confirmPayment).not.toHaveBeenCalled()
+    await waitFor(() => expect(baseProps.onConfirmed).toHaveBeenCalledWith('pi_test_123'))
   })
 
   it('should switch to the new-card Elements flow when "Use a new card" is selected', async () => {
@@ -122,16 +128,35 @@ describe('StripeCheckout — saved payment methods (authenticated)', () => {
     expect(screen.queryByRole('button', { name: /pay now/i })).not.toBeInTheDocument()
   })
 
-  it('should surface a user-facing error when confirming a saved method fails', async () => {
+  it('should surface a user-facing error and not confirm when the server rejects (e.g. 403 ownership check)', async () => {
     listSavedMethods.mockResolvedValue([savedVisa])
-    confirmPayment.mockResolvedValue({ error: { message: 'Your card was declined.' } })
+    confirmSavedMethodPayment.mockRejectedValue({ response: { status: 403 } })
 
     renderWithProviders(<StripeCheckout {...baseProps} />)
     await screen.findByRole('radio', { name: /visa.*4242/i })
 
     await userEvent.click(screen.getByRole('button', { name: /pay now/i }))
 
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/declined/i))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(confirmPayment).not.toHaveBeenCalled()
+    expect(baseProps.onConfirmed).not.toHaveBeenCalled()
+  })
+
+  it('should surface a user-facing error and not confirm when the server reports a non-COMPLETED status', async () => {
+    listSavedMethods.mockResolvedValue([savedVisa])
+    confirmSavedMethodPayment.mockResolvedValue({
+      paymentId: 1,
+      paymentIntentId: 'pi_test_123',
+      clientSecret: baseProps.clientSecret,
+      status: 'FAILED',
+    })
+
+    renderWithProviders(<StripeCheckout {...baseProps} />)
+    await screen.findByRole('radio', { name: /visa.*4242/i })
+
+    await userEvent.click(screen.getByRole('button', { name: /pay now/i }))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/could not be completed/i))
     expect(baseProps.onConfirmed).not.toHaveBeenCalled()
   })
 })

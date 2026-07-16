@@ -62,15 +62,18 @@ export default function StripeCheckout({ clientSecret, onConfirmed, userId }: St
     )
   }
 
+  // The clientSecret is `{paymentIntentId}_secret_{secret}` (Stripe's PaymentIntent client_secret
+  // format) — the id portion is what the server-side confirm-saved endpoint needs.
+  const paymentIntentId = clientSecret.split('_secret')[0]
+
   return (
     <Box>
       {userId && <SavedMethodPicker userId={userId} onSelectionChange={handleSelectionChange} />}
 
       {selection.type === 'saved' ? (
         <SavedMethodConfirmButton
-          stripePromise={stripeInstance}
-          clientSecret={clientSecret}
-          providerId={selection.method.providerId}
+          paymentIntentId={paymentIntentId}
+          paymentMethodId={selection.method.providerId}
           onConfirmed={onConfirmed}
         />
       ) : (
