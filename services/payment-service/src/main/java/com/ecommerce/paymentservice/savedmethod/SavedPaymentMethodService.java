@@ -1,6 +1,8 @@
 package com.ecommerce.paymentservice.savedmethod;
 
 import com.ecommerce.paymentservice.domain.Payment;
+import com.ecommerce.paymentservice.repository.PaymentRepository;
+import com.ecommerce.paymentservice.service.PaymentNotFoundException;
 import com.ecommerce.paymentservice.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,7 @@ public class SavedPaymentMethodService {
     private final SavedPaymentMethodRepository repository;
     private final PaymentProviderAdapter providerAdapter;
     private final PaymentService paymentService;
+    private final PaymentRepository paymentRepository;
 
     @Transactional
     public SavedPaymentMethod attach(String userId, String token) {
@@ -138,19 +141,31 @@ public class SavedPaymentMethodService {
     /**
      * Pay for an order's PaymentIntent with one of the caller's OWN saved methods.
      *
-     * <p>This is the authoritative ownership gate for saved-card checkout: the payment
-     * method is confirmed SERVER-SIDE only after we prove the (userId, providerId) row
-     * belongs to the authenticated caller. The browser never confirms a PaymentIntent
-     * with a client-supplied payment_method id directly — a leaked/guessed {@code pm_...}
-     * cannot be used to charge someone else's card because it is not in the caller's vault
-     * and this method rejects it with {@link SecurityException} (HTTP 403) before any
-     * gateway call.</p>
+     * <p>This is the authoritative ownership gate for saved-card checkout. BOTH the payment
+     * method AND the order must belong to the authenticated caller before we confirm
+     * server-side:</p>
+     * <ol>
+     *   <li>the (userId, providerId) row must be in the caller's vault — a leaked/guessed
+     *       {@code pm_...} cannot charge someone else's card; and</li>
+     *   <li>the target PaymentIntent's {@code userId} must equal the caller — an authenticated
+     *       user cannot pay a stranger's order with their own saved card.</li>
+     * </ol>
+     * <p>Either mismatch throws {@link SecurityException} (HTTP 403) before any gateway call.</p>
      */
     @Transactional
     public Payment payWithSavedMethod(String userId, String paymentIntentId, String providerId) {
+        // (1) The saved method must belong to the caller.
         repository.findByUserIdAndProviderId(userId, providerId)
             .orElseThrow(() -> new SecurityException(
                 "Saved payment method does not belong to user " + userId));
+        // (2) The order/PaymentIntent being confirmed must also belong to the caller.
+        Payment payment = paymentRepository.findByPaymentIntentId(paymentIntentId)
+            .orElseThrow(() -> new PaymentNotFoundException(
+                "Payment not found for intent: " + paymentIntentId));
+        if (!userId.equals(payment.getUserId())) {
+            throw new SecurityException(
+                "Payment intent " + paymentIntentId + " does not belong to user " + userId);
+        }
         log.info("Confirming payment intent {} with saved method (user={})", paymentIntentId, userId);
         return paymentService.confirmPayment(paymentIntentId, providerId);
     }

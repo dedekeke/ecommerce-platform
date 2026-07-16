@@ -38,6 +38,9 @@ class SavedPaymentMethodServiceTest {
     @Mock
     private com.ecommerce.paymentservice.service.PaymentService paymentService;
 
+    @Mock
+    private com.ecommerce.paymentservice.repository.PaymentRepository paymentRepository;
+
     @InjectMocks
     private SavedPaymentMethodService service;
 
@@ -209,11 +212,13 @@ class SavedPaymentMethodServiceTest {
     }
 
     @Test
-    @DisplayName("payWithSavedMethod_should_confirm_when_callerOwnsMethod")
-    void payWithSavedMethod_should_confirm_when_callerOwnsMethod() {
+    @DisplayName("payWithSavedMethod_should_confirm_when_callerOwnsMethodAndOrder")
+    void payWithSavedMethod_should_confirm_when_callerOwnsMethodAndOrder() {
         SavedPaymentMethod owned = method(4L, "user-1", true);
+        Payment order = Payment.builder().userId("user-1").paymentIntentId("pi_1").build();
         Payment confirmed = new Payment();
         when(repository.findByUserIdAndProviderId("user-1", "pm_4")).thenReturn(Optional.of(owned));
+        when(paymentRepository.findByPaymentIntentId("pi_1")).thenReturn(Optional.of(order));
         when(paymentService.confirmPayment("pi_1", "pm_4")).thenReturn(confirmed);
 
         Payment result = service.payWithSavedMethod("user-1", "pi_1", "pm_4");
@@ -231,6 +236,20 @@ class SavedPaymentMethodServiceTest {
         assertThatThrownBy(() -> service.payWithSavedMethod("attacker", "pi_1", "pm_victim"))
             .isInstanceOf(SecurityException.class);
         // Critical: no gateway charge is ever attempted for an unowned method.
+        verify(paymentService, never()).confirmPayment(any(), any());
+    }
+
+    @Test
+    @DisplayName("payWithSavedMethod_should_rejectAndNotCharge_when_orderBelongsToAnotherUser")
+    void payWithSavedMethod_should_rejectAndNotCharge_when_orderBelongsToAnotherUser() {
+        // Caller owns the saved card, but the target PaymentIntent is a STRANGER's order.
+        SavedPaymentMethod owned = method(4L, "user-1", true);
+        Payment strangersOrder = Payment.builder().userId("victim").paymentIntentId("pi_victim").build();
+        when(repository.findByUserIdAndProviderId("user-1", "pm_4")).thenReturn(Optional.of(owned));
+        when(paymentRepository.findByPaymentIntentId("pi_victim")).thenReturn(Optional.of(strangersOrder));
+
+        assertThatThrownBy(() -> service.payWithSavedMethod("user-1", "pi_victim", "pm_4"))
+            .isInstanceOf(SecurityException.class);
         verify(paymentService, never()).confirmPayment(any(), any());
     }
 
