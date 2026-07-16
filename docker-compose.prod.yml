@@ -368,6 +368,10 @@ services:
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       SECURITY_ENABLED: "true"
+      # Trusted proxy CIDRs for X-Forwarded-For (see ClientIpResolver). MUST be
+      # set to the ingress/LB range in production, or guest-endpoint rate limits
+      # can be bypassed by spoofing X-Forwarded-For.
+      GATEWAY_TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-}
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8080/actuator/health"]
       <<: *healthcheck-defaults

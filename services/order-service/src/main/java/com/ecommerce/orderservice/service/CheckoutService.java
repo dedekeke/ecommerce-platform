@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.Optional;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -58,8 +57,7 @@ public class CheckoutService {
             idempotencyKey,
             () -> orderCreationSaga.executeCheckout(
                 userId, shippingAddress, request.promotionCode(),
-                request.userEmail(), request.userName()),
-            null
+                request.userEmail(), request.userName(), null)
         );
     }
 
@@ -73,6 +71,12 @@ public class CheckoutService {
      * <p>Same Idempotency-Key + clientSecret contract as {@link #checkout}: the
      * key is scoped to the derived guest identity, so a retried guest submit is
      * deduped exactly like an authenticated one.</p>
+     *
+     * <p>The guest flag + claim key are persisted ATOMICALLY with the order INSERT
+     * inside the saga (the normalized email is passed down to
+     * {@code OrderService.createOrder}), so there is no post-commit
+     * {@code markAsGuestOrder} step that could fail and leave an unflagged guest
+     * order behind.</p>
      */
     public Outcome guestCheckout(String idempotencyKey, GuestCheckoutRequest request) {
         String normalizedEmail = guestIdentityFactory.normalizeEmail(request.email());
@@ -85,29 +89,24 @@ public class CheckoutService {
             idempotencyKey,
             () -> orderCreationSaga.executeCheckout(
                 guestId, shippingAddress, request.promotionCode(),
-                normalizedEmail, request.userName()),
-            orderId -> orderService.markAsGuestOrder(orderId, normalizedEmail)
+                normalizedEmail, request.userName(), normalizedEmail)
         );
     }
 
     /**
      * Shared Idempotency-Key orchestration for both checkout flows. {@code owner}
      * is the JWT subject (authenticated) or the derived guest identity;
-     * {@code sagaCall} runs the real order-creation saga; {@code onOrderCreated}
-     * (nullable) runs once against a freshly created order id BEFORE the key is
-     * marked COMPLETED — used by the guest flow to flag the order and persist the
-     * claim key. It is not run on an idempotent replay (already applied).
+     * {@code sagaCall} runs the real order-creation saga (which persists the guest
+     * flag atomically for the guest path).
      */
     private Outcome runIdempotentCheckout(
         String owner,
         String idempotencyKey,
-        Supplier<CheckoutResult> sagaCall,
-        Consumer<String> onOrderCreated
+        Supplier<CheckoutResult> sagaCall
     ) {
         if (!StringUtils.hasText(idempotencyKey)) {
             log.info("Checkout for owner {} without idempotency key", owner);
             CheckoutResult result = sagaCall.get();
-            applyOnCreated(onOrderCreated, result);
             return new Outcome(CheckoutResponse.from(result), false);
         }
 
@@ -127,7 +126,6 @@ public class CheckoutService {
         CheckoutResult result;
         try {
             result = sagaCall.get();
-            applyOnCreated(onOrderCreated, result);
         } catch (RuntimeException ex) {
             // Release so a genuine retry (axios-retry on 5xx) can create the order.
             idempotencyService.release(owner, idempotencyKey);
@@ -135,12 +133,6 @@ public class CheckoutService {
         }
         idempotencyService.complete(owner, idempotencyKey, result.order().getId());
         return new Outcome(CheckoutResponse.from(result), false);
-    }
-
-    private void applyOnCreated(Consumer<String> onOrderCreated, CheckoutResult result) {
-        if (onOrderCreated != null) {
-            onOrderCreated.accept(result.order().getId());
-        }
     }
 
     private Outcome replayOutcome(String userId, IdempotencyKey record) {

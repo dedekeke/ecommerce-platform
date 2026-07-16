@@ -72,8 +72,9 @@ class CheckoutServiceTest {
 
     @Test
     void should_invokeSagaWithRealRequest_when_noIdempotencyKey() {
+        // Authenticated path: the 6th saga arg (guestEmail) MUST be null.
         when(orderCreationSaga.executeCheckout(eq(USER_ID), any(), eq("SAVE10"),
-            eq("buyer@example.com"), eq("Buyer")))
+            eq("buyer@example.com"), eq("Buyer"), isNull()))
             .thenReturn(freshResult());
 
         CheckoutService.Outcome outcome = checkoutService.checkout(USER_ID, null, request());
@@ -85,7 +86,7 @@ class CheckoutServiceTest {
 
         ArgumentCaptor<Address> addressCaptor = ArgumentCaptor.forClass(Address.class);
         verify(orderCreationSaga).executeCheckout(eq(USER_ID), addressCaptor.capture(),
-            eq("SAVE10"), eq("buyer@example.com"), eq("Buyer"));
+            eq("SAVE10"), eq("buyer@example.com"), eq("Buyer"), isNull());
         assertEquals("1 Main St", addressCaptor.getValue().getStreet());
     }
 
@@ -95,7 +96,7 @@ class CheckoutServiceTest {
     void should_reserveRunAndComplete_when_newIdempotencyKey() {
         when(idempotencyService.find(USER_ID, KEY)).thenReturn(Optional.empty());
         when(idempotencyService.tryReserve(USER_ID, KEY)).thenReturn(true);
-        when(orderCreationSaga.executeCheckout(eq(USER_ID), any(), any(), any(), any()))
+        when(orderCreationSaga.executeCheckout(eq(USER_ID), any(), any(), any(), any(), any()))
             .thenReturn(freshResult());
 
         CheckoutService.Outcome outcome = checkoutService.checkout(USER_ID, KEY, request());
@@ -121,7 +122,7 @@ class CheckoutServiceTest {
         // Replay must not re-run the saga, but must re-serve the persisted secret
         // so the owning session can still complete payment.
         assertEquals("pi_123_secret", outcome.response().clientSecret());
-        verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any());
+        verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any(), any());
         verify(idempotencyService, never()).tryReserve(any(), any());
     }
 
@@ -136,7 +137,7 @@ class CheckoutServiceTest {
         CheckoutService.Outcome outcome = checkoutService.checkout(USER_ID, KEY, request());
 
         assertTrue(outcome.replay());
-        verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any());
+        verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any(), any());
     }
 
     // ---- concurrency + failure ---------------------------------------------
@@ -149,14 +150,14 @@ class CheckoutServiceTest {
         assertThrows(ConcurrentCheckoutException.class,
             () -> checkoutService.checkout(USER_ID, KEY, request()));
 
-        verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any());
+        verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void should_releaseKeyAndRethrow_when_sagaFails() {
         when(idempotencyService.find(USER_ID, KEY)).thenReturn(Optional.empty());
         when(idempotencyService.tryReserve(USER_ID, KEY)).thenReturn(true);
-        when(orderCreationSaga.executeCheckout(eq(USER_ID), any(), any(), any(), any()))
+        when(orderCreationSaga.executeCheckout(eq(USER_ID), any(), any(), any(), any(), any()))
             .thenThrow(new SagaException("payment gateway down"));
 
         assertThrows(SagaException.class,
@@ -172,12 +173,12 @@ class CheckoutServiceTest {
     private static final String NORMALIZED_EMAIL = "guest@example.com";
 
     @Test
-    void should_deriveGuestIdentityAndFlagOrder_when_guestCheckout() {
+    void should_deriveGuestIdentityAndPassClaimKeyToSaga_when_guestCheckout() {
         String expectedGuestId = guestIdentityFactory.guestId(GUEST_EMAIL);
         when(idempotencyService.find(eq(expectedGuestId), eq(KEY))).thenReturn(Optional.empty());
         when(idempotencyService.tryReserve(eq(expectedGuestId), eq(KEY))).thenReturn(true);
         when(orderCreationSaga.executeCheckout(eq(expectedGuestId), any(), any(),
-            eq(NORMALIZED_EMAIL), any())).thenReturn(freshResult());
+            eq(NORMALIZED_EMAIL), any(), eq(NORMALIZED_EMAIL))).thenReturn(freshResult());
 
         CheckoutService.Outcome outcome = checkoutService.guestCheckout(KEY, guestRequest());
 
@@ -185,12 +186,13 @@ class CheckoutServiceTest {
         assertEquals("pi_123_secret", outcome.response().clientSecret());
         // Owner is the DERIVED guest identity, never anything client-supplied.
         assertTrue(expectedGuestId.startsWith("guest:"));
-        // The order is flagged as guest + stamped with the NORMALIZED claim key.
-        verify(orderService).markAsGuestOrder(ORDER_ID, NORMALIZED_EMAIL);
-        verify(idempotencyService).complete(expectedGuestId, KEY, ORDER_ID);
-        // Recipient email passed to the saga (confirmation email) is normalized.
+        // The claim key (NORMALIZED email) is threaded to the saga as guestEmail so
+        // the order is flagged ATOMICALLY inside createOrder — NOT via a post-hoc
+        // markAsGuestOrder call that could fail and orphan an unflagged order.
         verify(orderCreationSaga).executeCheckout(eq(expectedGuestId), any(), any(),
-            eq(NORMALIZED_EMAIL), any());
+            eq(NORMALIZED_EMAIL), any(), eq(NORMALIZED_EMAIL));
+        verify(orderService, never()).markAsGuestOrder(any(), any());
+        verify(idempotencyService).complete(expectedGuestId, KEY, ORDER_ID);
     }
 
     @Test
@@ -205,7 +207,7 @@ class CheckoutServiceTest {
         assertTrue(outcome.replay());
         assertEquals(ORDER_ID, outcome.response().orderId());
         // Replay must not re-run the saga nor re-flag the order.
-        verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any());
+        verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any(), any());
         verify(orderService, never()).markAsGuestOrder(any(), any());
     }
 
@@ -214,7 +216,7 @@ class CheckoutServiceTest {
         String expectedGuestId = guestIdentityFactory.guestId(GUEST_EMAIL);
         when(idempotencyService.find(eq(expectedGuestId), eq(KEY))).thenReturn(Optional.empty());
         when(idempotencyService.tryReserve(eq(expectedGuestId), eq(KEY))).thenReturn(true);
-        when(orderCreationSaga.executeCheckout(any(), any(), any(), any(), any()))
+        when(orderCreationSaga.executeCheckout(any(), any(), any(), any(), any(), any()))
             .thenThrow(new SagaException("inventory down"));
 
         assertThrows(SagaException.class, () -> checkoutService.guestCheckout(KEY, guestRequest()));

@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -204,6 +205,39 @@ class OrderControllerCheckoutTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"guest@example.com\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void should_return400AndNotCheckout_when_guestCheckoutCarriesAuthorization() throws Exception {
+        // An authenticated caller must use POST /api/orders, not the guest path:
+        // the mere presence of an Authorization credential is rejected with 400.
+        mockMvc.perform(post("/api/orders/guest")
+                        .header("Authorization", "Bearer some.jwt.token")
+                        .header("Idempotency-Key", "guest-key-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(GUEST_BODY))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").exists());
+
+        verify(checkoutService, never()).guestCheckout(any(), any());
+    }
+
+    @Test
+    void should_proceed_when_guestCheckoutHasBlankAuthorization() throws Exception {
+        // A present-but-blank Authorization header is treated as absent, so a
+        // genuine guest checkout still succeeds.
+        CheckoutResponse response = CheckoutResponse.from(
+            new CheckoutResult(order(), "pi_1", "pi_1_secret", "USD"));
+        when(checkoutService.guestCheckout(any(), any()))
+            .thenReturn(new CheckoutService.Outcome(response, false));
+
+        mockMvc.perform(post("/api/orders/guest")
+                        .header("Authorization", "   ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(GUEST_BODY))
+                .andExpect(status().isCreated());
+
+        verify(checkoutService).guestCheckout(any(), any());
     }
 
     @Test
