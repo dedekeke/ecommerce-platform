@@ -2,6 +2,7 @@ package com.ecommerce.cartservice.controller;
 
 import com.ecommerce.cartservice.dto.AddToCartRequest;
 import com.ecommerce.cartservice.dto.CartResponse;
+import com.ecommerce.cartservice.dto.MergeGuestCartRequest;
 import com.ecommerce.cartservice.dto.UpdateCartItemRequest;
 import com.ecommerce.cartservice.service.CartService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -95,6 +96,20 @@ public class CartController {
 
         cartService.deleteCart(userId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/merge")
+    @Operation(summary = "Merge a guest cart on login",
+            description = "Fold the anonymous cart the shopper built (keyed by the given guest email) "
+                    + "into the authenticated user's cart. Idempotent and safe to call on every login.")
+    public ResponseEntity<CartResponse> mergeGuestCart(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody MergeGuestCartRequest request) {
+        String userId = jwt.getSubject();
+        log.debug("POST /api/cart/merge - userId: {}", userId);
+
+        CartResponse cart = cartService.mergeGuestCartIntoUser(userId, request.getGuestEmail());
+        return ResponseEntity.ok(cart);
     }
 
     // Testing endpoints that accept userId as path parameter

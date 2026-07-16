@@ -12,6 +12,7 @@ import com.ecommerce.cartservice.exception.ProductNotAvailableException;
 import com.ecommerce.cartservice.exception.ProductServiceUnavailableException;
 import com.ecommerce.cartservice.repository.CartItemRepository;
 import com.ecommerce.cartservice.repository.CartRepository;
+import com.ecommerce.cartservice.security.GuestIdentityFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,7 @@ public class CartService {
     private final CartItemRepository cartItemRepository;
     private final ProductServiceGateway productServiceGateway;
     private final UserServiceClient userServiceClient;
+    private final GuestIdentityFactory guestIdentityFactory;
 
     private static final int CART_EXPIRATION_DAYS = 30;
 
@@ -223,6 +225,92 @@ public class CartService {
         cartRepository.save(cart);
 
         log.info("Cart checked out - cartId: {}", cart.getId());
+    }
+
+    /**
+     * Resolve the opaque owner id for an anonymous (guest) cart from the guest's
+     * email. Delegates to {@link GuestIdentityFactory} so the value is identical
+     * to the one order-service derives at checkout — this is the whole reason the
+     * guest's cart is findable by the order-creation saga. Throws
+     * {@link IllegalArgumentException} for a blank email (mapped to HTTP 400).
+     */
+    public String guestCartOwnerId(String email) {
+        return guestIdentityFactory.guestId(email);
+    }
+
+    /**
+     * Merge-on-login (claim seam): fold an anonymous guest cart into the
+     * authenticated user's cart. Mirrors order-service's guest-order claim
+     * ({@code OrderService.claimGuestOrders}).
+     *
+     * <p>The guest cart is located by re-deriving {@code guest:sha256(email)} from
+     * the email the shopper browsed under. For every guest line item: if the user
+     * already has that product, the quantities are summed; otherwise the item is
+     * recreated on the user's cart, preserving the guest's price snapshot. The
+     * guest cart is then deleted so it can neither be checked out nor merged
+     * twice.</p>
+     *
+     * <p>Deliberately makes NO product-service call: a login merge must not fail
+     * because product-service is briefly unavailable, and cart lines are soft
+     * holds whose availability is re-validated at checkout. If the guest has no
+     * active cart (or it is empty) this is a no-op that simply returns the user's
+     * cart, so the endpoint is idempotent and safe to call on every login.</p>
+     */
+    @Transactional
+    public CartResponse mergeGuestCartIntoUser(String userId, String guestEmail) {
+        String guestId = guestIdentityFactory.guestId(guestEmail);
+        if (guestId.equals(userId)) {
+            // Defensive: an authenticated user id is an Auth0 sub and can never
+            // carry the guest: prefix, but never merge a cart into itself.
+            return getOrCreateCart(userId);
+        }
+
+        Optional<Cart> guestCartOpt = cartRepository.findByUserIdAndStatus(guestId, CartStatus.ACTIVE);
+        if (guestCartOpt.isEmpty() || guestCartOpt.get().isEmpty()) {
+            log.debug("No non-empty guest cart to merge for user {}", userId);
+            guestCartOpt.ifPresent(cartRepository::delete);
+            return getOrCreateCart(userId);
+        }
+
+        Cart guestCart = guestCartOpt.get();
+        Cart userCart = cartRepository.findByUserIdAndStatus(userId, CartStatus.ACTIVE)
+                .orElseGet(() -> createNewCart(userId));
+
+        int mergedItems = guestCart.getItems().size();
+        for (CartItem guestItem : List.copyOf(guestCart.getItems())) {
+            CartItem existing = cartItemRepository
+                    .findByCartIdAndProductId(userCart.getId(), guestItem.getProductId())
+                    .orElse(null);
+            if (existing != null) {
+                existing.updateQuantity(existing.getQuantity() + guestItem.getQuantity());
+                cartItemRepository.save(existing);
+            } else {
+                CartItem moved = CartItem.builder()
+                        .cart(userCart)
+                        .productId(guestItem.getProductId())
+                        .productName(guestItem.getProductName())
+                        .productSku(guestItem.getProductSku())
+                        .productImageUrl(guestItem.getProductImageUrl())
+                        .priceSnapshot(guestItem.getPriceSnapshot())
+                        .quantity(guestItem.getQuantity())
+                        .build();
+                moved.calculateSubtotal();
+                userCart.addItem(moved);
+                cartItemRepository.save(moved);
+            }
+        }
+
+        userCart.setExpiresAt(Instant.now().plus(CART_EXPIRATION_DAYS, ChronoUnit.DAYS));
+        userCart.recalculateTotals();
+        Cart savedCart = cartRepository.save(userCart);
+
+        // The guest cart has been absorbed; delete it (orphanRemoval clears its
+        // items) so it can never be re-merged or checked out as a stale cart.
+        cartRepository.delete(guestCart);
+
+        log.info("Merged guest cart {} ({} items) into user cart {} for user {}",
+                guestCart.getId(), mergedItems, savedCart.getId(), userId);
+        return toCartResponse(savedCart);
     }
 
     // Helper methods
