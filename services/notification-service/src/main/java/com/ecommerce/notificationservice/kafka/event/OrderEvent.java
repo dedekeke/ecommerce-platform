@@ -20,4 +20,14 @@ public class OrderEvent {
     private BigDecimal totalAmount;
     private String status;
     private String shippingAddress;
+
+    /**
+     * Optional recipient phone (E.164) — when present, an SMS is sent in addition to email.
+     */
+    private String userPhone;
+
+    /**
+     * Optional device registration token — when present, a push notification is sent too.
+     */
+    private String userDeviceToken;
 }

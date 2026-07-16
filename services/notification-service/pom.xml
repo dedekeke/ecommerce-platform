@@ -60,6 +60,20 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
+        <!-- Twilio SDK — real SMS provider (env-gated: notification.sms.provider=twilio) -->
+        <dependency>
+            <groupId>com.twilio.sdk</groupId>
+            <artifactId>twilio</artifactId>
+            <version>${twilio.version}</version>
+        </dependency>
+
+        <!-- Firebase Admin SDK — real push provider (env-gated: notification.push.provider=fcm) -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>${firebase-admin.version}</version>
+        </dependency>
+
         <!-- Eureka Client -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

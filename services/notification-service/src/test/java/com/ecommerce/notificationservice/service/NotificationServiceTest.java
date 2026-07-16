@@ -50,11 +50,15 @@ class NotificationServiceTest {
     @Mock
     private SmsService smsService;
 
+    @Mock
+    private PushService pushService;
+
     @InjectMocks
     private NotificationService notificationService;
 
     private NotificationTemplate emailTemplate;
     private NotificationTemplate smsTemplate;
+    private NotificationTemplate pushTemplate;
     private Map<String, Object> variables;
 
     @BeforeEach
@@ -75,6 +79,16 @@ class NotificationServiceTest {
                 .name("SMS Notification")
                 .type(NotificationType.SMS)
                 .body("Your order ${orderNumber} has been confirmed")
+                .active(true)
+                .build();
+
+        pushTemplate = NotificationTemplate.builder()
+                .id("template3")
+                .code("PUSH_NOTIFICATION")
+                .name("Push Notification")
+                .type(NotificationType.PUSH)
+                .subject("Order update")
+                .body("Your order ${orderNumber} has shipped")
                 .active(true)
                 .build();
 
@@ -155,6 +169,60 @@ class NotificationServiceTest {
 
         ArgumentCaptor<NotificationLog> logCaptor = ArgumentCaptor.forClass(NotificationLog.class);
         verify(logRepository, atLeast(2)).save(logCaptor.capture());
+    }
+
+    @Test
+    void should_dispatchPush_when_templateTypeIsPush() {
+        // Given
+        when(templateRepository.findByCode("PUSH_NOTIFICATION"))
+                .thenReturn(Optional.of(pushTemplate));
+        when(logRepository.save(any(NotificationLog.class)))
+                .thenAnswer(invocation -> {
+                    NotificationLog log = invocation.getArgument(0);
+                    log.setId("log123");
+                    return log;
+                });
+
+        // When
+        notificationService.sendNotification(
+                "user123", "device-token-abc", "PUSH_NOTIFICATION",
+                variables, "order123", "SHIPMENT");
+
+        // Then — title comes from the template subject, body is the rendered template.
+        verify(pushService, timeout(1000)).sendPush(
+                eq("device-token-abc"),
+                eq("Order update"),
+                eq("Your order ORD-12345 has shipped"),
+                eq(variables));
+    }
+
+    @Test
+    void should_markRetrying_when_smsProviderFails() {
+        // Given — a provider delivery failure must not lose the notification.
+        when(templateRepository.findByCode("SMS_NOTIFICATION"))
+                .thenReturn(Optional.of(smsTemplate));
+        when(logRepository.save(any(NotificationLog.class)))
+                .thenAnswer(invocation -> {
+                    NotificationLog log = invocation.getArgument(0);
+                    log.setId("log123");
+                    return log;
+                });
+        doThrow(new com.ecommerce.notificationservice.service.sms.SmsDeliveryException(
+                "gateway down", new RuntimeException()))
+                .when(smsService).sendSms(anyString(), anyString());
+
+        // When
+        notificationService.sendNotification(
+                "user123", "+1234567890", "SMS_NOTIFICATION",
+                variables, "order123", "ORDER");
+
+        // Then
+        ArgumentCaptor<NotificationLog> logCaptor = ArgumentCaptor.forClass(NotificationLog.class);
+        verify(logRepository, atLeast(2)).save(logCaptor.capture());
+
+        NotificationLog failedLog = logCaptor.getAllValues().get(logCaptor.getAllValues().size() - 1);
+        assertThat(failedLog.getStatus()).isEqualTo(NotificationStatus.RETRYING);
+        assertThat(failedLog.getNextRetryAt()).isNotNull();
     }
 
     @Test

@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -56,7 +57,8 @@ public class OrderEventConsumer {
         variables.put("totalAmount", event.getTotalAmount());
         variables.put("shippingAddress", event.getShippingAddress());
 
-        send(event, "ORDER_CONFIRMATION", "ORDER", variables);
+        send(event, event.getUserEmail(), "ORDER_CONFIRMATION", "ORDER", variables);
+        dispatchAncillaryChannels(event, "ORDER_CONFIRMATION_SMS", "ORDER_CONFIRMATION_PUSH", "ORDER", variables);
         log.info("Order confirmation notification triggered for order: {}", event.getOrderNumber());
     }
 
@@ -77,7 +79,7 @@ public class OrderEventConsumer {
         variables.put("userName", event.getUserName());
         variables.put("totalAmount", event.getTotalAmount());
 
-        send(event, "PAYMENT_RECEIPT", "PAYMENT", variables);
+        send(event, event.getUserEmail(), "PAYMENT_RECEIPT", "PAYMENT", variables);
         log.info("Payment receipt notification triggered for order: {}", event.getOrderNumber());
     }
 
@@ -98,7 +100,8 @@ public class OrderEventConsumer {
         variables.put("userName", event.getUserName());
         variables.put("shippingAddress", event.getShippingAddress());
 
-        send(event, "SHIPPING_NOTIFICATION", "SHIPMENT", variables);
+        send(event, event.getUserEmail(), "SHIPPING_NOTIFICATION", "SHIPMENT", variables);
+        dispatchAncillaryChannels(event, "SHIPPING_NOTIFICATION_SMS", "SHIPPING_NOTIFICATION_PUSH", "SHIPMENT", variables);
         log.info("Shipping notification triggered for order: {}", event.getOrderNumber());
     }
 
@@ -117,10 +120,26 @@ public class OrderEventConsumer {
         }
     }
 
-    private void send(OrderEvent event, String templateCode, String entityType, Map<String, Object> variables) {
+    /**
+     * Fan out to the SMS and push channels in addition to email, but only when the event carries a
+     * recipient phone / device token. When both are absent the notification degrades to email-only.
+     * The handler-level dedup claim already guards against replays, so no extra dedup is needed here.
+     */
+    private void dispatchAncillaryChannels(OrderEvent event, String smsTemplate, String pushTemplate,
+                                           String entityType, Map<String, Object> variables) {
+        if (StringUtils.hasText(event.getUserPhone())) {
+            send(event, event.getUserPhone(), smsTemplate, entityType, variables);
+        }
+        if (StringUtils.hasText(event.getUserDeviceToken())) {
+            send(event, event.getUserDeviceToken(), pushTemplate, entityType, variables);
+        }
+    }
+
+    private void send(OrderEvent event, String recipient, String templateCode, String entityType,
+                      Map<String, Object> variables) {
         try {
             notificationService.sendNotification(
-                    event.getUserId(), event.getUserEmail(), templateCode, variables,
+                    event.getUserId(), recipient, templateCode, variables,
                     event.getOrderId(), entityType);
         } catch (Exception e) {
             log.error("Failed to dispatch {} notification for orderId={}", templateCode, event.getOrderId(), e);

@@ -143,6 +143,22 @@ public class NotificationTemplateInitializer implements CommandLineRunner {
                 "Email sent when a return is rejected",
                 "Your return has been rejected", "rma-rejected");
 
+        // SMS + push variants for the order / shipping events. These are dispatched in addition to
+        // the email template when the OrderEvent carries a phone number / device token. Bodies are
+        // plain text with ${...} placeholders resolved by NotificationService#processTemplate.
+        seedSmsTemplate("ORDER_CONFIRMATION_SMS", "Order Confirmation SMS",
+                "SMS sent when an order is confirmed",
+                "Hi ${userName}, your order #${orderNumber} is confirmed. Total: ${totalAmount}.");
+        seedSmsTemplate("SHIPPING_NOTIFICATION_SMS", "Shipping Notification SMS",
+                "SMS sent when an order is shipped",
+                "Good news ${userName}! Your order #${orderNumber} has shipped.");
+        seedPushTemplate("ORDER_CONFIRMATION_PUSH", "Order Confirmation Push",
+                "Push sent when an order is confirmed",
+                "Order confirmed", "Your order #${orderNumber} is confirmed.");
+        seedPushTemplate("SHIPPING_NOTIFICATION_PUSH", "Shipping Notification Push",
+                "Push sent when an order is shipped",
+                "Order shipped", "Your order #${orderNumber} is on its way!");
+
         log.info("Notification templates initialization completed");
     }
 
@@ -162,6 +178,38 @@ public class NotificationTemplateInitializer implements CommandLineRunner {
                 .subject(subject)
                 .body(body)
                 .defaultVariables(defaultVars)
+                .active(true)
+                .build());
+        log.info("Created {} template", code);
+    }
+
+    private void seedSmsTemplate(String code, String name, String description, String body) {
+        if (templateRepository.existsByCode(code)) {
+            return;
+        }
+        templateRepository.save(NotificationTemplate.builder()
+                .code(code)
+                .name(name)
+                .description(description)
+                .type(NotificationType.SMS)
+                .body(body)
+                .active(true)
+                .build());
+        log.info("Created {} template", code);
+    }
+
+    private void seedPushTemplate(String code, String name, String description,
+                                  String title, String body) {
+        if (templateRepository.existsByCode(code)) {
+            return;
+        }
+        templateRepository.save(NotificationTemplate.builder()
+                .code(code)
+                .name(name)
+                .description(description)
+                .type(NotificationType.PUSH)
+                .subject(title)
+                .body(body)
                 .active(true)
                 .build());
         log.info("Created {} template", code);

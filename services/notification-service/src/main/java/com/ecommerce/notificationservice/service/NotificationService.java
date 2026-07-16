@@ -29,6 +29,7 @@ public class NotificationService {
     private final NotificationTemplateRepository templateRepository;
     private final EmailService emailService;
     private final SmsService smsService;
+    private final PushService pushService;
 
     /**
      * Self-reference obtained through the Spring proxy. Retry sends must be
@@ -94,6 +95,9 @@ public class NotificationService {
             } else if (template.getType() == NotificationType.SMS) {
                 String message = processTemplate(template.getBody(), variables);
                 smsService.sendSms(recipient, message);
+            } else if (template.getType() == NotificationType.PUSH) {
+                String body = processTemplate(template.getBody(), variables);
+                pushService.sendPush(recipient, template.getSubject(), body, variables);
             }
 
             // Update status to SENT
