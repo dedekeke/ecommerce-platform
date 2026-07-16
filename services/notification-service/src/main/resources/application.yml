@@ -78,9 +78,18 @@ notification:
     max-attempts: 3
     initial-delay-minutes: 1
   sms:
-    provider: ${SMS_PROVIDER}
-    api-key: ${SMS_API_KEY}
-    api-secret: ${SMS_API_SECRET}
+    # Provider selection: 'noop' (default, logs only) or 'twilio' (real). Credentials env-only.
+    provider: ${SMS_PROVIDER:noop}
+    twilio:
+      account-sid: ${TWILIO_ACCOUNT_SID:}
+      auth-token: ${TWILIO_AUTH_TOKEN:}
+      from-number: ${TWILIO_FROM_NUMBER:}
+  push:
+    # Provider selection: 'noop' (default, logs only) or 'fcm' (Firebase Cloud Messaging).
+    provider: ${PUSH_PROVIDER:noop}
+    fcm:
+      credentials-path: ${FCM_CREDENTIALS_PATH:}
+      project-id: ${FCM_PROJECT_ID:}
   email:
     from: ${EMAIL_FROM}
     from-name: ${EMAIL_FROM_NAME}

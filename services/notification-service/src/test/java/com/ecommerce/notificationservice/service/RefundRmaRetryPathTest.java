@@ -44,13 +44,14 @@ class RefundRmaRetryPathTest {
     @Mock private NotificationTemplateRepository templateRepository;
     @Mock private EmailService emailService;
     @Mock private SmsService smsService;
+    @Mock private PushService pushService;
 
     private NotificationService notificationService;
 
     @BeforeEach
     void setUp() {
         notificationService = new NotificationService(
-                logRepository, templateRepository, emailService, smsService);
+                logRepository, templateRepository, emailService, smsService, pushService);
         when(logRepository.save(any(NotificationLog.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 

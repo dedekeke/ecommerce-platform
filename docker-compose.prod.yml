@@ -629,6 +629,13 @@ services:
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_FROM: ${MAIL_FROM}
+      SMS_PROVIDER: ${SMS_PROVIDER:-noop}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      PUSH_PROVIDER: ${PUSH_PROVIDER:-noop}
+      FCM_CREDENTIALS_PATH: ${FCM_CREDENTIALS_PATH:-}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
       SECURITY_ENABLED: "true"
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8087/actuator/health"]

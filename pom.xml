@@ -52,6 +52,10 @@
         <!-- Resilience -->
         <resilience4j.version>2.2.0</resilience4j.version>
 
+        <!-- Notification providers (notification-service) -->
+        <twilio.version>10.1.5</twilio.version>
+        <firebase-admin.version>9.2.0</firebase-admin.version>
+
         <!-- Testing -->
         <testcontainers.version>1.19.3</testcontainers.version>
         <rest-assured.version>5.3.2</rest-assured.version>

@@ -81,6 +81,69 @@ class OrderEventConsumerTest {
     }
 
     @Test
+    void should_sendEmailOnly_when_phoneAndTokenAbsent() throws Exception {
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
+
+        orderEventConsumer.handleOrderCreated(orderEventJson);
+
+        verify(notificationService).sendNotification(
+                anyString(), anyString(), anyString(), anyMap(), anyString(), anyString());
+        verify(notificationService, never()).sendNotification(
+                anyString(), anyString(), eq("ORDER_CONFIRMATION_SMS"), anyMap(), anyString(), anyString());
+        verify(notificationService, never()).sendNotification(
+                anyString(), anyString(), eq("ORDER_CONFIRMATION_PUSH"), anyMap(), anyString(), anyString());
+    }
+
+    @Test
+    void should_alsoSendSms_when_phonePresentOnOrderCreated() throws Exception {
+        orderEvent.setUserPhone("+15551234567");
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
+
+        orderEventConsumer.handleOrderCreated(orderEventJson);
+
+        verify(notificationService).sendNotification(
+                eq("user123"), eq("john.doe@example.com"), eq("ORDER_CONFIRMATION"),
+                anyMap(), eq("order123"), eq("ORDER"));
+        verify(notificationService).sendNotification(
+                eq("user123"), eq("+15551234567"), eq("ORDER_CONFIRMATION_SMS"),
+                anyMap(), eq("order123"), eq("ORDER"));
+    }
+
+    @Test
+    void should_alsoSendPush_when_deviceTokenPresentOnShipped() throws Exception {
+        orderEvent.setUserDeviceToken("device-token-xyz");
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
+
+        orderEventConsumer.handleOrderShipped(orderEventJson);
+
+        verify(notificationService).sendNotification(
+                eq("user123"), eq("john.doe@example.com"), eq("SHIPPING_NOTIFICATION"),
+                anyMap(), eq("order123"), eq("SHIPMENT"));
+        verify(notificationService).sendNotification(
+                eq("user123"), eq("device-token-xyz"), eq("SHIPPING_NOTIFICATION_PUSH"),
+                anyMap(), eq("order123"), eq("SHIPMENT"));
+    }
+
+    @Test
+    void should_sendAllThreeChannels_when_phoneAndTokenPresentOnShipped() throws Exception {
+        orderEvent.setUserPhone("+15551234567");
+        orderEvent.setUserDeviceToken("device-token-xyz");
+        when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
+
+        orderEventConsumer.handleOrderShipped(orderEventJson);
+
+        verify(notificationService).sendNotification(
+                anyString(), eq("john.doe@example.com"), eq("SHIPPING_NOTIFICATION"),
+                anyMap(), anyString(), anyString());
+        verify(notificationService).sendNotification(
+                anyString(), eq("+15551234567"), eq("SHIPPING_NOTIFICATION_SMS"),
+                anyMap(), anyString(), anyString());
+        verify(notificationService).sendNotification(
+                anyString(), eq("device-token-xyz"), eq("SHIPPING_NOTIFICATION_PUSH"),
+                anyMap(), anyString(), anyString());
+    }
+
+    @Test
     void shouldHandlePaymentCompletedEvent() throws Exception {
         when(objectMapper.readValue(anyString(), eq(OrderEvent.class))).thenReturn(orderEvent);
 
