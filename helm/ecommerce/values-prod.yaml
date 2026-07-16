@@ -8,13 +8,19 @@ api-gateway:
   resources:
     requests: { memory: "512Mi", cpu: "300m" }
     limits:   { memory: "1Gi",   cpu: "1000m" }
-  # PRODUCTION: narrow to the REAL ingress/pod-network CIDR of the prod cluster
-  # before go-live — do NOT ship the broad RFC1918 default to prod. Get it from:
-  #   kubectl -n <ns> get pods -o wide            # ingress-nginx pod IPs
-  #   kubectl cluster-info dump | grep -m1 cluster-cidr   # pod network CIDR
-  # An over-broad or empty value keys the guest-endpoint rate limit and /api/admin
-  # whitelist on the shared ingress pod IP (bypassed limits / admin lockout).
-  # See docs/SECURITY.md → "Trusted proxy configuration (deploy checklist)".
+  # Trusts all RFC1918. This is the defensible default, NOT a fail-open value:
+  # the gateway Service is ClusterIP and NetworkPolicy `allow-ingress-to-gateway`
+  # (default-deny + allow only the ingress-nginx namespace) means the only
+  # possible direct TCP peer is the ingress pod — an RFC1918 pod IP. An EMPTY
+  # value would be worse, not safer: it re-creates the bug by keying the
+  # guest-endpoint rate limit and /api/admin whitelist on the shared ingress IP.
+  # NARROW to this cluster's exact ingress/pod CIDR for tighter defense-in-depth:
+  #   kubectl -n ingress-nginx get pods -o wide            # ingress-nginx pod IPs
+  #   kubectl cluster-info dump | grep -m1 -- --cluster-cidr   # pod-network CIDR
+  # NOTE: the ClusterIP+NetworkPolicy safety assumes the CNI ENFORCES
+  # NetworkPolicy (Calico/Cilium/cloud dataplane — plain Flannel does NOT). On a
+  # non-enforcing CNI you MUST narrow to the exact ingress pod CIDR. See
+  # docs/SECURITY.md → "Trusted proxy configuration (deploy checklist)".
   config:
     GATEWAY_TRUSTED_PROXIES: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   hpa:
