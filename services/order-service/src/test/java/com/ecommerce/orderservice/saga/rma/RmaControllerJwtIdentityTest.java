@@ -134,12 +134,16 @@ class RmaControllerJwtIdentityTest {
     }
 
     @Test
-    void should_return403_when_getReturn_ownedByAnotherUser() throws Exception {
+    void should_return404_when_getReturn_ownedByAnotherUser() throws Exception {
+        // Enumeration guard: a non-admin requesting another user's valid RMA id
+        // gets the SAME 404 as a missing id (see should_return404_when_getReturn_missing),
+        // so 404-vs-403 can't confirm the id exists. Authorization is preserved:
+        // the other user's return is never returned.
         when(orchestrator.findById("rma-1")).thenReturn(Optional.of(returnOwnedBy(USER_B)));
 
         mockMvc.perform(get("/api/returns/rma-1")
                         .with(jwt().jwt(j -> j.subject(USER_A))))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound());
     }
 
     @Test

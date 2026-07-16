@@ -56,12 +56,25 @@ public class UserIdentityResolver {
      * scope. No-op in local dev (no JWT principal present).
      */
     public void assertCanActFor(String resourceOwnerUserId, Jwt jwt) {
-        if (jwt == null || isAdmin()) {
-            return;
-        }
-        if (!Objects.equals(resourceOwnerUserId, jwt.getSubject())) {
+        if (!canAccess(resourceOwnerUserId, jwt)) {
             throw new UserMismatchException("You are not allowed to access this resource");
         }
+    }
+
+    /**
+     * Non-throwing ownership check for opaque-id lookup endpoints that must NOT
+     * leak whether a resource exists. The caller returns an identical 404 for
+     * both "resource is missing" and "resource exists but isn't yours", so a
+     * non-admin cannot enumerate valid ids by distinguishing 403 from 404.
+     *
+     * @return {@code true} if the caller may see the resource (owner, admin, or
+     *     local-dev with no JWT); {@code false} for a non-admin non-owner.
+     */
+    public boolean canAccess(String resourceOwnerUserId, Jwt jwt) {
+        if (jwt == null || isAdmin()) {
+            return true;
+        }
+        return Objects.equals(resourceOwnerUserId, jwt.getSubject());
     }
 
     private boolean isAdmin() {

@@ -9,6 +9,7 @@ import com.ecommerce.orderservice.dto.MarkShippedRequest;
 import com.ecommerce.orderservice.dto.OrderResponse;
 import com.ecommerce.orderservice.dto.PageResponse;
 import com.ecommerce.orderservice.exception.GuestCheckoutAuthenticationException;
+import com.ecommerce.orderservice.exception.OrderNotFoundException;
 import com.ecommerce.orderservice.security.UserIdentityResolver;
 import com.ecommerce.orderservice.service.CheckoutService;
 import com.ecommerce.orderservice.service.OrderService;
@@ -111,8 +112,13 @@ public class OrderController {
     ) {
         log.info("REST: Get order by number {}", orderNumber);
         Order order = orderService.getOrderByNumber(orderNumber);
-        // IDOR guard: the order number is guessable, so verify ownership after lookup.
-        userIdentityResolver.assertCanActFor(order.getUserId(), jwt);
+        // Opaque-id enumeration guard: the order number is guessable, so a
+        // non-admin who is not the owner gets the SAME 404 (identical message)
+        // as a genuinely missing order — 404 vs 403 must not reveal existence.
+        // Authorization is preserved: another user's data is never returned.
+        if (!userIdentityResolver.canAccess(order.getUserId(), jwt)) {
+            throw new OrderNotFoundException("Order not found: " + orderNumber);
+        }
         return ResponseEntity.ok(OrderResponse.from(order));
     }
 

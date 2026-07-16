@@ -100,4 +100,29 @@ class UserIdentityResolverTest {
         assertThatCode(() -> resolver.assertCanActFor(OTHER, jwtWithSubject(SUBJECT)))
                 .doesNotThrowAnyException();
     }
+
+    // ---- canAccess (enumeration-safe, non-throwing) -------------------------
+
+    @Test
+    void should_allowAccess_when_noJwt() {
+        assertThat(resolver.canAccess(OTHER, null)).isTrue();
+    }
+
+    @Test
+    void should_allowAccess_when_ownerMatchesSubject() {
+        authenticateAs("SCOPE_read");
+        assertThat(resolver.canAccess(SUBJECT, jwtWithSubject(SUBJECT))).isTrue();
+    }
+
+    @Test
+    void should_denyAccess_when_ownerDiffers_andNotAdmin() {
+        authenticateAs("SCOPE_read");
+        assertThat(resolver.canAccess(OTHER, jwtWithSubject(SUBJECT))).isFalse();
+    }
+
+    @Test
+    void should_allowAccess_when_ownerDiffers_andAdmin() {
+        authenticateAs("SCOPE_admin");
+        assertThat(resolver.canAccess(OTHER, jwtWithSubject(SUBJECT))).isTrue();
+    }
 }

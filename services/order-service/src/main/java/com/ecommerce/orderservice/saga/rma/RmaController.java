@@ -93,12 +93,13 @@ public class RmaController {
         @PathVariable String rmaId,
         @AuthenticationPrincipal Jwt jwt
     ) {
+        // Opaque-id enumeration guard: a non-admin who is not the owner is
+        // filtered out and gets the SAME 404 as a genuinely missing RMA, so a
+        // 404 vs 403 can't reveal that the id exists. Authorization is preserved
+        // (another user's return is never returned); admin/owner still get 200.
         return orchestrator.findById(rmaId)
-            .map(rma -> {
-                // IDOR guard: the RMA must belong to the caller (or the caller is admin).
-                userIdentityResolver.assertCanActFor(rma.getUserId(), jwt);
-                return ResponseEntity.ok(rma);
-            })
+            .filter(rma -> userIdentityResolver.canAccess(rma.getUserId(), jwt))
+            .map(rma -> ResponseEntity.ok(rma))
             .orElseGet(() -> ResponseEntity.notFound().build());
     }
 

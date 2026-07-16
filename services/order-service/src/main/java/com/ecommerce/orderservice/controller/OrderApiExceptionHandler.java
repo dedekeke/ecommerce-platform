@@ -4,6 +4,7 @@ import com.ecommerce.orderservice.exception.ConcurrentCheckoutException;
 import com.ecommerce.orderservice.exception.EmptyCartException;
 import com.ecommerce.orderservice.exception.GuestCheckoutAuthenticationException;
 import com.ecommerce.orderservice.exception.InvalidOrderStatusTransitionException;
+import com.ecommerce.orderservice.exception.OrderNotFoundException;
 import com.ecommerce.orderservice.exception.UserMismatchException;
 import com.ecommerce.orderservice.saga.OrderCreationSaga;
 import lombok.extern.slf4j.Slf4j;
@@ -95,6 +96,20 @@ public class OrderApiExceptionHandler {
         log.error("Order creation saga failed: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
             .body(errorBody(HttpStatus.BAD_GATEWAY, ex.getMessage()));
+    }
+
+    /**
+     * Order lookups that miss return 404. This is also the masked response for
+     * an opaque-id enumeration attempt: a non-admin requesting another user's
+     * valid order number is rejected with an identical 404 (see
+     * {@code OrderController.getOrderByNumber}), so "missing" and "not yours"
+     * are indistinguishable.
+     */
+    @ExceptionHandler(OrderNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleOrderNotFound(OrderNotFoundException ex) {
+        log.debug("Order not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(errorBody(HttpStatus.NOT_FOUND, ex.getMessage()));
     }
 
     private Map<String, Object> errorBody(HttpStatus status, String message) {

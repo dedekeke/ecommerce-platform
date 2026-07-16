@@ -3,6 +3,7 @@ package com.ecommerce.orderservice.controller;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
 import com.ecommerce.orderservice.dto.CheckoutResponse;
+import com.ecommerce.orderservice.exception.OrderNotFoundException;
 import com.ecommerce.orderservice.service.CheckoutService;
 import com.ecommerce.orderservice.service.OrderService;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -252,12 +254,29 @@ class OrderControllerJwtIdentityTest {
     }
 
     @Test
-    void should_return403_when_getOrderByNumber_ownedByAnotherUser() throws Exception {
+    void should_return404_when_getOrderByNumber_ownedByAnotherUser() throws Exception {
+        // Enumeration guard: a non-admin requesting another user's valid order
+        // number must get the SAME 404 (identical message) as a missing order,
+        // so 404-vs-403 can't confirm the number exists.
         when(orderService.getOrderByNumber("ORD-1")).thenReturn(orderOwnedBy(USER_B));
 
         mockMvc.perform(get("/api/orders/number/ORD-1")
                         .with(jwt().jwt(j -> j.subject(USER_A))))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Order not found: ORD-1"));
+    }
+
+    @Test
+    void should_return404_when_getOrderByNumber_missing() throws Exception {
+        // Genuine miss: identical 404 body to the not-yours case above, so the
+        // two are indistinguishable to a non-admin caller.
+        when(orderService.getOrderByNumber("ORD-1"))
+                .thenThrow(new OrderNotFoundException("Order not found: ORD-1"));
+
+        mockMvc.perform(get("/api/orders/number/ORD-1")
+                        .with(jwt().jwt(j -> j.subject(USER_A))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Order not found: ORD-1"));
     }
 
     @Test
