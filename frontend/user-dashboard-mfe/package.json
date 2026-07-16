@@ -28,6 +28,7 @@
     "@angular/platform-browser-dynamic": "^18.2.0",
     "@angular/router": "^18.2.0",
     "@softarc/native-federation-node": "^2.0.10",
+    "@stripe/stripe-js": "^5.10.0",
     "es-module-shims": "^1.5.12",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",

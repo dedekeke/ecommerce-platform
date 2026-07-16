@@ -34,6 +34,11 @@ export const routes: Routes = [
       import('./pages/wishlist/wishlist.page').then((m) => m.WishlistPage),
   },
   {
+    path: 'payment-methods',
+    loadComponent: () =>
+      import('./pages/payment-methods/payment-methods.page').then((m) => m.PaymentMethodsPage),
+  },
+  {
     path: '**',
     redirectTo: '',
   },

@@ -1,0 +1,145 @@
+.payment-methods-page {
+  padding: 40px 24px;
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+  }
+
+  &__title {
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: #0a0a0a;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+
+  &__add-panel {
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #e4e4e7;
+    padding: 32px;
+    margin-bottom: 32px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+
+  &__add-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #0a0a0a;
+    margin: 0 0 24px;
+  }
+
+  &__add-error {
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    margin: 0 0 16px;
+  }
+
+  &__add-loading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #71717a;
+    font-size: 0.875rem;
+    padding: 24px 0;
+  }
+
+  &__card-element {
+    min-height: 220px;
+    margin: 8px 0 24px;
+  }
+
+  &__add-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  &__error-state {
+    text-align: center;
+    padding: 64px 24px;
+    background: #fafafa;
+    border-radius: 16px;
+    border: 1px dashed #d4d4d8;
+    color: #52525b;
+
+    p {
+      font-size: 1.125rem;
+      margin: 0 0 20px;
+    }
+  }
+
+  &__empty {
+    text-align: center;
+    padding: 64px 24px;
+    background: #fafafa;
+    border-radius: 16px;
+    border: 1px dashed #d4d4d8;
+    color: #71717a;
+    font-size: 1.125rem;
+  }
+
+  &__empty-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: #a1a1aa;
+    margin-bottom: 12px;
+  }
+}
+
+.payment-methods-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (min-width: 1024px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.payment-methods-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  &__card {
+    height: 96px;
+    border-radius: 16px;
+    background: linear-gradient(90deg, #f4f4f5 25%, #e4e4e7 37%, #f4f4f5 63%);
+    background-size: 400% 100%;
+    animation: payment-methods-shimmer 1.4s ease infinite;
+  }
+}
+
+@keyframes payment-methods-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .payment-methods-skeleton__card {
+    animation: none;
+  }
+}
+
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+}

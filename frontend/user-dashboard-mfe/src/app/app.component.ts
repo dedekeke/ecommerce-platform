@@ -79,6 +79,15 @@ import { MatListModule } from '@angular/material/list';
             <mat-icon matListItemIcon>favorite</mat-icon>
             <span matListItemTitle>Wishlist</span>
           </a>
+          <a
+            mat-list-item
+            routerLink="/payment-methods"
+            routerLinkActive="active-link"
+            aria-label="Payment methods"
+          >
+            <mat-icon matListItemIcon>credit_card</mat-icon>
+            <span matListItemTitle>Payment Methods</span>
+          </a>
         </mat-nav-list>
       </mat-sidenav>
 
