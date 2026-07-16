@@ -44,6 +44,12 @@ public interface OrderRepository extends JpaRepository<Order, String> {
     List<Order> findByStatus(OrderStatus status);
 
     /**
+     * Find orders by status, paginated. Backs the admin order list's optional
+     * status filter; sort order is supplied via the {@link Pageable}.
+     */
+    Page<Order> findByStatus(OrderStatus status, Pageable pageable);
+
+    /**
      * Find orders created between dates
      */
     @Query("SELECT o FROM Order o WHERE o.createdAt BETWEEN :startDate AND :endDate")
