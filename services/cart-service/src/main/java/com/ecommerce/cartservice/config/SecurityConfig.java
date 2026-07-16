@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -40,6 +41,17 @@ public class SecurityConfig {
                             // Public endpoints
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                             .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
+                            // Anonymous (guest) cart — no JWT. A guest carries no bearer
+                            // token, so these EXACT method+path pairs must be public;
+                            // order-service's guest checkout derives the same cart owner
+                            // from the email. Scoped tightly to the /api/cart/guest/**
+                            // subtree so every authenticated cart path (and /api/cart/merge)
+                            // still falls through to authenticated() below. Mirrors
+                            // order-service's POST /api/orders/guest permitAll.
+                            .requestMatchers(HttpMethod.GET, "/api/cart/guest").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/api/cart/guest/items").permitAll()
+                            .requestMatchers(HttpMethod.PUT, "/api/cart/guest/items/*").permitAll()
+                            .requestMatchers(HttpMethod.DELETE, "/api/cart/guest/items/*", "/api/cart/guest/clear").permitAll()
                             // Protected endpoints
                             .requestMatchers("/api/**").authenticated()
                             .anyRequest().authenticated()

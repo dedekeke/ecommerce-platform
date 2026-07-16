@@ -97,6 +97,20 @@ public class CartController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/merge")
+    @Operation(summary = "Merge the caller's guest cart on login",
+            description = "Fold the anonymous cart the shopper built under their OWN verified email "
+                    + "into their authenticated cart. The guest email is resolved server-side from the "
+                    + "caller's verified account email (never supplied by the client), so a caller can "
+                    + "only ever claim their own guest cart. Idempotent and safe to call on every login.")
+    public ResponseEntity<CartResponse> mergeGuestCart(@AuthenticationPrincipal Jwt jwt) {
+        String userId = jwt.getSubject();
+        log.debug("POST /api/cart/merge - userId: {}", userId);
+
+        CartResponse cart = cartService.mergeGuestCartIntoUser(userId);
+        return ResponseEntity.ok(cart);
+    }
+
     // Testing endpoints that accept userId as path parameter
 
     @GetMapping("/{userId}")

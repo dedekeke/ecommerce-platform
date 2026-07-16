@@ -203,6 +203,49 @@ spring:
                 redis-rate-limiter.burstCapacity: 400
                 redis-rate-limiter.requestedTokens: 1
 
+        # ---------- Guest Cart (cart-service) ----------
+        # Anonymous cart operations — the companion to guest checkout. MUST
+        # precede the cart-service route below so this more specific route wins
+        # first-match (Spring Cloud Gateway matches in declared order); otherwise
+        # /api/cart/guest/** would be swallowed by /api/cart/**, inheriting the
+        # standard (looser) cart rate limit.
+        #
+        # Rate-limited PER CLIENT IP (key-resolver: ipKeyResolver) because the
+        # caller is anonymous — no principal to key on — and this is the cart
+        # surface reachable without a JWT, so it is the abuse vector. The ceiling
+        # is deliberately TIGHT (5/10, mirroring the guest-checkout route) so
+        # automated cart-spam can't create unbounded guest carts, while a real
+        # shopper (a few adds/updates) is unaffected. Env-overridable.
+        - id: cart-guest
+          uri: lb://cart-service
+          predicates:
+            - Path=/api/cart/guest/**,/api/cart/guest
+            - Method=GET,POST,PUT,DELETE
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_GUEST_CART_RATE:5}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_GUEST_CART_BURST:10}
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/cart/guest>; rel="successor-version"
+        - id: cart-guest-v1
+          uri: lb://cart-service
+          predicates:
+            - Path=/api/v1/cart/guest/**,/api/v1/cart/guest
+            - Method=GET,POST,PUT,DELETE
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_GUEST_CART_RATE:5}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_GUEST_CART_BURST:10}
+                redis-rate-limiter.requestedTokens: 1
+
         # ---------- Cart Service ----------
         - id: cart-service
           uri: lb://cart-service

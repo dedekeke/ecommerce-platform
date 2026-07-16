@@ -112,6 +112,26 @@ public class SecurityConfig {
                     .pathMatchers(HttpMethod.POST,
                         "/api/orders/guest", "/api/v1/orders/guest").permitAll()
 
+                    // Guest cart — the companion to guest checkout. An anonymous
+                    // shopper builds a cart without a JWT (identified by the
+                    // X-Guest-Email header, from which cart-service derives the
+                    // owner id). Only the guest-cart method+path pairs are opened,
+                    // on both versions (the gateway authorizes the ORIGINAL request
+                    // path before the v1 RewritePath runs — Lore 2b8c4227). Every
+                    // OTHER cart path — GET/POST/PUT/DELETE /api/cart, /api/cart/items,
+                    // and the authenticated POST /api/cart/merge — falls through to
+                    // anyExchange().authenticated(), so the authenticated cart is
+                    // untouched. Scoped tightly under the /guest subtree.
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/cart/guest", "/api/v1/cart/guest").permitAll()
+                    .pathMatchers(HttpMethod.POST,
+                        "/api/cart/guest/items", "/api/v1/cart/guest/items").permitAll()
+                    .pathMatchers(HttpMethod.PUT,
+                        "/api/cart/guest/items/**", "/api/v1/cart/guest/items/**").permitAll()
+                    .pathMatchers(HttpMethod.DELETE,
+                        "/api/cart/guest/items/**", "/api/cart/guest/clear",
+                        "/api/v1/cart/guest/items/**", "/api/v1/cart/guest/clear").permitAll()
+
                     // Admin endpoints require admin role
                     .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
                     // Catalog writes require admin on BOTH versions. Any write method

@@ -251,6 +251,86 @@ class SecurityPolicyDriftTest {
                 .isTrue();
     }
 
+    // --- Guest cart: the anonymous-cart routes (companion to guest checkout)
+    //     must be public on BOTH versions for exactly their method+path pairs
+    //     (an anonymous shopper carries no JWT; cart-service derives the cart
+    //     owner from the X-Guest-Email header), while every authenticated cart
+    //     path — including POST /api/cart/merge — stays authenticated. ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/cart/guest", "/api/v1/cart/guest"})
+    void should_permitUnauthenticatedGet_when_guestCartRoot(String path) {
+        assertThat(runGet(path).reachedBackend())
+                .as("GET %s must be public for anonymous guests", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/cart/guest/items", "/api/v1/cart/guest/items"})
+    void should_permitUnauthenticatedPost_when_guestCartItems(String path) {
+        assertThat(runPost(path).reachedBackend())
+                .as("POST %s must be public for anonymous guests", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/cart/guest/items/42", "/api/v1/cart/guest/items/42"})
+    void should_permitUnauthenticatedPut_when_guestCartItem(String path) {
+        assertThat(run(MockServerHttpRequest.put(path)).reachedBackend())
+                .as("PUT %s must be public for anonymous guests", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/cart/guest/items/42", "/api/v1/cart/guest/items/42",
+            "/api/cart/guest/clear", "/api/v1/cart/guest/clear"})
+    void should_permitUnauthenticatedDelete_when_guestCartWrite(String path) {
+        assertThat(run(MockServerHttpRequest.delete(path)).reachedBackend())
+                .as("DELETE %s must be public for anonymous guests", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/cart", "/api/v1/cart",
+            "/api/cart/items", "/api/v1/cart/items",
+            "/api/cart/merge", "/api/v1/cart/merge",   // authenticated claim endpoint
+            "/api/carts"})
+    void should_denyUnauthenticatedGet_when_authenticatedCartPath(String path) {
+        // The guest exemption must NOT leak to the authenticated cart surface.
+        assertThat(runGet(path).denied401())
+                .as("GET %s must remain authenticated", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/cart/items", "/api/v1/cart/items",
+            "/api/cart/merge", "/api/v1/cart/merge",
+            "/api/cart/guest/merge"})              // sub-path is not an exempt pair
+    void should_denyUnauthenticatedPost_when_authenticatedCartPath(String path) {
+        assertThat(runPost(path).denied401())
+                .as("POST %s must remain authenticated", path)
+                .isTrue();
+    }
+
+    @Test
+    void should_denyUnauthenticatedPost_when_guestCartRootMethodMismatch() {
+        // POST is only exempt on /guest/items, not on the /guest root (GET only).
+        assertThat(runPost("/api/cart/guest").denied401())
+                .as("POST /api/cart/guest must not inherit the GET-only exemption")
+                .isTrue();
+    }
+
+    @Test
+    void should_denyUnauthenticatedPatch_when_guestCartPath() {
+        // Only GET/POST/PUT/DELETE are exempt; PATCH under /guest stays authenticated.
+        assertThat(run(MockServerHttpRequest.patch("/api/cart/guest/items/42")).denied401())
+                .as("PATCH under /api/cart/guest must stay authenticated")
+                .isTrue();
+    }
+
     // --- Authenticated matrix: catalog writes require SCOPE_admin on both versions.
     //     A non-admin JWT must be FORBIDDEN (403); an admin JWT must pass through.
     //     PATCH is the red-first case: without a PATCH matcher it fell through to
