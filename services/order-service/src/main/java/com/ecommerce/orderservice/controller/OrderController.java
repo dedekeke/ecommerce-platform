@@ -5,6 +5,7 @@ import com.ecommerce.orderservice.domain.enums.OrderStatus;
 import com.ecommerce.orderservice.dto.CheckoutRequest;
 import com.ecommerce.orderservice.dto.CheckoutResponse;
 import com.ecommerce.orderservice.dto.GuestCheckoutRequest;
+import com.ecommerce.orderservice.dto.OrderResponse;
 import com.ecommerce.orderservice.dto.PageResponse;
 import com.ecommerce.orderservice.security.UserIdentityResolver;
 import com.ecommerce.orderservice.service.CheckoutService;
@@ -76,7 +77,7 @@ public class OrderController {
 
     @GetMapping("/{orderId}")
     @Operation(summary = "Get order by ID")
-    public ResponseEntity<Order> getOrder(
+    public ResponseEntity<OrderResponse> getOrder(
         @PathVariable String orderId,
         @RequestHeader(value = "X-User-Id", required = false) String userId,
         @AuthenticationPrincipal Jwt jwt
@@ -84,12 +85,12 @@ public class OrderController {
         String resolvedUserId = userIdentityResolver.resolveUserId(userId, jwt);
         log.info("REST: Get order {} for user {}", orderId, resolvedUserId);
         Order order = orderService.getOrder(orderId, resolvedUserId);
-        return ResponseEntity.ok(order);
+        return ResponseEntity.ok(OrderResponse.from(order));
     }
 
     @GetMapping("/number/{orderNumber}")
     @Operation(summary = "Get order by order number")
-    public ResponseEntity<Order> getOrderByNumber(
+    public ResponseEntity<OrderResponse> getOrderByNumber(
         @PathVariable String orderNumber,
         @AuthenticationPrincipal Jwt jwt
     ) {
@@ -97,12 +98,12 @@ public class OrderController {
         Order order = orderService.getOrderByNumber(orderNumber);
         // IDOR guard: the order number is guessable, so verify ownership after lookup.
         userIdentityResolver.assertCanActFor(order.getUserId(), jwt);
-        return ResponseEntity.ok(order);
+        return ResponseEntity.ok(OrderResponse.from(order));
     }
 
     @GetMapping("/user/{userId}")
     @Operation(summary = "Get all orders for a user")
-    public ResponseEntity<PageResponse<Order>> getUserOrders(
+    public ResponseEntity<PageResponse<OrderResponse>> getUserOrders(
         @PathVariable String userId,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "10") int size,
@@ -111,24 +112,24 @@ public class OrderController {
         String resolvedUserId = userIdentityResolver.resolveUserId(userId, jwt);
         log.info("REST: Get orders for user {} (page: {}, size: {})", resolvedUserId, page, size);
         Page<Order> orders = orderService.getUserOrders(resolvedUserId, PageRequest.of(page, size));
-        return ResponseEntity.ok(PageResponse.from(orders));
+        return ResponseEntity.ok(PageResponse.from(orders.map(OrderResponse::from)));
     }
 
     @PutMapping("/{orderId}/status")
     @Operation(summary = "Update order status (admin only)")
     @PreAuthorize("hasAuthority('SCOPE_admin')")
-    public ResponseEntity<Order> updateOrderStatus(
+    public ResponseEntity<OrderResponse> updateOrderStatus(
         @PathVariable String orderId,
         @RequestParam OrderStatus status
     ) {
         log.info("REST: Update order {} status to {}", orderId, status);
         Order order = orderService.updateOrderStatus(orderId, status);
-        return ResponseEntity.ok(order);
+        return ResponseEntity.ok(OrderResponse.from(order));
     }
 
     @PostMapping("/{orderId}/cancel")
     @Operation(summary = "Cancel an order")
-    public ResponseEntity<Order> cancelOrder(
+    public ResponseEntity<OrderResponse> cancelOrder(
         @PathVariable String orderId,
         @RequestHeader(value = "X-User-Id", required = false) String userId,
         @RequestParam(required = false) String reason,
@@ -137,6 +138,6 @@ public class OrderController {
         String resolvedUserId = userIdentityResolver.resolveUserId(userId, jwt);
         log.info("REST: Cancel order {} for user {}", orderId, resolvedUserId);
         Order order = orderService.cancelOrder(orderId, resolvedUserId, reason);
-        return ResponseEntity.ok(order);
+        return ResponseEntity.ok(OrderResponse.from(order));
     }
 }

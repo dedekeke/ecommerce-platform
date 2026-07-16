@@ -81,8 +81,11 @@ class OrderControllerPageSerializationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
                 .andExpect(jsonPath("$.content.length()").value(1))
-                .andExpect(jsonPath("$.content[0].id").value("order-123"))
-                .andExpect(jsonPath("$.content[0].userId").value(USER_A))
+                .andExpect(jsonPath("$.content[0].orderId").value("order-123"))
+                .andExpect(jsonPath("$.content[0].orderNumber").value("ORD-1"))
+                // Ownership/PII fields must not leak through the paged read contract.
+                .andExpect(jsonPath("$.content[0].userId").doesNotExist())
+                .andExpect(jsonPath("$.content[0].id").doesNotExist())
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.totalPages").value(1))
                 .andExpect(jsonPath("$.size").value(10))
