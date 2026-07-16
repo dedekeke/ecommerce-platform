@@ -1,12 +1,12 @@
 package com.ecommerce.gateway.filter;
 
+import com.ecommerce.gateway.config.ClientIpResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
@@ -39,6 +39,14 @@ public class IpWhitelistFilter implements WebFilter, Ordered {
 
     private static final AntPathMatcher pathMatcher = new AntPathMatcher();
 
+    /**
+     * Shared, spoofing-resistant client-IP resolver. Replaces the previous
+     * private {@code getClientIp} that blindly trusted the first
+     * {@code X-Forwarded-For} entry — which let any direct caller forge a
+     * whitelisted source and slip past this admin-path guard.
+     */
+    private final ClientIpResolver clientIpResolver;
+
     @Value("${security.ip-whitelist.enabled:true}")
     private boolean whitelistEnabled;
 
@@ -51,6 +59,10 @@ public class IpWhitelistFilter implements WebFilter, Ordered {
     private Set<String> whitelistedIps;
     private List<CidrRange> whitelistedRanges;
     private List<String> protectedPathPatterns;
+
+    public IpWhitelistFilter(ClientIpResolver clientIpResolver) {
+        this.clientIpResolver = clientIpResolver;
+    }
 
     @PostConstruct
     public void init() {
@@ -96,7 +108,7 @@ public class IpWhitelistFilter implements WebFilter, Ordered {
             return chain.filter(exchange);
         }
 
-        String clientIp = getClientIp(exchange.getRequest());
+        String clientIp = clientIpResolver.resolve(exchange);
 
         if (isWhitelisted(clientIp)) {
             log.debug("IP {} is whitelisted, allowing access to {}", clientIp, path);
@@ -128,19 +140,6 @@ public class IpWhitelistFilter implements WebFilter, Ordered {
         }
 
         return false;
-    }
-
-    private String getClientIp(ServerHttpRequest request) {
-        String xForwardedFor = request.getHeaders().getFirst("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        String xRealIp = request.getHeaders().getFirst("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty()) {
-            return xRealIp;
-        }
-        var remoteAddress = request.getRemoteAddress();
-        return remoteAddress != null ? remoteAddress.getAddress().getHostAddress() : "unknown";
     }
 
     private Mono<Void> handleForbidden(ServerWebExchange exchange) {
