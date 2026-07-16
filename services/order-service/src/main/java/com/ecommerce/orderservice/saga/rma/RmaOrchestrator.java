@@ -9,6 +9,8 @@ import com.ecommerce.orderservice.saga.refund.RefundSagaState;
 import com.ecommerce.orderservice.saga.refund.RefundSagaStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -350,6 +352,20 @@ public class RmaOrchestrator {
     public List<Return> findByUser(String userId) {
         // Single JOIN FETCH query — avoids the N+1 the old EAGER mapping caused.
         return returnRepository.findByUserIdWithLines(userId);
+    }
+
+    /**
+     * Admin listing of returns, optionally filtered by status. Runs in a
+     * read-only tx so the {@link ReturnSummary} mapping happens with the
+     * session open; the summary reads only scalar columns, never the LAZY
+     * {@code lines}, so no {@code LazyInitializationException} can occur.
+     */
+    @Transactional(readOnly = true)
+    public Page<ReturnSummary> listReturns(ReturnStatus status, Pageable pageable) {
+        Page<Return> page = status == null
+            ? returnRepository.findAll(pageable)
+            : returnRepository.findByStatus(status, pageable);
+        return page.map(ReturnSummary::from);
     }
 
     /**

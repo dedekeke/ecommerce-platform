@@ -1,5 +1,7 @@
 package com.ecommerce.orderservice.saga.refund;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -13,4 +15,6 @@ public interface RefundSagaRepository extends JpaRepository<RefundSagaState, Str
     Optional<RefundSagaState> findByOrderIdAndStatusIn(String orderId, List<RefundSagaStatus> statuses);
 
     List<RefundSagaState> findByStatusInAndUpdatedAtBefore(List<RefundSagaStatus> statuses, LocalDateTime cutoff);
+
+    Page<RefundSagaState> findByStatus(RefundSagaStatus status, Pageable pageable);
 }

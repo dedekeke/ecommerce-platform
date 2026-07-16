@@ -125,6 +125,66 @@ class RefundControllerTest {
             .andExpect(status().is4xxClientError());
     }
 
+    // ---------- GET /api/orders/refunds (admin list) ----------
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_admin")
+    void listRefunds_admin_returnsPageResponse() throws Exception {
+        RefundSagaState state = RefundSagaState.builder()
+            .id("saga-1").orderId("order-1").status(RefundSagaStatus.COMPLETED).build();
+        when(orchestrator.listSagas(any(), any())).thenReturn(
+            new org.springframework.data.domain.PageImpl<>(java.util.List.of(state),
+                org.springframework.data.domain.PageRequest.of(0, 20), 1));
+
+        mockMvc.perform(get("/api/orders/refunds"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content[0].id").value("saga-1"))
+            .andExpect(jsonPath("$.totalElements").value(1))
+            .andExpect(jsonPath("$.number").value(0));
+    }
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_admin")
+    void listRefunds_statusFilter_passedWithCreatedAtDescSort() throws Exception {
+        when(orchestrator.listSagas(any(), any())).thenReturn(
+            new org.springframework.data.domain.PageImpl<>(java.util.List.of(),
+                org.springframework.data.domain.PageRequest.of(0, 5), 0));
+
+        mockMvc.perform(get("/api/orders/refunds?status=COMPLETED&page=0&size=5"))
+            .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+            org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(orchestrator).listSagas(eq(RefundSagaStatus.COMPLETED), captor.capture());
+        org.springframework.data.domain.Pageable pageable = captor.getValue();
+        org.assertj.core.api.Assertions.assertThat(pageable.getPageSize()).isEqualTo(5);
+        org.assertj.core.api.Assertions.assertThat(pageable.getSort().getOrderFor("createdAt"))
+            .isNotNull()
+            .satisfies(o -> org.assertj.core.api.Assertions.assertThat(o.isDescending()).isTrue());
+    }
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_user")
+    void listRefunds_nonAdmin_returns403() throws Exception {
+        mockMvc.perform(get("/api/orders/refunds"))
+            .andExpect(status().isForbidden());
+        verify(orchestrator, never()).listSagas(any(), any());
+    }
+
+    @Test
+    void listRefunds_unauthenticated_isDenied() throws Exception {
+        mockMvc.perform(get("/api/orders/refunds"))
+            .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_admin")
+    void listRefunds_invalidStatus_returns400() throws Exception {
+        mockMvc.perform(get("/api/orders/refunds?status=NOPE"))
+            .andExpect(status().isBadRequest());
+        verify(orchestrator, never()).listSagas(any(), any());
+    }
+
     /**
      * Provide a stub JwtDecoder so the OAuth2 resource server can wire even
      * though we never actually validate a real token. Also activates

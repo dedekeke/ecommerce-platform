@@ -197,4 +197,36 @@ class RefundOrchestratorTest {
             assertThat(e.getMessage()).contains("state");
         }
     }
+
+    // ---------- listSagas (admin listing) ----------
+
+    @Test
+    void listSagas_should_useFindAll_whenStatusNull() {
+        org.springframework.data.domain.Pageable pageable =
+            org.springframework.data.domain.PageRequest.of(0, 20);
+        when(sagaRepository.findAll(pageable)).thenReturn(
+            new org.springframework.data.domain.PageImpl<>(
+                java.util.List.of(RefundSagaState.builder().id("s1").build()), pageable, 1));
+
+        org.springframework.data.domain.Page<RefundSagaState> result =
+            orchestrator.listSagas(null, pageable);
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent().get(0).getId()).isEqualTo("s1");
+        verify(sagaRepository).findAll(pageable);
+        verify(sagaRepository, never()).findByStatus(any(), any());
+    }
+
+    @Test
+    void listSagas_should_useFindByStatus_whenStatusProvided() {
+        org.springframework.data.domain.Pageable pageable =
+            org.springframework.data.domain.PageRequest.of(0, 20);
+        when(sagaRepository.findByStatus(RefundSagaStatus.COMPLETED, pageable)).thenReturn(
+            new org.springframework.data.domain.PageImpl<>(java.util.List.of(), pageable, 0));
+
+        orchestrator.listSagas(RefundSagaStatus.COMPLETED, pageable);
+
+        verify(sagaRepository).findByStatus(RefundSagaStatus.COMPLETED, pageable);
+        verify(sagaRepository, never()).findAll(any(org.springframework.data.domain.Pageable.class));
+    }
 }

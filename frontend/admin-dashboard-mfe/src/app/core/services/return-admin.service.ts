@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClientService } from './api-client.service';
-import { InspectReturnPayload, ReturnRequest } from '../models/return.model';
+import { InspectReturnPayload, PagedReturns, ReturnFilterParams, ReturnRequest } from '../models/return.model';
 
 /**
  * Calls order-service's saga/rma RmaController (returns saga) via the
@@ -26,5 +26,14 @@ export class ReturnAdminService {
 
   inspect(rmaId: string, payload: InspectReturnPayload): Observable<ReturnRequest> {
     return this.api.post<ReturnRequest>(`/returns/${rmaId}/inspect`, payload);
+  }
+
+  getReturns(params: ReturnFilterParams): Observable<PagedReturns> {
+    const queryParams: Record<string, string | number | boolean> = {
+      page: params.page,
+      size: params.size,
+    };
+    if (params.status) queryParams['status'] = params.status;
+    return this.api.get<PagedReturns>('/returns', queryParams);
   }
 }

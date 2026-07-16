@@ -4,7 +4,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 import { ReturnsAdminPage } from './returns-admin.page';
 import { ReturnAdminService } from '../../core/services/return-admin.service';
-import { ReturnRequest } from '../../core/models/return.model';
+import { PagedReturns, ReturnRequest, ReturnSummary } from '../../core/models/return.model';
 
 const mockReturn: ReturnRequest = {
   id: 'rma-1',
@@ -20,6 +20,18 @@ const mockReturn: ReturnRequest = {
   updatedAt: '2024-01-01T00:00:00Z',
 };
 
+const mockSummary: ReturnSummary = {
+  id: 'rma-1',
+  rmaNumber: 'RMA-ABC123',
+  orderId: 'ord-1',
+  userId: 'user-1',
+  status: 'AWAITING_SHIPMENT',
+  requestedAt: '2024-01-01T00:00:00Z',
+  updatedAt: '2024-01-01T00:00:00Z',
+};
+
+const emptyPaged: PagedReturns = { content: [], totalElements: 0, totalPages: 0, size: 20, number: 0 };
+
 function dialogSpy(result: unknown): jasmine.SpyObj<MatDialog> {
   const spy = jasmine.createSpyObj('MatDialog', ['open']);
   spy.open.and.returnValue({ afterClosed: () => of(result) });
@@ -33,8 +45,9 @@ describe('ReturnsAdminPage', () => {
   async function setup(dialog: jasmine.SpyObj<MatDialog> = dialogSpy(true)) {
     TestBed.resetTestingModule();
     returnServiceSpy = jasmine.createSpyObj('ReturnAdminService', [
-      'getReturnById', 'getReturnsByUser', 'markReceived', 'inspect',
+      'getReturnById', 'getReturnsByUser', 'markReceived', 'inspect', 'getReturns',
     ]);
+    returnServiceSpy.getReturns.and.returnValue(of(emptyPaged));
 
     await TestBed.configureTestingModule({
       imports: [ReturnsAdminPage, NoopAnimationsModule],
@@ -54,6 +67,27 @@ describe('ReturnsAdminPage', () => {
 
   it('should display the page heading', () => {
     expect(fixture.nativeElement.querySelector('h1').textContent.trim()).toBe('Returns / RMA');
+  });
+
+  it('should call getReturns on init', () => {
+    expect(returnServiceSpy.getReturns).toHaveBeenCalledWith({ page: 0, size: 20 });
+  });
+
+  it('should show the status filter dropdown', () => {
+    const filter = fixture.nativeElement.querySelector('[data-testid="return-status-filter"]');
+    expect(filter).toBeTruthy();
+  });
+
+  it('should call getReturns with status filter when onStatusFilter is invoked', () => {
+    fixture.componentInstance.onStatusFilter('AWAITING_SHIPMENT');
+    expect(returnServiceSpy.getReturns).toHaveBeenCalledWith(
+      jasmine.objectContaining({ status: 'AWAITING_SHIPMENT', page: 0 }),
+    );
+  });
+
+  it('should call getReturns with new page params when onPage is invoked', () => {
+    fixture.componentInstance.onPage({ pageIndex: 1, pageSize: 25, length: 100 });
+    expect(returnServiceSpy.getReturns).toHaveBeenCalledWith(jasmine.objectContaining({ page: 1, size: 25 }));
   });
 
   it('should show the empty state when no returns have been searched yet', () => {
@@ -112,6 +146,25 @@ describe('ReturnsAdminPage', () => {
     expect(error.textContent).toContain('Return not found: missing');
   });
 
+  it('should fetch the full return with lines via getReturnById and open the drawer on row click', () => {
+    returnServiceSpy.getReturnById.and.returnValue(of(mockReturn));
+
+    fixture.componentInstance.onRowClick(mockSummary as unknown as Record<string, unknown> & ReturnSummary);
+    fixture.detectChanges();
+
+    expect(returnServiceSpy.getReturnById).toHaveBeenCalledWith('rma-1');
+    expect(fixture.componentInstance.drawerOpen()).toBeTrue();
+    expect(fixture.componentInstance.selectedReturn()?.lines.length).toBe(1);
+  });
+
+  it('should show a snackbar-triggering error path when the row-click detail fetch fails', () => {
+    returnServiceSpy.getReturnById.and.returnValue(throwError(() => new Error('404')));
+
+    fixture.componentInstance.onRowClick(mockSummary as unknown as Record<string, unknown> & ReturnSummary);
+
+    expect(fixture.componentInstance.drawerOpen()).toBeFalse();
+  });
+
   it('should compute the return lines subtotal and total', () => {
     fixture.componentInstance.selectedReturn.set(mockReturn);
     expect(fixture.componentInstance.lineSubtotal(mockReturn.lines[0])).toBe(50);
@@ -126,6 +179,7 @@ describe('ReturnsAdminPage', () => {
 
     expect(returnServiceSpy.markReceived).toHaveBeenCalledWith('rma-1');
     expect(fixture.componentInstance.selectedReturn()?.status).toBe('RECEIVED');
+    expect(returnServiceSpy.getReturns).toHaveBeenCalledTimes(2);
   });
 
   it('should NOT mark received when the confirm dialog is dismissed', async () => {

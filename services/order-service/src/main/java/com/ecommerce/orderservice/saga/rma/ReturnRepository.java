@@ -1,5 +1,7 @@
 package com.ecommerce.orderservice.saga.rma;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,6 +17,8 @@ public interface ReturnRepository extends JpaRepository<Return, String> {
     Optional<Return> findByRmaNumber(String rmaNumber);
 
     List<Return> findByUserId(String userId);
+
+    Page<Return> findByStatus(ReturnStatus status, Pageable pageable);
 
     /**
      * Load a single return with its {@code lines} eagerly fetched in one query.

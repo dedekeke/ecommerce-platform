@@ -4,7 +4,7 @@ import { of, throwError } from 'rxjs';
 import { RefundsAdminPage } from './refunds-admin.page';
 import { RefundAdminService } from '../../core/services/refund-admin.service';
 import { OrderAdminService } from '../../core/services/order-admin.service';
-import { RefundSagaState } from '../../core/models/refund.model';
+import { PagedRefunds, RefundSagaState } from '../../core/models/refund.model';
 import { Order } from '../../core/models/order.model';
 
 const mockOrder: Order = {
@@ -35,14 +35,17 @@ const mockSaga: RefundSagaState = {
   updatedAt: '2024-01-01T00:00:00Z',
 };
 
+const emptyPaged: PagedRefunds = { content: [], totalElements: 0, totalPages: 0, size: 20, number: 0 };
+
 describe('RefundsAdminPage', () => {
   let fixture: ComponentFixture<RefundsAdminPage>;
   let refundServiceSpy: jasmine.SpyObj<RefundAdminService>;
   let orderServiceSpy: jasmine.SpyObj<OrderAdminService>;
 
   beforeEach(async () => {
-    refundServiceSpy = jasmine.createSpyObj('RefundAdminService', ['startRefund', 'getRefundSaga']);
+    refundServiceSpy = jasmine.createSpyObj('RefundAdminService', ['startRefund', 'getRefundSaga', 'getRefunds']);
     orderServiceSpy = jasmine.createSpyObj('OrderAdminService', ['getOrderById']);
+    refundServiceSpy.getRefunds.and.returnValue(of(emptyPaged));
 
     await TestBed.configureTestingModule({
       imports: [RefundsAdminPage, NoopAnimationsModule],
@@ -58,6 +61,25 @@ describe('RefundsAdminPage', () => {
 
   it('should display the page heading', () => {
     expect(fixture.nativeElement.querySelector('h1').textContent.trim()).toBe('Refunds');
+  });
+
+  it('should call getRefunds on init', () => {
+    expect(refundServiceSpy.getRefunds).toHaveBeenCalledWith({ page: 0, size: 20 });
+  });
+
+  it('should show the status filter dropdown', () => {
+    const filter = fixture.nativeElement.querySelector('[data-testid="refund-status-filter"]');
+    expect(filter).toBeTruthy();
+  });
+
+  it('should call getRefunds with status filter when onStatusFilter is invoked', () => {
+    fixture.componentInstance.onStatusFilter('COMPLETED');
+    expect(refundServiceSpy.getRefunds).toHaveBeenCalledWith(jasmine.objectContaining({ status: 'COMPLETED', page: 0 }));
+  });
+
+  it('should call getRefunds with new page params when onPage is invoked', () => {
+    fixture.componentInstance.onPage({ pageIndex: 1, pageSize: 25, length: 100 });
+    expect(refundServiceSpy.getRefunds).toHaveBeenCalledWith(jasmine.objectContaining({ page: 1, size: 25 }));
   });
 
   it('should show the empty state when no refund sagas exist yet', () => {
@@ -99,9 +121,10 @@ describe('RefundsAdminPage', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="initiate-refund-btn"]')).toBeFalsy();
   });
 
-  it('should initiate a refund for a refundable order and add it to the sagas table', () => {
+  it('should initiate a refund for a refundable order and reload the sagas table', () => {
     orderServiceSpy.getOrderById.and.returnValue(of(mockOrder));
     refundServiceSpy.startRefund.and.returnValue(of(mockSaga));
+    refundServiceSpy.getRefunds.and.returnValue(of({ ...emptyPaged, content: [mockSaga], totalElements: 1 }));
 
     fixture.componentInstance.lookupForm.setValue({ orderId: 'ord-1' });
     fixture.componentInstance.onLookupOrder();
@@ -126,7 +149,27 @@ describe('RefundsAdminPage', () => {
     expect(fixture.componentInstance.refundSagas().length).toBe(0);
   });
 
-  it('should look up a refund saga by id and open its detail on row click', () => {
+  it('should look up a refund saga by id and open its detail drawer', () => {
+    refundServiceSpy.getRefundSaga.and.returnValue(of(mockSaga));
+    fixture.componentInstance.sagaLookupForm.setValue({ sagaId: 'saga-1' });
+    fixture.componentInstance.onLookupSaga();
+    fixture.detectChanges();
+
+    expect(refundServiceSpy.getRefundSaga).toHaveBeenCalledWith('saga-1');
+    expect(fixture.componentInstance.drawerOpen()).toBeTrue();
+    expect(fixture.componentInstance.selectedSaga()?.id).toBe('saga-1');
+  });
+
+  it('should show an error snackbar path when the saga lookup fails', () => {
+    refundServiceSpy.getRefundSaga.and.returnValue(throwError(() => new Error('404')));
+    fixture.componentInstance.sagaLookupForm.setValue({ sagaId: 'missing' });
+    fixture.componentInstance.onLookupSaga();
+
+    expect(fixture.componentInstance.sagaLookupLoading()).toBeFalse();
+    expect(fixture.componentInstance.drawerOpen()).toBeFalse();
+  });
+
+  it('should open drawer and set selectedSaga on row click', () => {
     fixture.componentInstance.onRowClick(mockSaga as unknown as Record<string, unknown> & RefundSagaState);
     fixture.detectChanges();
 

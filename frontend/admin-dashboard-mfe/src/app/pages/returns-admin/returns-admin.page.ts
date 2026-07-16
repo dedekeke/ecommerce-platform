@@ -1,23 +1,30 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { PageEvent } from '@angular/material/paginator';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ReturnAdminService } from '../../core/services/return-admin.service';
-import { ReturnRequest, ReturnStatus } from '../../core/models/return.model';
+import { ReturnFilterParams, ReturnRequest, ReturnStatus, ReturnSummary } from '../../core/models/return.model';
 
-type ReturnRow = Record<string, unknown> & ReturnRequest;
+type ReturnRow = Record<string, unknown> & ReturnSummary;
 
 const RECEIVABLE_STATUSES: ReturnStatus[] = ['AWAITING_SHIPMENT'];
 const INSPECTABLE_STATUSES: ReturnStatus[] = ['RECEIVED', 'INSPECTING'];
+
+const RETURN_STATUSES: ReturnStatus[] = [
+  'REQUESTED', 'NOTIFIED', 'AWAITING_SHIPMENT', 'RECEIVED', 'INSPECTING',
+  'APPROVED', 'REJECTED', 'COMPLETED', 'CANCELLED', 'FAILED',
+];
 
 // Note: MatDialogModule is intentionally NOT imported here. It declares its
 // own `providers: [MatDialog]`, which — as a standalone-component import —
@@ -32,6 +39,7 @@ const INSPECTABLE_STATUSES: ReturnStatus[] = ['RECEIVED', 'INSPECTING'];
     ReactiveFormsModule,
     MatButtonModule,
     MatIconModule,
+    MatSelectModule,
     MatFormFieldModule,
     MatInputModule,
     MatSnackBarModule,
@@ -43,6 +51,16 @@ const INSPECTABLE_STATUSES: ReturnStatus[] = ['RECEIVED', 'INSPECTING'];
     <div class="returns-admin container">
       <header class="returns-admin__header">
         <h1>Returns / RMA</h1>
+
+        <mat-form-field appearance="outline" class="returns-admin__filter" subscriptSizing="dynamic">
+          <mat-label>Filter by Status</mat-label>
+          <mat-select [value]="statusFilter()" (valueChange)="onStatusFilter($event)" data-testid="return-status-filter">
+            <mat-option value="">All</mat-option>
+            @for (s of statuses; track s) {
+              <mat-option [value]="s">{{ s }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
       </header>
 
       <section class="returns-admin__search" aria-label="Search returns">
@@ -85,14 +103,15 @@ const INSPECTABLE_STATUSES: ReturnStatus[] = ['RECEIVED', 'INSPECTING'];
       <app-data-table
         [columns]="columns"
         [rows]="returns()"
-        [loading]="false"
-        [totalElements]="returns().length"
-        [pageSize]="returns().length || 10"
-        [pageIndex]="0"
+        [loading]="loading()"
+        [totalElements]="totalElements()"
+        [pageSize]="pageSize()"
+        [pageIndex]="pageIndex()"
         emptyMessage="No returns found. Search by user ID or RMA ID."
         ariaLabel="Returns table"
         [cellTemplate]="cellTmpl"
         [clickable]="true"
+        (pageChange)="onPage($event)"
         (rowClick)="onRowClick($event)"
       />
 
@@ -237,18 +256,25 @@ const INSPECTABLE_STATUSES: ReturnStatus[] = ['RECEIVED', 'INSPECTING'];
   `,
   styleUrl: './returns-admin.page.scss',
 })
-export class ReturnsAdminPage {
+export class ReturnsAdminPage implements OnInit {
   private readonly returnService = inject(ReturnAdminService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(FormBuilder);
 
   readonly returns = signal<ReturnRow[]>([]);
+  readonly loading = signal(true);
+  readonly totalElements = signal(0);
+  readonly pageSize = signal(20);
+  readonly pageIndex = signal(0);
+  readonly statusFilter = signal<ReturnStatus | ''>('');
   readonly searchLoading = signal(false);
   readonly searchError = signal<string | null>(null);
   readonly drawerOpen = signal(false);
   readonly selectedReturn = signal<ReturnRequest | null>(null);
   readonly processing = signal(false);
+
+  readonly statuses = RETURN_STATUSES;
 
   readonly columns: TableColumn[] = [
     { key: 'rmaNumber', label: 'RMA #' },
@@ -257,6 +283,8 @@ export class ReturnsAdminPage {
     { key: 'requestedAt', label: 'Requested' },
     { key: 'outcome', label: 'Outcome' },
   ];
+
+  private currentParams: ReturnFilterParams = { page: 0, size: 20 };
 
   userSearchForm = this.fb.group({
     userId: ['', Validators.required],
@@ -277,6 +305,41 @@ export class ReturnsAdminPage {
     return lines.reduce((sum, line) => sum + this.lineSubtotal(line), 0);
   });
 
+  ngOnInit(): void {
+    this.loadReturns();
+  }
+
+  private loadReturns(): void {
+    this.loading.set(true);
+    const status = this.statusFilter();
+    const params: ReturnFilterParams = {
+      ...this.currentParams,
+      ...(status ? { status } : {}),
+    };
+    this.returnService.getReturns(params).subscribe({
+      next: (paged) => {
+        this.returns.set(paged.content as ReturnRow[]);
+        this.totalElements.set(paged.totalElements);
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
+    });
+  }
+
+  onStatusFilter(status: ReturnStatus | ''): void {
+    this.statusFilter.set(status);
+    this.currentParams = { ...this.currentParams, page: 0 };
+    this.pageIndex.set(0);
+    this.loadReturns();
+  }
+
+  onPage(event: PageEvent): void {
+    this.currentParams = { ...this.currentParams, page: event.pageIndex, size: event.pageSize };
+    this.pageIndex.set(event.pageIndex);
+    this.pageSize.set(event.pageSize);
+    this.loadReturns();
+  }
+
   onSearchByUser(): void {
     if (this.userSearchForm.invalid) return;
     const userId = this.userSearchForm.getRawValue().userId!;
@@ -285,7 +348,7 @@ export class ReturnsAdminPage {
     this.returnService.getReturnsByUser(userId).subscribe({
       next: (results) => {
         this.searchLoading.set(false);
-        this.returns.set(results as ReturnRow[]);
+        this.returns.set(results as unknown as ReturnRow[]);
         if (results.length === 0) {
           this.searchError.set(`No returns found for user: ${userId}`);
         }
@@ -317,7 +380,12 @@ export class ReturnsAdminPage {
   }
 
   onRowClick(row: ReturnRow): void {
-    this.openDetail(row as unknown as ReturnRequest);
+    this.returnService.getReturnById(row.id).subscribe({
+      next: (full) => this.openDetail(full),
+      error: () => {
+        this.snackBar.open('Failed to load return details', 'Close', { duration: 3000 });
+      },
+    });
   }
 
   closeDrawer(): void {
@@ -341,9 +409,9 @@ export class ReturnsAdminPage {
       this.returnService.markReceived(rma.id).subscribe({
         next: (updated) => {
           this.processing.set(false);
-          this.upsertReturn(updated);
           this.selectedReturn.set(updated);
           this.snackBar.open('Return marked received', 'Close', { duration: 3000 });
+          this.loadReturns();
         },
         error: () => {
           this.processing.set(false);
@@ -377,9 +445,9 @@ export class ReturnsAdminPage {
         .subscribe({
           next: (updated) => {
             this.processing.set(false);
-            this.upsertReturn(updated);
             this.selectedReturn.set(updated);
             this.snackBar.open(`Return ${outcome.toLowerCase()}`, 'Close', { duration: 3000 });
+            this.loadReturns();
           },
           error: () => {
             this.processing.set(false);
@@ -429,10 +497,10 @@ export class ReturnsAdminPage {
     const idx = rows.findIndex((r) => r.id === rma.id);
     if (idx >= 0) {
       const next = [...rows];
-      next[idx] = rma as ReturnRow;
+      next[idx] = rma as unknown as ReturnRow;
       this.returns.set(next);
     } else {
-      this.returns.set([rma as ReturnRow, ...rows]);
+      this.returns.set([rma as unknown as ReturnRow, ...rows]);
     }
   }
 }

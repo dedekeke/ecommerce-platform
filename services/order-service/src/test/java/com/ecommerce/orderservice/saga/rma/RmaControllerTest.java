@@ -146,6 +146,84 @@ class RmaControllerTest {
             .andExpect(jsonPath("$.error").value("Return window has expired"));
     }
 
+    // ---------- GET /api/returns (admin list) ----------
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_admin")
+    @DisplayName("listReturns_admin_returnsPageResponse")
+    void listReturns_admin_returnsPageResponse() throws Exception {
+        ReturnSummary summary = new ReturnSummary("rma-1", "RMA-1", "ord-1", "user-1",
+            ReturnStatus.RECEIVED, null, null,
+            java.time.LocalDateTime.now(), java.time.LocalDateTime.now());
+        when(orchestrator.listReturns(any(), any())).thenReturn(
+            new org.springframework.data.domain.PageImpl<>(List.of(summary),
+                org.springframework.data.domain.PageRequest.of(0, 20), 1));
+
+        mockMvc.perform(get("/api/returns"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content[0].rmaNumber").value("RMA-1"))
+            .andExpect(jsonPath("$.content[0].status").value("RECEIVED"))
+            .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_admin")
+    @DisplayName("listReturns_statusFilter_passedWithRequestedAtDescSort")
+    void listReturns_statusFilter_passedToOrchestrator() throws Exception {
+        when(orchestrator.listReturns(any(), any())).thenReturn(
+            new org.springframework.data.domain.PageImpl<>(List.of(),
+                org.springframework.data.domain.PageRequest.of(0, 20), 0));
+
+        mockMvc.perform(get("/api/returns?status=AWAITING_SHIPMENT"))
+            .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+            org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(orchestrator).listReturns(eq(ReturnStatus.AWAITING_SHIPMENT), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(
+                captor.getValue().getSort().getOrderFor("requestedAt"))
+            .isNotNull()
+            .satisfies(o -> org.assertj.core.api.Assertions.assertThat(o.isDescending()).isTrue());
+    }
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_user")
+    @DisplayName("listReturns_nonAdmin_returns403")
+    void listReturns_nonAdmin_returns403() throws Exception {
+        mockMvc.perform(get("/api/returns"))
+            .andExpect(status().isForbidden());
+        verify(orchestrator, never()).listReturns(any(), any());
+    }
+
+    @Test
+    @DisplayName("listReturns_unauthenticated_isDenied")
+    void listReturns_unauthenticated_isDenied() throws Exception {
+        mockMvc.perform(get("/api/returns"))
+            .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    @WithMockUser(authorities = "SCOPE_admin")
+    @DisplayName("listReturns_collectionPathNotShadowedByDetailPath")
+    void listReturns_collectionPathNotShadowedByDetail() throws Exception {
+        // GET /api/returns resolves to the list handler...
+        when(orchestrator.listReturns(any(), any())).thenReturn(
+            new org.springframework.data.domain.PageImpl<>(List.of(),
+                org.springframework.data.domain.PageRequest.of(0, 20), 0));
+        mockMvc.perform(get("/api/returns")).andExpect(status().isOk());
+
+        // ...while GET /api/returns/{id} still resolves to the by-id handler.
+        when(orchestrator.findById("rma-9")).thenReturn(Optional.of(
+            Return.builder().id("rma-9").rmaNumber("RMA-9").userId("user-1")
+                .status(ReturnStatus.RECEIVED).build()));
+        mockMvc.perform(get("/api/returns/rma-9"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value("rma-9"));
+
+        verify(orchestrator).listReturns(any(), any());
+        verify(orchestrator).findById("rma-9");
+    }
+
     // ---------- GET /api/returns/{id} ----------
 
     @Test

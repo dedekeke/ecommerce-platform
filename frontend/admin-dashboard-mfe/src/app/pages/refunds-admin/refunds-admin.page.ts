@@ -1,22 +1,28 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { PageEvent } from '@angular/material/paginator';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { RefundAdminService } from '../../core/services/refund-admin.service';
 import { OrderAdminService } from '../../core/services/order-admin.service';
-import { RefundSagaState, RefundSagaStatus } from '../../core/models/refund.model';
+import { RefundFilterParams, RefundSagaState, RefundSagaStatus } from '../../core/models/refund.model';
 import { Order, OrderStatus } from '../../core/models/order.model';
 
 type RefundSagaRow = Record<string, unknown> & RefundSagaState;
 
 const NON_REFUNDABLE_STATUSES: OrderStatus[] = ['PENDING', 'CANCELLED', 'REFUNDED'];
+
+const REFUND_SAGA_STATUSES: RefundSagaStatus[] = [
+  'PENDING', 'IN_PROGRESS', 'COMPLETED', 'COMPENSATING', 'FAILED', 'COMPENSATED',
+];
 
 @Component({
   selector: 'app-refunds-admin',
@@ -26,6 +32,7 @@ const NON_REFUNDABLE_STATUSES: OrderStatus[] = ['PENDING', 'CANCELLED', 'REFUNDE
     ReactiveFormsModule,
     MatButtonModule,
     MatIconModule,
+    MatSelectModule,
     MatFormFieldModule,
     MatInputModule,
     MatSnackBarModule,
@@ -37,6 +44,16 @@ const NON_REFUNDABLE_STATUSES: OrderStatus[] = ['PENDING', 'CANCELLED', 'REFUNDE
     <div class="refunds-admin container">
       <header class="refunds-admin__header">
         <h1>Refunds</h1>
+
+        <mat-form-field appearance="outline" class="refunds-admin__filter" subscriptSizing="dynamic">
+          <mat-label>Filter by Status</mat-label>
+          <mat-select [value]="statusFilter()" (valueChange)="onStatusFilter($event)" data-testid="refund-status-filter">
+            <mat-option value="">All</mat-option>
+            @for (s of statuses; track s) {
+              <mat-option [value]="s">{{ s }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
       </header>
 
       <section class="refunds-admin__lookup" aria-label="Look up an order to refund">
@@ -131,14 +148,15 @@ const NON_REFUNDABLE_STATUSES: OrderStatus[] = ['PENDING', 'CANCELLED', 'REFUNDE
       <app-data-table
         [columns]="columns"
         [rows]="refundSagas()"
-        [loading]="false"
-        [totalElements]="refundSagas().length"
-        [pageSize]="refundSagas().length || 10"
-        [pageIndex]="0"
+        [loading]="loading()"
+        [totalElements]="totalElements()"
+        [pageSize]="pageSize()"
+        [pageIndex]="pageIndex()"
         emptyMessage="No refunds initiated yet."
         ariaLabel="Refund sagas table"
         [cellTemplate]="cellTmpl"
         [clickable]="true"
+        (pageChange)="onPage($event)"
         (rowClick)="onRowClick($event)"
       />
 
@@ -199,13 +217,18 @@ const NON_REFUNDABLE_STATUSES: OrderStatus[] = ['PENDING', 'CANCELLED', 'REFUNDE
   `,
   styleUrl: './refunds-admin.page.scss',
 })
-export class RefundsAdminPage {
+export class RefundsAdminPage implements OnInit {
   private readonly refundService = inject(RefundAdminService);
   private readonly orderService = inject(OrderAdminService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(FormBuilder);
 
   readonly refundSagas = signal<RefundSagaRow[]>([]);
+  readonly loading = signal(true);
+  readonly totalElements = signal(0);
+  readonly pageSize = signal(20);
+  readonly pageIndex = signal(0);
+  readonly statusFilter = signal<RefundSagaStatus | ''>('');
   readonly lookupLoading = signal(false);
   readonly lookupError = signal<string | null>(null);
   readonly lookedUpOrder = signal<Order | null>(null);
@@ -214,6 +237,8 @@ export class RefundsAdminPage {
   readonly drawerOpen = signal(false);
   readonly selectedSaga = signal<RefundSagaState | null>(null);
 
+  readonly statuses = REFUND_SAGA_STATUSES;
+
   readonly columns: TableColumn[] = [
     { key: 'orderId', label: 'Order ID' },
     { key: 'status', label: 'Status' },
@@ -221,6 +246,8 @@ export class RefundsAdminPage {
     { key: 'refundAmount', label: 'Amount' },
     { key: 'updatedAt', label: 'Updated' },
   ];
+
+  private currentParams: RefundFilterParams = { page: 0, size: 20 };
 
   lookupForm = this.fb.group({
     orderId: ['', Validators.required],
@@ -233,6 +260,41 @@ export class RefundsAdminPage {
   sagaLookupForm = this.fb.group({
     sagaId: ['', Validators.required],
   });
+
+  ngOnInit(): void {
+    this.loadRefunds();
+  }
+
+  private loadRefunds(): void {
+    this.loading.set(true);
+    const status = this.statusFilter();
+    const params: RefundFilterParams = {
+      ...this.currentParams,
+      ...(status ? { status } : {}),
+    };
+    this.refundService.getRefunds(params).subscribe({
+      next: (paged) => {
+        this.refundSagas.set(paged.content as RefundSagaRow[]);
+        this.totalElements.set(paged.totalElements);
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
+    });
+  }
+
+  onStatusFilter(status: RefundSagaStatus | ''): void {
+    this.statusFilter.set(status);
+    this.currentParams = { ...this.currentParams, page: 0 };
+    this.pageIndex.set(0);
+    this.loadRefunds();
+  }
+
+  onPage(event: PageEvent): void {
+    this.currentParams = { ...this.currentParams, page: event.pageIndex, size: event.pageSize };
+    this.pageIndex.set(event.pageIndex);
+    this.pageSize.set(event.pageSize);
+    this.loadRefunds();
+  }
 
   onLookupOrder(): void {
     if (this.lookupForm.invalid) return;
@@ -258,11 +320,11 @@ export class RefundsAdminPage {
     this.initiatingRefund.set(true);
     const reason = this.refundForm.getRawValue().reason || undefined;
     this.refundService.startRefund(order.id, { reason }).subscribe({
-      next: (saga) => {
+      next: () => {
         this.initiatingRefund.set(false);
-        this.upsertSaga(saga);
         this.refundForm.reset({ reason: '' });
         this.snackBar.open('Refund saga started', 'Close', { duration: 3000 });
+        this.loadRefunds();
       },
       error: () => {
         this.initiatingRefund.set(false);
@@ -278,8 +340,8 @@ export class RefundsAdminPage {
     this.refundService.getRefundSaga(sagaId).subscribe({
       next: (saga) => {
         this.sagaLookupLoading.set(false);
-        this.upsertSaga(saga);
         this.sagaLookupForm.reset({ sagaId: '' });
+        this.onRowClick(saga as unknown as RefundSagaRow);
       },
       error: () => {
         this.sagaLookupLoading.set(false);
@@ -293,7 +355,6 @@ export class RefundsAdminPage {
     this.refundService.getRefundSaga(sagaId).subscribe({
       next: (saga) => {
         this.sagaLookupLoading.set(false);
-        this.upsertSaga(saga);
         this.selectedSaga.set(saga);
       },
       error: () => {
@@ -315,18 +376,6 @@ export class RefundsAdminPage {
 
   isNonRefundable(status: OrderStatus): boolean {
     return NON_REFUNDABLE_STATUSES.includes(status);
-  }
-
-  private upsertSaga(saga: RefundSagaState): void {
-    const rows = this.refundSagas();
-    const idx = rows.findIndex((r) => r.id === saga.id);
-    if (idx >= 0) {
-      const next = [...rows];
-      next[idx] = saga as RefundSagaRow;
-      this.refundSagas.set(next);
-    } else {
-      this.refundSagas.set([saga as RefundSagaRow, ...rows]);
-    }
   }
 
   orderVariant(status: string): BadgeVariant {

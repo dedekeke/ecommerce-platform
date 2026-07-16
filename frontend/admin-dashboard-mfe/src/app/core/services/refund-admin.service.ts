@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClientService } from './api-client.service';
-import { RefundSagaState, StartRefundPayload } from '../models/refund.model';
+import { PagedRefunds, RefundFilterParams, RefundSagaState, StartRefundPayload } from '../models/refund.model';
 
 /**
  * Calls order-service's RefundController (orchestrated refund saga,
@@ -18,5 +18,14 @@ export class RefundAdminService {
 
   getRefundSaga(sagaId: string): Observable<RefundSagaState> {
     return this.api.get<RefundSagaState>(`/orders/refunds/${sagaId}`);
+  }
+
+  getRefunds(params: RefundFilterParams): Observable<PagedRefunds> {
+    const queryParams: Record<string, string | number | boolean> = {
+      page: params.page,
+      size: params.size,
+    };
+    if (params.status) queryParams['status'] = params.status;
+    return this.api.get<PagedRefunds>('/orders/refunds', queryParams);
   }
 }
