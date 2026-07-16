@@ -140,10 +140,13 @@ describe('createGuestOrder', () => {
 })
 
 describe('getOrder', () => {
-  it('should return an order by id', async () => {
+  it('should return an order by id, using the OrderResponse field names', async () => {
     const order = await getOrder('order-123')
-    expect(order.id).toBe('order-123')
+    expect(order.orderId).toBe('order-123')
     expect(order.orderNumber).toBe('ORD-20260429-001')
+    expect(order.total).toBe(168.97)
+    expect(order.shippingAddress?.street).toBe('123 Main St')
+    expect(order.items[0]).toMatchObject({ productId: 'prod-1', productName: 'Headphones', subtotal: 159.98 })
   })
 
   it('should throw on a 404 response', async () => {

@@ -80,7 +80,7 @@ export default function OrderConfirmation({ order }: OrderConfirmationProps) {
               Total
             </Typography>
             <Typography variant="body2" fontWeight={600}>
-              {`$${order.totalAmount.toFixed(2)}`}
+              {`$${order.total.toFixed(2)}`}
             </Typography>
           </Stack>
 
@@ -99,7 +99,7 @@ export default function OrderConfirmation({ order }: OrderConfirmationProps) {
         <Button
           variant="contained"
           component={RouterLink}
-          to={`/orders/${order.id}`}
+          to={`/orders/${order.orderId}`}
           size="large"
           sx={{
             fontWeight: 600,
