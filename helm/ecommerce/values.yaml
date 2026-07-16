@@ -46,6 +46,16 @@ api-gateway:
     port: 8080
   image:
     repository: api-gateway
+  # Trusted reverse-proxy CIDRs for X-Forwarded-For client-IP resolution
+  # (ClientIpResolver) — backs guest-endpoint rate limiting and the /api/admin IP
+  # whitelist. Deep-merges into the api-gateway subchart config map. The gateway
+  # Service is ClusterIP so the direct peer is always an in-cluster pod IP
+  # (RFC1918); the private-range default is broadly correct across CNIs but MUST
+  # be narrowed to this cluster's real ingress/pod CIDR — override here or per env
+  # (values-prod.yaml / --set api-gateway.config.GATEWAY_TRUSTED_PROXIES=<cidr>).
+  # See docs/SECURITY.md → "Trusted proxy configuration (deploy checklist)".
+  config:
+    GATEWAY_TRUSTED_PROXIES: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   replicaCount: 1
   resources:
     requests: { memory: "256Mi", cpu: "200m" }

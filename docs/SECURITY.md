@@ -231,6 +231,7 @@ Cross-Origin Resource Sharing is configured for frontend applications:
 | `SECURITY_FRAME_OPTIONS` | `DENY` | X-Frame-Options value |
 | `SECURITY_IP_WHITELIST_ENABLED` | `true` | Enable IP whitelisting |
 | `SECURITY_IP_WHITELIST` | `127.0.0.1,::1,...` | Comma-separated whitelist |
+| `GATEWAY_TRUSTED_PROXIES` | *(empty in dev; RFC1918 in k8s/helm)* | Comma-separated CIDRs whose `X-Forwarded-For` is trusted for client-IP resolution. **MUST be set to the real ingress/pod CIDR per environment** — see [Trusted proxy configuration (deploy checklist)](#trusted-proxy-configuration-deploy-checklist) |
 | `LOGGING_REQUEST_ENABLED` | `true` | Enable request logging |
 | `LOGGING_REQUEST_HEADERS` | `false` | Log request headers |
 | `LOGGING_REQUEST_PARAMS` | `true` | Log query parameters |
@@ -264,6 +265,67 @@ security:
   ip-whitelist:
     enabled: true
     addresses: <production-admin-ips>
+```
+
+## Trusted proxy configuration (deploy checklist)
+
+`GATEWAY_TRUSTED_PROXIES` is a **required per-environment deploy setting**, not an optional tuning knob. It is the list of reverse-proxy / load-balancer CIDRs whose `X-Forwarded-For` (XFF) header the gateway is allowed to believe when resolving the real client IP (`ClientIpResolver`).
+
+### Why it matters
+
+Two protections key off the resolved client IP:
+
+1. **Guest-endpoint rate limiting** — the per-IP limits on the unauthenticated `POST /api/orders/guest` and `/api/cart/guest/**` routes (`#{@ipKeyResolver}`).
+2. **`/api/admin/**` IP whitelist** (`IpWhitelistFilter`, `SECURITY_IP_WHITELIST`).
+
+Behind an ingress/LB, the gateway's direct TCP peer is the ingress pod, and the real client IP arrives only in `X-Forwarded-For`. `ClientIpResolver` believes XFF **only when the immediate peer is in `GATEWAY_TRUSTED_PROXIES`**; otherwise it falls back to the socket peer address (fail-secure against XFF spoofing).
+
+**If `GATEWAY_TRUSTED_PROXIES` is empty (or wrong) in a proxied deployment**, the ingress pod is not trusted, so XFF is ignored and *every* request resolves to the **same ingress pod IP**. Consequences:
+
+- The guest rate limit becomes one shared bucket for all traffic — a single abuser exhausts it for everyone (effective DoS), or the shared counter never reflects real per-client volume (bypass).
+- The admin IP whitelist compares the ingress pod IP (not the operator's IP) against the allowlist — either locking out all admins or, if the pod range is allowlisted, admitting everyone.
+
+### Ingress note (verified)
+
+The platform ingress is **ingress-nginx** (`ingressClassName: nginx`, `k8s/base/ingress/ingress.yaml`). ingress-nginx **sets `X-Forwarded-For` by default** (to the client connection IP; with `use-forwarded-headers` it appends to the inbound chain), so the real client IP is always available to the gateway once the ingress pod range is trusted. No extra ingress annotation is required to populate XFF.
+
+### What to set, per environment
+
+| Environment | Where | Value |
+|-------------|-------|-------|
+| docker-compose dev (`docker-compose.yml`) | env | **EMPTY** — gateway is exposed directly, no proxy; trusting nothing is correct and fail-secure. |
+| docker-compose prod (`docker-compose.prod.yml`) | `.env` → `GATEWAY_TRUSTED_PROXIES` | The LB/proxy CIDR fronting the gateway (empty only if truly direct-exposed). |
+| Kubernetes (kustomize) | `k8s/base/infra/api-gateway.yaml` ConfigMap | This cluster's ingress/pod-network CIDR (default ships broad RFC1918 — **narrow it**). |
+| Helm | `values-prod.yaml` / `--set api-gateway.config.GATEWAY_TRUSTED_PROXIES=<cidr>` | This cluster's ingress/pod-network CIDR. |
+
+The k8s/helm default is the RFC1918 set `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`. This is safe-by-topology (the gateway Service is `ClusterIP`, so the only possible direct peer is an in-cluster pod, i.e. an RFC1918 address) and covers every common CNI pod network, but it is **deliberately broad and MUST be narrowed** to the actual ingress/pod CIDR in each real cluster.
+
+### How to find the CIDR
+
+```bash
+# ingress-nginx controller pod IP(s) — the actual immediate peer
+kubectl -n ingress-nginx get pods -o wide
+
+# pod-network CIDR (the range ingress-nginx pods are allocated from)
+kubectl cluster-info dump | grep -m1 -- --cluster-cidr
+# or, on kubeadm:
+kubectl -n kube-system get cm kubeadm-config -o yaml | grep -i podSubnet
+```
+
+Set `GATEWAY_TRUSTED_PROXIES` to the narrowest range that contains the ingress-nginx pods (the pod CIDR, or the specific ingress node/pod range).
+
+### Verify after deploy
+
+```bash
+# 1. Env var is present on the gateway pod
+kubectl -n <ns> exec deploy/api-gateway -- printenv GATEWAY_TRUSTED_PROXIES
+
+# 2. Startup log shows the ranges were parsed
+kubectl -n <ns> logs deploy/api-gateway | grep "ClientIpResolver initialised"
+#   -> "ClientIpResolver initialised with N trusted proxy range(s)" (N > 0)
+
+# 3. Distinct client IPs get distinct rate-limit buckets (not one shared ingress IP)
+redis-cli --scan --pattern '*request_rate_limiter*'
 ```
 
 ## Filter Execution Order
