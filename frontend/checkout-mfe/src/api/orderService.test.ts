@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { setupServer } from 'msw/node'
 import { handlers } from '../test/mocks/handlers'
-import { createOrder, getOrder } from './orderService'
-import type { CheckoutRequestPayload } from './types'
+import { createOrder, createGuestOrder, getOrder } from './orderService'
+import type { CheckoutRequestPayload, GuestCheckoutRequestPayload } from './types'
 
 const server = setupServer(...handlers)
 
@@ -81,6 +81,61 @@ describe('createOrder', () => {
     await expect(createOrder(validPayload, 'idem-key-1')).rejects.toMatchObject({
       response: { status: 409 },
     })
+  })
+})
+
+const guestPayload: GuestCheckoutRequestPayload = {
+  email: 'guest@example.com',
+  shippingAddress: {
+    street: '123 Main St',
+    city: 'San Francisco',
+    state: 'CA',
+    postalCode: '94105',
+    country: 'US',
+  },
+}
+
+describe('createGuestOrder', () => {
+  it('should return the checkout response on a fresh (201) guest order', async () => {
+    const { response, isReplay } = await createGuestOrder(guestPayload, 'guest-idem-1')
+    expect(response.orderId).toBe('guest-order-123')
+    expect(response.clientSecret).toBe('pi_guest_123_secret_abc')
+    expect(isReplay).toBe(false)
+  })
+
+  it('should POST to /orders/guest with the email and Idempotency-Key', async () => {
+    const { http, HttpResponse } = await import('msw')
+    let seenKey: string | null = null
+    let seenBody: GuestCheckoutRequestPayload | null = null
+    server.use(
+      http.post('http://localhost:8080/api/orders/guest', async ({ request }) => {
+        seenKey = request.headers.get('Idempotency-Key')
+        seenBody = (await request.json()) as GuestCheckoutRequestPayload
+        return HttpResponse.json(
+          { orderId: 'guest-order-123', orderNumber: 'ORD-1', status: 'PENDING', currency: 'USD', subtotal: 0, tax: 0, shippingCost: 0, discountAmount: null, loyaltyDiscount: null, total: 0, paymentIntentId: 'pi_1', clientSecret: 'secret_1', items: [] },
+          { status: 201 }
+        )
+      })
+    )
+    await createGuestOrder(guestPayload, 'guest-idem-abc')
+    expect(seenKey).toBe('guest-idem-abc')
+    expect(seenBody!.email).toBe('guest@example.com')
+    // A guest request must never carry a userId — identity is server-derived.
+    expect((seenBody as Record<string, unknown>).userId).toBeUndefined()
+  })
+
+  it('should mark the outcome as a replay on a 200 response', async () => {
+    const { http, HttpResponse } = await import('msw')
+    server.use(
+      http.post('http://localhost:8080/api/orders/guest', () =>
+        HttpResponse.json(
+          { orderId: 'guest-order-123', orderNumber: 'ORD-1', status: 'PENDING', currency: 'USD', subtotal: 0, tax: 0, shippingCost: 0, discountAmount: null, loyaltyDiscount: null, total: 0, paymentIntentId: 'pi_1', clientSecret: null, items: [] },
+          { status: 200 }
+        )
+      )
+    )
+    const { isReplay } = await createGuestOrder(guestPayload, 'guest-idem-1')
+    expect(isReplay).toBe(true)
   })
 })
 

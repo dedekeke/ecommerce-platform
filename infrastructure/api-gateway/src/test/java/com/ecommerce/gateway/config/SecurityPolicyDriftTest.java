@@ -206,6 +206,51 @@ class SecurityPolicyDriftTest {
                 .isTrue();
     }
 
+    // --- Guest checkout: POST /api/orders/guest must be public on BOTH versions
+    //     (an anonymous shopper carries no JWT; order-service derives identity
+    //     from the email), while the authenticated create and every other order
+    //     call stay authenticated. ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/orders/guest", "/api/v1/orders/guest"})
+    void should_permitUnauthenticatedPost_when_guestCheckoutPath(String path) {
+        AuthzResult result = runPost(path);
+        assertThat(result.reachedBackend())
+                .as("POST %s must be public so an anonymous guest reaches the service", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/orders/guest", "/api/v1/orders/guest"})
+    void should_denyUnauthenticatedGet_when_guestCheckoutPath(String path) {
+        // The exemption is POST-only: a GET to the same path stays authenticated.
+        assertThat(runGet(path).denied401())
+                .as("GET %s must not inherit the POST-only guest exemption", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/orders", "/api/v1/orders"})
+    void should_denyUnauthenticatedPost_when_authenticatedOrderCreatePath(String path) {
+        // The hardened authenticated create must NOT be weakened by the guest
+        // exemption — it still requires a JWT.
+        assertThat(runPost(path).denied401())
+                .as("POST %s (authenticated create) must stay authenticated", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/orders/guest/extra",       // exact-path exemption must not match sub-paths
+            "/api/v1/orders/guest/extra",
+            "/api/orders/12345"              // a real order id is not the guest path
+    })
+    void should_denyUnauthenticatedPost_when_nonGuestOrderPath(String path) {
+        assertThat(runPost(path).denied401())
+                .as("POST %s must stay authenticated (only the exact guest path is public)", path)
+                .isTrue();
+    }
+
     // --- Authenticated matrix: catalog writes require SCOPE_admin on both versions.
     //     A non-admin JWT must be FORBIDDEN (403); an admin JWT must pass through.
     //     PATCH is the red-first case: without a PATCH matcher it fell through to

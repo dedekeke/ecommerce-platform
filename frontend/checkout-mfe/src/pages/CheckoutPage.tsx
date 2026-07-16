@@ -8,11 +8,13 @@ import Alert from '@mui/material/Alert'
 import Skeleton from '@mui/material/Skeleton'
 import { useCheckout } from '../hooks/useCheckout'
 import { useAuthUserId } from '../hooks/useAuthUserId'
-import { createOrder } from '../api/orderService'
+import { useCheckoutStore } from '../stores/checkoutStore'
+import { createOrder, createGuestOrder } from '../api/orderService'
 import { toAddressDto } from '../utils/toAddressDto'
 import AddressForm from '../components/AddressForm'
 import OrderReview from '../components/OrderReview'
 import CheckoutStepper from '../components/CheckoutStepper'
+import GuestAuthGate from '../components/GuestAuthGate'
 import type { ShippingAddress } from '../api/types'
 
 // Code-split the Stripe step: StripeCheckout statically pulls @stripe/stripe-js +
@@ -46,6 +48,8 @@ export default function CheckoutPage() {
   } = useCheckout()
 
   const userId = useAuthUserId()
+  const guestEmail = useCheckoutStore((s) => s.guestEmail)
+  const setGuestEmail = useCheckoutStore((s) => s.setGuestEmail)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -53,18 +57,18 @@ export default function CheckoutPage() {
 
   const handleAddressValid = useCallback((addr: ShippingAddress) => setAddress(addr), [setAddress])
 
-  // The shell gates /checkout behind auth; a null userId means an anomalous state (standalone
-  // dev, expired session). Never place a real order without a real identity.
-  if (!userId) {
+  // Auth gate. An authenticated shopper (userId) checks out as themselves. An
+  // unauthenticated one is no longer hard-blocked: they may continue as guest by
+  // providing an email, which unlocks the same flow but submits to the guest
+  // endpoint. Only when neither identity is present do we show the gate.
+  if (!userId && !guestEmail) {
     return (
       <Box sx={{ bgcolor: 'background.default', minHeight: '100vh' }}>
         <Container maxWidth="md" sx={{ px: { xs: 3, md: 4 }, py: { xs: 3, md: 5 } }}>
           <Typography variant="h4" fontWeight={700} sx={{ mb: { xs: 3, md: 4 } }}>
             Checkout
           </Typography>
-          <Alert severity="warning" role="alert">
-            Please sign in to complete checkout.
-          </Alert>
+          <GuestAuthGate onContinueAsGuest={setGuestEmail} />
         </Container>
       </Box>
     )
@@ -79,17 +83,27 @@ export default function CheckoutPage() {
     if (!address) return
     // Re-read the live identity at submit time: the session may have expired since render.
     const liveUserId = window.__getAuthUserId?.() ?? null
-    if (!liveUserId) {
+    // An authenticated session takes precedence. If there is neither a live
+    // session nor a guest email, the identity vanished after the gate — block.
+    if (!liveUserId && !guestEmail) {
       setSubmitError('Your session has expired. Please sign in again to place the order.')
       return
     }
     setIsSubmitting(true)
     setSubmitError(null)
     try {
-      const { response, isReplay } = await createOrder(
-        { userId: liveUserId, shippingAddress: toAddressDto(address) },
-        idempotencyKey
-      )
+      // Authenticated -> POST /api/orders (JWT sub is authoritative). Guest ->
+      // POST /api/orders/guest (server derives identity from the email). Both
+      // return the same clientSecret contract, so the rest of the flow is shared.
+      const { response, isReplay } = liveUserId
+        ? await createOrder(
+            { userId: liveUserId, shippingAddress: toAddressDto(address) },
+            idempotencyKey
+          )
+        : await createGuestOrder(
+            { email: guestEmail as string, shippingAddress: toAddressDto(address) },
+            idempotencyKey
+          )
 
       if (isReplay && !response.clientSecret) {
         // Already-completed checkout for this idempotency key and no secret was re-issued —

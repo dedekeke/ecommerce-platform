@@ -36,6 +36,20 @@ export interface CheckoutRequestPayload {
   userName?: string
 }
 
+/**
+ * Body of `POST /api/orders/guest` — the unauthenticated guest checkout (see
+ * order-service GuestCheckoutRequest). There is no `userId`: the owning identity
+ * is derived server-side from `email`, so a guest can never assert who they are.
+ * `email` is required + format-validated (the server re-validates) and doubles as
+ * the claim key for later account linking.
+ */
+export interface GuestCheckoutRequestPayload {
+  email: string
+  shippingAddress: AddressDto
+  promotionCode?: string
+  userName?: string
+}
+
 export interface CheckoutResponseItem {
   productId: string
   productName: string

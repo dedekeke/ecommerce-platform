@@ -7,14 +7,15 @@ import com.ecommerce.orderservice.domain.enums.IdempotencyStatus;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
 import com.ecommerce.orderservice.dto.AddressDto;
 import com.ecommerce.orderservice.dto.CheckoutRequest;
+import com.ecommerce.orderservice.dto.GuestCheckoutRequest;
 import com.ecommerce.orderservice.exception.ConcurrentCheckoutException;
 import com.ecommerce.orderservice.saga.OrderCreationSaga;
 import com.ecommerce.orderservice.saga.OrderCreationSaga.CheckoutResult;
 import com.ecommerce.orderservice.saga.OrderCreationSaga.SagaException;
+import com.ecommerce.orderservice.security.GuestIdentityFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -54,8 +55,18 @@ class CheckoutServiceTest {
     @Mock
     private OrderService orderService;
 
-    @InjectMocks
+    // Real factory: the guest-identity derivation is pure and deterministic, so
+    // exercising it for real (rather than stubbing) also guards the contract that
+    // the derived id is used verbatim as the saga owner + idempotency scope.
+    private final GuestIdentityFactory guestIdentityFactory = new GuestIdentityFactory();
+
     private CheckoutService checkoutService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        checkoutService = new CheckoutService(orderCreationSaga, idempotencyService,
+            orderService, guestIdentityFactory);
+    }
 
     // ---- no idempotency key -------------------------------------------------
 
@@ -153,6 +164,72 @@ class CheckoutServiceTest {
 
         verify(idempotencyService).release(USER_ID, KEY);
         verify(idempotencyService, never()).complete(any(), any(), isNull());
+    }
+
+    // ---- guest checkout -----------------------------------------------------
+
+    private static final String GUEST_EMAIL = "  Guest@Example.com ";
+    private static final String NORMALIZED_EMAIL = "guest@example.com";
+
+    @Test
+    void should_deriveGuestIdentityAndFlagOrder_when_guestCheckout() {
+        String expectedGuestId = guestIdentityFactory.guestId(GUEST_EMAIL);
+        when(idempotencyService.find(eq(expectedGuestId), eq(KEY))).thenReturn(Optional.empty());
+        when(idempotencyService.tryReserve(eq(expectedGuestId), eq(KEY))).thenReturn(true);
+        when(orderCreationSaga.executeCheckout(eq(expectedGuestId), any(), any(),
+            eq(NORMALIZED_EMAIL), any())).thenReturn(freshResult());
+
+        CheckoutService.Outcome outcome = checkoutService.guestCheckout(KEY, guestRequest());
+
+        assertFalse(outcome.replay());
+        assertEquals("pi_123_secret", outcome.response().clientSecret());
+        // Owner is the DERIVED guest identity, never anything client-supplied.
+        assertTrue(expectedGuestId.startsWith("guest:"));
+        // The order is flagged as guest + stamped with the NORMALIZED claim key.
+        verify(orderService).markAsGuestOrder(ORDER_ID, NORMALIZED_EMAIL);
+        verify(idempotencyService).complete(expectedGuestId, KEY, ORDER_ID);
+        // Recipient email passed to the saga (confirmation email) is normalized.
+        verify(orderCreationSaga).executeCheckout(eq(expectedGuestId), any(), any(),
+            eq(NORMALIZED_EMAIL), any());
+    }
+
+    @Test
+    void should_scopeIdempotencyToGuestIdentity_when_guestReplay() {
+        String expectedGuestId = guestIdentityFactory.guestId(GUEST_EMAIL);
+        when(idempotencyService.find(eq(expectedGuestId), eq(KEY)))
+            .thenReturn(Optional.of(keyRecord(IdempotencyStatus.COMPLETED, ORDER_ID)));
+        when(orderService.getOrder(ORDER_ID, expectedGuestId)).thenReturn(persistedOrder());
+
+        CheckoutService.Outcome outcome = checkoutService.guestCheckout(KEY, guestRequest());
+
+        assertTrue(outcome.replay());
+        assertEquals(ORDER_ID, outcome.response().orderId());
+        // Replay must not re-run the saga nor re-flag the order.
+        verify(orderCreationSaga, never()).executeCheckout(any(), any(), any(), any(), any());
+        verify(orderService, never()).markAsGuestOrder(any(), any());
+    }
+
+    @Test
+    void should_releaseKeyAndNotFlag_when_guestSagaFails() {
+        String expectedGuestId = guestIdentityFactory.guestId(GUEST_EMAIL);
+        when(idempotencyService.find(eq(expectedGuestId), eq(KEY))).thenReturn(Optional.empty());
+        when(idempotencyService.tryReserve(eq(expectedGuestId), eq(KEY))).thenReturn(true);
+        when(orderCreationSaga.executeCheckout(any(), any(), any(), any(), any()))
+            .thenThrow(new SagaException("inventory down"));
+
+        assertThrows(SagaException.class, () -> checkoutService.guestCheckout(KEY, guestRequest()));
+
+        verify(idempotencyService).release(expectedGuestId, KEY);
+        verify(orderService, never()).markAsGuestOrder(any(), any());
+    }
+
+    private GuestCheckoutRequest guestRequest() {
+        return new GuestCheckoutRequest(
+            GUEST_EMAIL,
+            new AddressDto("1 Main St", "SF", "CA", "94105", "USA"),
+            "SAVE10",
+            "Guest Buyer"
+        );
     }
 
     // ---- fixtures -----------------------------------------------------------

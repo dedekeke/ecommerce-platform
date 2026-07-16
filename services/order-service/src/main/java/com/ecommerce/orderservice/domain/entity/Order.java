@@ -33,7 +33,10 @@ import java.util.List;
     @Index(name = "idx_user_status_date", columnList = "userId, status, createdAt"),
     // V2__Add_perf_indexes — see docs/DB_INDEX_AUDIT.md
     @Index(name = "idx_order_payment_intent", columnList = "paymentIntentId"),
-    @Index(name = "idx_order_status_created", columnList = "status, createdAt")
+    @Index(name = "idx_order_status_created", columnList = "status, createdAt"),
+    // V14 — claim-later lookup: resolve a registered user's guest orders by the
+    // email they placed them under.
+    @Index(name = "idx_order_guest_email", columnList = "guest_email")
 })
 public class Order {
 
@@ -98,6 +101,26 @@ public class Order {
     @JsonIgnore
     @Column(name = "payment_client_secret")
     private String paymentClientSecret;
+
+    /**
+     * Guest checkout marker. {@code true} for orders created through the
+     * unauthenticated {@code POST /api/orders/guest} path, whose {@link #userId}
+     * carries the {@code guest:} prefix. Lets reporting / support tell a guest
+     * order apart from an authenticated one without parsing the userId.
+     */
+    @Column(name = "guest_order", nullable = false)
+    @Builder.Default
+    private boolean guestOrder = false;
+
+    /**
+     * Email the guest placed the order under (normalized: trimmed + lowercased).
+     * This is the claim key: when a user later registers/verifies this address,
+     * their guest orders are found by this column and relinked to the real
+     * account (see {@code OrderService.claimGuestOrders}). Null for authenticated
+     * orders.
+     */
+    @Column(name = "guest_email")
+    private String guestEmail;
 
     private String promotionCode;
 

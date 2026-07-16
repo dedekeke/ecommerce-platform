@@ -1,5 +1,10 @@
 import apiClient from './apiClient'
-import type { CheckoutRequestPayload, CheckoutResponse, Order } from './types'
+import type {
+  CheckoutRequestPayload,
+  CheckoutResponse,
+  GuestCheckoutRequestPayload,
+  Order,
+} from './types'
 
 export interface CheckoutOutcome {
   response: CheckoutResponse
@@ -29,6 +34,24 @@ export const createOrder = async (
   idempotencyKey: string
 ): Promise<CheckoutOutcome> => {
   const res = await apiClient.post<CheckoutResponse>('/orders', payload, {
+    headers: { 'Idempotency-Key': idempotencyKey },
+  })
+  return { response: res.data, isReplay: res.status === 200 }
+}
+
+/**
+ * Guest checkout — posts to the unauthenticated `POST /api/orders/guest` endpoint
+ * (no `userId`; the server derives the owning identity from `email`). The
+ * response contract is identical to {@link createOrder}: a fresh 201 carries the
+ * `clientSecret` to confirm with Stripe Elements; a 200 is an idempotent replay.
+ * The same `Idempotency-Key` discipline applies — stable across retries of one
+ * attempt so a retried guest submit is deduped server-side.
+ */
+export const createGuestOrder = async (
+  payload: GuestCheckoutRequestPayload,
+  idempotencyKey: string
+): Promise<CheckoutOutcome> => {
+  const res = await apiClient.post<CheckoutResponse>('/orders/guest', payload, {
     headers: { 'Idempotency-Key': idempotencyKey },
   })
   return { response: res.data, isReplay: res.status === 200 }

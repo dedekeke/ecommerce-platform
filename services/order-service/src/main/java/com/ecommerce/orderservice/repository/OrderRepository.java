@@ -74,6 +74,13 @@ public interface OrderRepository extends JpaRepository<Order, String> {
     Optional<String> findLatestOrderNumber();
 
     /**
+     * Find guest orders placed under a given email (the claim key). Used to
+     * relink a guest's orders to their real account once they register/verify
+     * that address. Email is stored already-normalized (trim + lowercase).
+     */
+    List<Order> findByGuestEmailAndGuestOrderTrue(String guestEmail);
+
+    /**
      * Find abandoned orders (PENDING for more than specified hours)
      */
     @Query("SELECT o FROM Order o WHERE o.status = :status AND o.createdAt < :cutoffTime")

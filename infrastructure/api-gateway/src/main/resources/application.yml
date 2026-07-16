@@ -230,6 +230,49 @@ spring:
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
 
+        # ---------- Guest Checkout (order-service) ----------
+        # Unauthenticated guest checkout. MUST precede the order-service route
+        # below so this more specific, POST-only route wins first-match (Spring
+        # Cloud Gateway matches routes in declared order); otherwise
+        # /api/orders/guest would be swallowed by /api/orders/**.
+        #
+        # Rate-limited PER CLIENT IP (key-resolver: ipKeyResolver) because the
+        # caller is anonymous — there is no principal to key on, and this is the
+        # one order route reachable without a JWT, so it is the abuse surface.
+        # The limit is deliberately TIGHTER than the authenticated order route
+        # (5/10 vs 50/100): a guest legitimately submits a checkout a handful of
+        # times, so a low ceiling blunts automated order/inventory-reservation
+        # abuse without hurting real shoppers.
+        - id: order-guest-checkout
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/guest
+            - Method=POST
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_GUEST_CHECKOUT_RATE:5}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_GUEST_CHECKOUT_BURST:10}
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/orders/guest>; rel="successor-version"
+        - id: order-guest-checkout-v1
+          uri: lb://order-service
+          predicates:
+            - Path=/api/v1/orders/guest
+            - Method=POST
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_GUEST_CHECKOUT_RATE:5}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_GUEST_CHECKOUT_BURST:10}
+                redis-rate-limiter.requestedTokens: 1
+
         # ---------- Order Service ----------
         # /api/returns/** (saga/rma RmaController) also lives in order-service,
         # alongside /api/orders/** — shared route, same pattern as cart/carts

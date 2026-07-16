@@ -100,6 +100,18 @@ public class SecurityConfig {
                     .pathMatchers(HttpMethod.POST,
                         "/api/payments/webhook", "/api/v1/payments/webhook").permitAll()
 
+                    // Guest checkout — an unauthenticated shopper cannot present a
+                    // JWT, so this POST must pass the gateway unauthenticated;
+                    // order-service derives the owning identity from the (validated)
+                    // email server-side. Scoped TIGHTLY: POST + the EXACT path only,
+                    // on both versions (the gateway authorizes the ORIGINAL request
+                    // path before the v1 RewritePath runs — Lore 2b8c4227). Every
+                    // other /api/orders/** call, and any other method on this path,
+                    // still falls through to anyExchange().authenticated(), so the
+                    // hardened authenticated create (POST /api/orders) is untouched.
+                    .pathMatchers(HttpMethod.POST,
+                        "/api/orders/guest", "/api/v1/orders/guest").permitAll()
+
                     // Admin endpoints require admin role
                     .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
                     // Catalog writes require admin on BOTH versions. Any write method
