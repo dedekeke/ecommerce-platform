@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,6 +28,13 @@ public class FcmConfig {
 
     @Bean
     public FirebaseMessaging firebaseMessaging(FcmProperties properties) throws IOException {
+        // Fail fast with an actionable message rather than an opaque IOException
+        // from Files.newInputStream when the operator selects FCM but forgets the
+        // credentials path.
+        if (!StringUtils.hasText(properties.getCredentialsPath())) {
+            throw new IllegalStateException(
+                    "FCM_CREDENTIALS_PATH is required when PUSH_PROVIDER=fcm");
+        }
         try (InputStream credentials = Files.newInputStream(Path.of(properties.getCredentialsPath()))) {
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(GoogleCredentials.fromStream(credentials))

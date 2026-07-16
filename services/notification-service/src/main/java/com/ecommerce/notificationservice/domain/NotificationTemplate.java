@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
@@ -27,8 +28,12 @@ public class NotificationTemplate {
     private String id;
 
     /**
-     * Unique template code (e.g., "ORDER_CONFIRMATION", "PAYMENT_RECEIPT")
+     * Unique template code (e.g., "ORDER_CONFIRMATION", "PAYMENT_RECEIPT").
+     *
+     * <p>Backed by a unique index so concurrent first-boot seeding cannot
+     * double-insert the same template.</p>
      */
+    @Indexed(unique = true)
     private String code;
 
     /**
