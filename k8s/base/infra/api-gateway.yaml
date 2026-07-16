@@ -10,6 +10,18 @@ data:
   REDIS_PORT: "6379"
   ZIPKIN_URL: "http://zipkin:9411/api/v2/spans"
   SECURITY_ENABLED: "true"
+  # Trusted reverse-proxy CIDRs whose X-Forwarded-For the gateway will believe
+  # when deriving the client IP for the guest-endpoint rate limit and the
+  # /api/admin IP whitelist (see ClientIpResolver). The gateway Service is
+  # ClusterIP, so the immediate TCP peer is ALWAYS an in-cluster pod (ingress-nginx),
+  # i.e. an RFC1918 pod IP — hence the private ranges below are the sensible,
+  # broadly-correct default across CNIs (Flannel 10.244/16, Calico 192.168/16,
+  # GKE/EKS/AKS 10.x/172.x). MUST be verified and narrowed to THIS cluster's real
+  # ingress/pod-network CIDR per environment (see docs/SECURITY.md → "Trusted
+  # proxy configuration (deploy checklist)"). If left empty, XFF is ignored and
+  # every client is keyed on the ingress pod IP — breaking rate limiting and
+  # locking out admin IP whitelisting.
+  GATEWAY_TRUSTED_PROXIES: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ---
 apiVersion: apps/v1
 kind: Deployment

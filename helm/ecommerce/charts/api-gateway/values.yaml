@@ -27,6 +27,16 @@ config:
   # Prod trace sampling (Perf P2); 10% default, override per env via values.
   TRACING_SAMPLING_PROBABILITY_PROD: "0.1"
   SECURITY_ENABLED: "true"
+  # Trusted reverse-proxy CIDRs whose X-Forwarded-For is believed when deriving
+  # the client IP for guest-endpoint rate limiting and the /api/admin IP whitelist
+  # (see ClientIpResolver). The gateway Service is ClusterIP, so the immediate TCP
+  # peer is always an in-cluster pod (ingress-nginx) — an RFC1918 pod IP — hence
+  # the private ranges are the broadly-correct default (covers Flannel/Calico/
+  # GKE/EKS/AKS pod networks). Overridable per environment via
+  # `--set api-gateway.config.GATEWAY_TRUSTED_PROXIES=<cidr>` or values-<env>.yaml;
+  # MUST be narrowed to this cluster's real ingress/pod CIDR. Empty would key every
+  # client on the ingress pod IP, breaking rate limiting and admin whitelisting.
+  GATEWAY_TRUSTED_PROXIES: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
