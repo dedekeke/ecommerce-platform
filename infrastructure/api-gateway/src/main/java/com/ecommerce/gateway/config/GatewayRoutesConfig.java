@@ -253,8 +253,10 @@ public class GatewayRoutesConfig {
             )
 
             // ---------------- Promotion Service ----------------
+            // /api/currency/** (CurrencyController) also lives in
+            // promotion-service, kept in sync with the declarative route.
             .route("promotion-service-prog", r -> r
-                .path("/api/promotions/**")
+                .path("/api/promotions/**", "/api/currency/**")
                 .filters(f -> f
                     .tokenRelay()
                     .addResponseHeader("Deprecation", "true")
@@ -263,7 +265,7 @@ public class GatewayRoutesConfig {
                 .uri("lb://promotion-service")
             )
             .route("promotion-service-v1-prog", r -> r
-                .path("/api/v1/promotions/**")
+                .path("/api/v1/promotions/**", "/api/v1/currency/**")
                 .filters(f -> f
                     .rewritePath("/api/v1/(?<segment>.*)", "/api/${segment}")
                     .addRequestHeader("X-API-Version", "v1")

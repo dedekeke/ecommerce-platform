@@ -141,4 +141,39 @@ class GatewayConfigFidelityTest {
         assertThat(orderPredicates).anySatisfy(p ->
                 assertThat(p).contains("/api/v1/orders/**").contains("/api/v1/returns/**"));
     }
+
+    /**
+     * The promotion-service routes must carry {@code /api/currency/**}
+     * alongside {@code /api/promotions/**} on both the unversioned and
+     * {@code /v1} routes. {@code CurrencyController} lives in
+     * promotion-service but is mounted at {@code /api/currency}, not under
+     * {@code /api/promotions} — without this predicate, admin FX-rate calls
+     * (GET /api/currency/rates, POST /api/currency/convert) are dropped at
+     * the edge with a 404 despite the service being healthy. Pinned here so
+     * a future edit that reverts the currency path is caught in CI.
+     */
+    @Test
+    void should_routeCurrencyPaths_throughPromotionService_onBothVersions() {
+        Pattern idKey = Pattern.compile("spring\\.cloud\\.gateway\\.routes\\[(\\d+)]\\.id");
+
+        List<String> promotionPredicates = props.entrySet().stream()
+                .filter(e -> {
+                    Matcher m = idKey.matcher(e.getKey());
+                    return m.matches() && String.valueOf(e.getValue()).startsWith("promotion-service");
+                })
+                .map(e -> {
+                    Matcher m = idKey.matcher(e.getKey());
+                    m.matches();
+                    return "spring.cloud.gateway.routes[" + m.group(1) + "].predicates[0]";
+                })
+                .filter(props::containsKey)
+                .map(props::get)
+                .toList();
+
+        assertThat(promotionPredicates).as("promotion-service routes must be declared").isNotEmpty();
+        assertThat(promotionPredicates).anySatisfy(p ->
+                assertThat(p).contains("/api/promotions/**").contains("/api/currency/**"));
+        assertThat(promotionPredicates).anySatisfy(p ->
+                assertThat(p).contains("/api/v1/promotions/**").contains("/api/v1/currency/**"));
+    }
 }
