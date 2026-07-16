@@ -5,19 +5,24 @@ import { OrderAdminService } from './order-admin.service';
 import { Order, PagedOrders } from '../models/order.model';
 
 const mockOrder: Order = {
-  id: 'ord-1',
+  orderId: 'ord-1',
   orderNumber: 'ORD-0001',
-  userId: 'user-1',
-  customerName: 'Alice Smith',
-  customerEmail: 'alice@example.com',
   status: 'PENDING',
-  lineItems: [],
-  shipping: {
-    carrier: 'FedEx',
-    address: { street: '1 Main St', city: 'NY', state: 'NY', postalCode: '10001', country: 'US' },
-  },
-  payment: { method: 'CARD', subtotal: 100, shippingCost: 10, tax: 5, discount: 0, total: 115 },
-  timeline: [],
+  currency: 'USD',
+  subtotal: 100,
+  tax: 5,
+  shippingCost: 10,
+  discountAmount: null,
+  loyaltyDiscount: null,
+  total: 115,
+  items: [],
+  shippingAddress: { street: '1 Main St', city: 'NY', state: 'NY', postalCode: '10001', country: 'US' },
+  paymentIntentId: 'pi_1',
+  guestOrder: false,
+  carrier: 'FedEx',
+  trackingNumber: null,
+  shippedAt: null,
+  deliveredAt: null,
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 };
@@ -71,11 +76,11 @@ describe('OrderAdminService', () => {
     expect(result).toEqual(mockOrder);
   });
 
-  it('should update order status with PUT', () => {
-    service.updateOrderStatus('ord-1', { status: 'CONFIRMED', note: 'Approved' }).subscribe();
-    const req = httpMock.expectOne('/api/orders/ord-1/status');
+  it('should update order status via PUT with status as a query param, not a JSON body', () => {
+    service.updateOrderStatus('ord-1', { status: 'CONFIRMED' }).subscribe();
+    const req = httpMock.expectOne((r) => r.url === '/api/orders/ord-1/status');
     expect(req.request.method).toBe('PUT');
-    expect(req.request.body).toEqual({ status: 'CONFIRMED', note: 'Approved' });
+    expect(req.request.params.get('status')).toBe('CONFIRMED');
     req.flush({ ...mockOrder, status: 'CONFIRMED' });
   });
 });

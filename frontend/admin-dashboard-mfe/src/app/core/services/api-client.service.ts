@@ -21,8 +21,14 @@ export class ApiClientService {
     return this.http.post<T>(`${this.baseUrl}${path}`, body);
   }
 
-  put<T>(path: string, body: unknown): Observable<T> {
-    return this.http.put<T>(`${this.baseUrl}${path}`, body);
+  put<T>(path: string, body: unknown, params?: Record<string, string | number | boolean>): Observable<T> {
+    let httpParams = new HttpParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        httpParams = httpParams.set(key, String(value));
+      });
+    }
+    return this.http.put<T>(`${this.baseUrl}${path}`, body, { params: httpParams });
   }
 
   patch<T>(path: string, body: unknown): Observable<T> {

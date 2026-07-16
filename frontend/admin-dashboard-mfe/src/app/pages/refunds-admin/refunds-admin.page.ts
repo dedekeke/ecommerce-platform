@@ -84,12 +84,12 @@ const REFUND_SAGA_STATUSES: RefundSagaStatus[] = [
               <strong>{{ lookedUpOrder()!.orderNumber }}</strong>
             </div>
             <div class="refunds-admin__order-row">
-              <span>Customer</span>
-              <span>{{ lookedUpOrder()!.customerName }}</span>
+              <span>Order Type</span>
+              <span>{{ lookedUpOrder()!.guestOrder ? 'Guest' : 'Registered customer' }}</span>
             </div>
             <div class="refunds-admin__order-row">
               <span>Total</span>
-              <span>{{ lookedUpOrder()!.payment.total | currency }}</span>
+              <span>{{ lookedUpOrder()!.total | currency }}</span>
             </div>
             <div class="refunds-admin__order-row">
               <span>Status</span>
@@ -319,7 +319,7 @@ export class RefundsAdminPage implements OnInit {
     if (!order) return;
     this.initiatingRefund.set(true);
     const reason = this.refundForm.getRawValue().reason || undefined;
-    this.refundService.startRefund(order.id, { reason }).subscribe({
+    this.refundService.startRefund(order.orderId, { reason }).subscribe({
       next: () => {
         this.initiatingRefund.set(false);
         this.refundForm.reset({ reason: '' });

@@ -69,9 +69,11 @@ const ORDER_STATUSES: OrderStatus[] = [
         @if (col.key === 'status') {
           <app-status-badge [label]="row['status']" [variant]="orderVariant(row['status'])" />
         } @else if (col.key === 'total') {
-          {{ row['payment']?.['total'] | currency }}
+          {{ row['total'] | currency }}
         } @else if (col.key === 'createdAt') {
           {{ row['createdAt'] | date: 'mediumDate' }}
+        } @else if (col.key === 'items') {
+          {{ row['items']?.length ?? 0 }}
         } @else {
           {{ row[col.key] }}
         }
@@ -85,16 +87,12 @@ const ORDER_STATUSES: OrderStatus[] = [
         @if (selectedOrder()) {
           <div class="order-detail">
             <div class="order-detail__row">
-              <span class="order-detail__label">Customer</span>
-              <span>{{ selectedOrder()!.customerName }}</span>
-            </div>
-            <div class="order-detail__row">
-              <span class="order-detail__label">Email</span>
-              <span>{{ selectedOrder()!.customerEmail }}</span>
+              <span class="order-detail__label">Order Type</span>
+              <span>{{ selectedOrder()!.guestOrder ? 'Guest' : 'Registered customer' }}</span>
             </div>
             <div class="order-detail__row">
               <span class="order-detail__label">Total</span>
-              <span>{{ selectedOrder()!.payment.total | currency }}</span>
+              <span>{{ selectedOrder()!.total | currency }}</span>
             </div>
             <div class="order-detail__row">
               <span class="order-detail__label">Status</span>
@@ -103,6 +101,25 @@ const ORDER_STATUSES: OrderStatus[] = [
                 [variant]="orderVariant(selectedOrder()!.status)"
               />
             </div>
+            @if (selectedOrder()!.carrier) {
+              <div class="order-detail__row">
+                <span class="order-detail__label">Carrier</span>
+                <span>{{ selectedOrder()!.carrier }}</span>
+              </div>
+            }
+            @if (selectedOrder()!.trackingNumber) {
+              <div class="order-detail__row">
+                <span class="order-detail__label">Tracking</span>
+                <span>{{ selectedOrder()!.trackingNumber }}</span>
+              </div>
+            }
+
+            <h3 class="order-detail__section">Items</h3>
+            <ul class="order-detail__items">
+              @for (item of selectedOrder()!.items; track item.productId) {
+                <li>{{ item.productName }} × {{ item.quantity }} — {{ item.subtotal | currency }}</li>
+              }
+            </ul>
 
             <h3 class="order-detail__section">Update Status</h3>
             <mat-form-field appearance="outline">
@@ -149,8 +166,8 @@ export class OrdersAdminPage implements OnInit {
 
   readonly columns: TableColumn[] = [
     { key: 'orderNumber', label: 'Order #' },
-    { key: 'customerName', label: 'Customer' },
     { key: 'createdAt', label: 'Date' },
+    { key: 'items', label: 'Items' },
     { key: 'status', label: 'Status' },
     { key: 'total', label: 'Total' },
   ];
@@ -207,7 +224,7 @@ export class OrdersAdminPage implements OnInit {
     const order = this.selectedOrder();
     if (!order) return;
     this.updatingStatus.set(true);
-    this.orderService.updateOrderStatus(order.id, { status: this.newStatus() }).subscribe({
+    this.orderService.updateOrderStatus(order.orderId, { status: this.newStatus() }).subscribe({
       next: (updated) => {
         this.updatingStatus.set(false);
         this.selectedOrder.set(updated);

@@ -25,7 +25,11 @@ export class OrderAdminService {
     return this.api.get<Order>(`/orders/${id}`);
   }
 
+  /**
+   * order-service's `PUT /orders/{id}/status` is `@RequestParam OrderStatus status` — a query
+   * param, not a JSON body — so `status` is sent via `params`, not the request body.
+   */
   updateOrderStatus(id: string, payload: UpdateOrderStatusPayload): Observable<Order> {
-    return this.api.put<Order>(`/orders/${id}/status`, payload);
+    return this.api.put<Order>(`/orders/${id}/status`, null, { status: payload.status });
   }
 }
