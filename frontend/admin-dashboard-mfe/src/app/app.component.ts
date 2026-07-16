@@ -90,6 +90,24 @@ import { MatListModule } from '@angular/material/list';
           </a>
           <a
             mat-list-item
+            routerLink="/promotions"
+            routerLinkActive="active-link"
+            aria-label="Promotions"
+          >
+            <mat-icon matListItemIcon>local_offer</mat-icon>
+            <span matListItemTitle>Promotions</span>
+          </a>
+          <a
+            mat-list-item
+            routerLink="/inventory"
+            routerLinkActive="active-link"
+            aria-label="Inventory"
+          >
+            <mat-icon matListItemIcon>inventory</mat-icon>
+            <span matListItemTitle>Inventory</span>
+          </a>
+          <a
+            mat-list-item
             routerLink="/analytics"
             routerLinkActive="active-link"
             aria-label="Analytics"
