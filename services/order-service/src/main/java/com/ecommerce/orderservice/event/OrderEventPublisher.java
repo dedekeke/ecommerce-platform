@@ -41,6 +41,7 @@ public class OrderEventPublisher {
     private static final String ORDER_UPDATED_TOPIC = "order.updated";
     private static final String ORDER_CANCELLED_TOPIC = "order.cancelled";
     private static final String ORDER_COMPLETED_TOPIC = "order.completed";
+    private static final String ORDER_SHIPPED_TOPIC = "order.shipped";
 
     public void publishOrderCreatedEvent(Order order) {
         publishOrderCreatedEvent(order, null, null);
@@ -72,6 +73,21 @@ public class OrderEventPublisher {
         log.info("Recorded ORDER_COMPLETED outbox event for order: {}", order.getOrderNumber());
     }
 
+    /**
+     * Publish ORDER_SHIPPED to the {@code order.shipped} topic consumed by
+     * notification-service ({@code SHIPPING_NOTIFICATION} email + SMS/push). The
+     * event carries the carrier + tracking number so the shipping template can
+     * render them. {@code userEmail} is the guest email when present (authenticated
+     * orders carry no stored contact email; recipient enrichment is a follow-up).
+     */
+    public void publishOrderShippedEvent(Order order) {
+        OrderEvent event = buildOrderEvent(order, "ORDER_SHIPPED");
+        event.setUserEmail(order.getGuestEmail());
+        record(ORDER_SHIPPED_TOPIC, "ORDER_SHIPPED", order.getId(), event);
+        log.info("Recorded ORDER_SHIPPED outbox event for order: {} (carrier={}, tracking={})",
+            order.getOrderNumber(), order.getCarrier(), order.getTrackingNumber());
+    }
+
     private OrderEvent buildOrderEvent(Order order, String eventType) {
         return OrderEvent.builder()
             .eventId(UUID.randomUUID().toString())
@@ -87,6 +103,8 @@ public class OrderEventPublisher {
             .totalAmount(order.getTotal())
             .status(order.getStatus())
             .paymentIntentId(order.getPaymentIntentId())
+            .carrier(order.getCarrier())
+            .trackingNumber(order.getTrackingNumber())
             .shippingAddress(formatShippingAddress(order.getShippingAddress()))
             .build();
     }

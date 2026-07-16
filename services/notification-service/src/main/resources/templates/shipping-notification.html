@@ -68,6 +68,9 @@
                 <strong>Shipping To:</strong><br/>
                 <span th:text="${shippingAddress}">Address</span>
             </p>
+            <p th:if="${carrier}">
+                <strong>Carrier:</strong> <span th:text="${carrier}">UPS</span>
+            </p>
             <p th:if="${trackingNumber}">
                 <strong>Tracking Number:</strong> <span th:text="${trackingNumber}">TRACK123456</span>
             </p>

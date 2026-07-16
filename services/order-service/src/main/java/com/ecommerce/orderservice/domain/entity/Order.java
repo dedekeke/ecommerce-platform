@@ -126,6 +126,25 @@ public class Order {
 
     private String promotionCode;
 
+    /**
+     * Shipping carrier for the (single) outbound shipment. Set on the
+     * CONFIRMED/PROCESSING -> SHIPPED transition; null until the order ships.
+     */
+    @Column(name = "carrier", length = 100)
+    private String carrier;
+
+    /** Carrier tracking number, surfaced to the customer once shipped. */
+    @Column(name = "tracking_number", length = 100)
+    private String trackingNumber;
+
+    /** When the order was marked shipped. */
+    @Column(name = "shipped_at")
+    private LocalDateTime shippedAt;
+
+    /** When the order was marked delivered. */
+    @Column(name = "delivered_at")
+    private LocalDateTime deliveredAt;
+
     @Column(precision = 10, scale = 2)
     private BigDecimal discountAmount;
 
@@ -198,6 +217,23 @@ public class Order {
             );
         }
         this.status = newStatus;
+    }
+
+    /**
+     * Transition to SHIPPED and record the shipment. Delegates the transition
+     * guard to {@link #updateStatus(OrderStatus)}.
+     */
+    public void markShipped(String carrier, String trackingNumber) {
+        updateStatus(OrderStatus.SHIPPED);
+        this.carrier = carrier;
+        this.trackingNumber = trackingNumber;
+        this.shippedAt = LocalDateTime.now();
+    }
+
+    /** Transition to DELIVERED and stamp the delivery time. */
+    public void markDelivered() {
+        updateStatus(OrderStatus.DELIVERED);
+        this.deliveredAt = LocalDateTime.now();
     }
 
     public boolean canBeCancelled() {

@@ -3,6 +3,7 @@ package com.ecommerce.orderservice.controller;
 import com.ecommerce.orderservice.exception.ConcurrentCheckoutException;
 import com.ecommerce.orderservice.exception.EmptyCartException;
 import com.ecommerce.orderservice.exception.GuestCheckoutAuthenticationException;
+import com.ecommerce.orderservice.exception.InvalidOrderStatusTransitionException;
 import com.ecommerce.orderservice.exception.UserMismatchException;
 import com.ecommerce.orderservice.saga.OrderCreationSaga;
 import lombok.extern.slf4j.Slf4j;
@@ -56,6 +57,20 @@ public class OrderApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleConcurrentCheckout(ConcurrentCheckoutException ex) {
         log.warn("Concurrent checkout rejected: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(errorBody(HttpStatus.CONFLICT, ex.getMessage()));
+    }
+
+    /**
+     * An invalid order-status transition was attempted (e.g. shipping a PENDING
+     * order, or shipping an already-DELIVERED one). 409 (conflict with the
+     * order's current state) — not a 5xx, since retrying the same transition can
+     * never succeed until the order legitimately reaches a valid source state.
+     */
+    @ExceptionHandler(InvalidOrderStatusTransitionException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidTransition(
+            InvalidOrderStatusTransitionException ex) {
+        log.warn("Invalid order status transition: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(errorBody(HttpStatus.CONFLICT, ex.getMessage()));
     }
 
     /**

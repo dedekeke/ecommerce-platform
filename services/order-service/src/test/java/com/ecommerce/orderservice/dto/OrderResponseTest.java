@@ -43,6 +43,10 @@ class OrderResponseTest {
             .paymentClientSecret("pi_123_secret_SHOULD_NOT_LEAK")
             .guestOrder(true)
             .guestEmail("guest@example.com")
+            .carrier("UPS")
+            .trackingNumber("1Z999AA10123456784")
+            .shippedAt(LocalDateTime.now())
+            .deliveredAt(LocalDateTime.now())
             .shippingAddress(Address.builder()
                 .street("1 Main St").city("SF").state("CA")
                 .postalCode("94105").country("USA").build())
@@ -76,6 +80,16 @@ class OrderResponseTest {
         assertThat(response.total()).isEqualByComparingTo("101.00");
         assertThat(response.paymentIntentId()).isEqualTo("pi_123");
         assertThat(response.guestOrder()).isTrue();
+    }
+
+    @Test
+    void should_mapShippingTrackingFields_when_fromOrder() {
+        OrderResponse response = OrderResponse.from(fullOrder());
+
+        assertThat(response.carrier()).isEqualTo("UPS");
+        assertThat(response.trackingNumber()).isEqualTo("1Z999AA10123456784");
+        assertThat(response.shippedAt()).isNotNull();
+        assertThat(response.deliveredAt()).isNotNull();
     }
 
     @Test

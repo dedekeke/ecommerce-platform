@@ -21,6 +21,12 @@ public class OrderEvent {
     private String status;
     private String shippingAddress;
 
+    /** Shipping carrier — populated on ORDER_SHIPPED, rendered in the shipping templates. */
+    private String carrier;
+
+    /** Carrier tracking number — populated on ORDER_SHIPPED. */
+    private String trackingNumber;
+
     /**
      * Optional recipient phone (E.164) — when present, an SMS is sent in addition to email.
      */

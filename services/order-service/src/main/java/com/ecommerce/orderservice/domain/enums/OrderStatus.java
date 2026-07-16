@@ -21,7 +21,9 @@ public enum OrderStatus {
     public Set<OrderStatus> getAllowedTransitions() {
         return switch (this) {
             case PENDING -> EnumSet.of(CONFIRMED, CANCELLED);
-            case CONFIRMED -> EnumSet.of(PROCESSING, CANCELLED);
+            // A paid (CONFIRMED) order can ship directly, or go through the
+            // optional PROCESSING (picking/packing) stage first — both reach SHIPPED.
+            case CONFIRMED -> EnumSet.of(PROCESSING, SHIPPED, CANCELLED);
             case PROCESSING -> EnumSet.of(SHIPPED, CANCELLED);
             case SHIPPED -> EnumSet.of(DELIVERED);
             case DELIVERED -> EnumSet.of(REFUNDED);

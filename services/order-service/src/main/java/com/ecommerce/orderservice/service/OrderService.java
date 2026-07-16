@@ -11,6 +11,7 @@ import com.ecommerce.orderservice.event.OrderEventPublisher;
 import com.ecommerce.orderservice.exception.InvalidOrderStatusTransitionException;
 import com.ecommerce.orderservice.exception.OrderNotFoundException;
 import com.ecommerce.orderservice.repository.OrderRepository;
+import com.ecommerce.orderservice.shipping.ShippingProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +37,7 @@ public class OrderService {
     private final OrderNumberGeneratorService orderNumberGenerator;
     private final PromotionServiceClient promotionServiceClient;
     private final OrderEventPublisher orderEventPublisher;
+    private final ShippingProvider shippingProvider;
 
     @Value("${order.tax.rate:0.08}")
     private Double taxRate;
@@ -237,6 +239,64 @@ public class OrderService {
             orderId, order.getStatus(), newStatus);
 
         return updatedOrder;
+    }
+
+    /**
+     * Mark an order as shipped: validate the transition to SHIPPED, resolve the
+     * authoritative carrier + tracking via the {@link ShippingProvider} seam,
+     * persist the shipment (carrier / tracking / shippedAt), and record the
+     * ORDER_SHIPPED event in the SAME transaction (outbox) so the customer
+     * shipping notification can never disagree with the persisted state.
+     *
+     * <p>The transition guard rejects any non-shippable source state (e.g.
+     * PENDING, an already-SHIPPED/DELIVERED order) with
+     * {@link InvalidOrderStatusTransitionException}. Valid sources: CONFIRMED,
+     * PROCESSING.</p>
+     */
+    @Transactional
+    public Order markOrderShipped(String orderId, String carrier, String trackingNumber) {
+        log.info("Marking order {} shipped (carrier={})", orderId, carrier);
+
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new OrderNotFoundException("Order not found: " + orderId));
+
+        if (!order.getStatus().canTransitionTo(OrderStatus.SHIPPED)) {
+            throw new InvalidOrderStatusTransitionException(order.getStatus(), OrderStatus.SHIPPED);
+        }
+
+        ShippingProvider.Shipment shipment = shippingProvider.createShipment(
+            new ShippingProvider.ShipmentRequest(
+                order.getId(), order.getOrderNumber(), carrier, trackingNumber));
+
+        order.markShipped(shipment.carrier(), shipment.trackingNumber());
+        Order shipped = orderRepository.save(order);
+
+        orderEventPublisher.publishOrderShippedEvent(shipped);
+        log.info("Order {} marked shipped — carrier={}, tracking={}",
+            shipped.getOrderNumber(), shipped.getCarrier(), shipped.getTrackingNumber());
+        return shipped;
+    }
+
+    /**
+     * Mark an order as delivered: validate the transition (SHIPPED -> DELIVERED)
+     * and stamp {@code deliveredAt}. No event is emitted — delivery is a terminal
+     * state change with no downstream notification in this foundation.
+     */
+    @Transactional
+    public Order markOrderDelivered(String orderId) {
+        log.info("Marking order {} delivered", orderId);
+
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new OrderNotFoundException("Order not found: " + orderId));
+
+        if (!order.getStatus().canTransitionTo(OrderStatus.DELIVERED)) {
+            throw new InvalidOrderStatusTransitionException(order.getStatus(), OrderStatus.DELIVERED);
+        }
+
+        order.markDelivered();
+        Order delivered = orderRepository.save(order);
+        log.info("Order {} marked delivered", delivered.getOrderNumber());
+        return delivered;
     }
 
     /**
