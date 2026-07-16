@@ -2,6 +2,7 @@ package com.ecommerce.paymentservice.gateway;
 
 import com.ecommerce.paymentservice.config.StripeProperties;
 import com.ecommerce.paymentservice.config.StripeRequestOptionsFactory;
+import com.ecommerce.paymentservice.customer.StripeCustomerService;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,8 +19,12 @@ import static com.github.tomakehurst.wiremock.client.WireMock.notMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Integration test exercising the real Stripe Java SDK against a WireMock-stubbed Stripe API.
@@ -42,7 +47,11 @@ class StripePaymentIntentProviderTest {
         props.setApiBase("http://localhost:" + wireMock.port());
 
         StripeRequestOptionsFactory factory = new StripeRequestOptionsFactory(props);
-        provider = new StripePaymentIntentProvider(factory);
+        // Mocked so no extra WireMock /v1/customers stub is needed; the returned id proves the
+        // provider binds the owning Stripe customer to the PaymentIntent.
+        StripeCustomerService customerService = mock(StripeCustomerService.class);
+        when(customerService.getOrCreateCustomerId(anyString())).thenReturn("cus_test_1");
+        provider = new StripePaymentIntentProvider(factory, customerService);
     }
 
     @AfterEach
@@ -72,7 +81,10 @@ class StripePaymentIntentProviderTest {
                 .withHeader("Idempotency-Key", equalTo("order-9"))
                 .withRequestBody(matching(".*amount=4200.*"))
                 .withRequestBody(matching(".*currency=usd.*"))
-                .withRequestBody(matching(".*metadata\\[orderId]=order-9.*")));
+                .withRequestBody(matching(".*metadata\\[orderId]=order-9.*"))
+                // The owning Stripe customer is attached so Stripe binds a re-used saved method.
+                .withRequestBody(containing("customer"))
+                .withRequestBody(containing("cus_test_1")));
     }
 
     @Test

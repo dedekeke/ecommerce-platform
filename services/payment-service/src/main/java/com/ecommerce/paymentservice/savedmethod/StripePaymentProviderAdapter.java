@@ -1,6 +1,7 @@
 package com.ecommerce.paymentservice.savedmethod;
 
 import com.ecommerce.paymentservice.config.StripeRequestOptionsFactory;
+import com.ecommerce.paymentservice.customer.StripeCustomerService;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentMethod;
 import com.stripe.model.SetupIntent;
@@ -27,9 +28,12 @@ public class StripePaymentProviderAdapter implements PaymentProviderAdapter {
     static final String PROVIDER_NAME = "STRIPE";
 
     private final StripeRequestOptionsFactory requestOptions;
+    private final StripeCustomerService customerService;
 
-    public StripePaymentProviderAdapter(StripeRequestOptionsFactory requestOptions) {
+    public StripePaymentProviderAdapter(StripeRequestOptionsFactory requestOptions,
+                                        StripeCustomerService customerService) {
         this.requestOptions = requestOptions;
+        this.customerService = customerService;
     }
 
     @Override
@@ -73,12 +77,16 @@ public class StripePaymentProviderAdapter implements PaymentProviderAdapter {
             // usage=off_session so the saved card can be charged again later at checkout. The
             // owning userId is stamped on metadata so the confirm endpoint + webhook can bind the
             // resulting payment method to the right user without trusting a client-supplied id.
-            SetupIntentCreateParams params = SetupIntentCreateParams.builder()
+            // Attaching the Stripe customer makes Stripe itself bind the saved method to its owner.
+            String customerId = customerService.getOrCreateCustomerId(userId);
+            SetupIntentCreateParams.Builder params = SetupIntentCreateParams.builder()
                     .putMetadata("userId", userId)
                     .setUsage(SetupIntentCreateParams.Usage.OFF_SESSION)
-                    .addPaymentMethodType("card")
-                    .build();
-            SetupIntent si = SetupIntent.create(params, requestOptions.build());
+                    .addPaymentMethodType("card");
+            if (StringUtils.hasText(customerId)) {
+                params.setCustomer(customerId);
+            }
+            SetupIntent si = SetupIntent.create(params.build(), requestOptions.build());
             log.debug("Stripe-created setup intent for user={} -> {}", userId, si.getId());
             return new SetupIntentResult(si.getId(), si.getClientSecret());
         } catch (StripeException e) {
