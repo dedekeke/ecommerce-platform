@@ -7,55 +7,48 @@ export type OrderStatus =
   | 'CANCELLED'
   | 'REFUNDED';
 
-export interface OrderLineItem {
-  id: string;
+export interface OrderItem {
   productId: string;
   productName: string;
-  imageUrl?: string;
+  price: number;
   quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-  sku: string;
-}
-
-export interface ShippingInfo {
-  carrier: string;
-  trackingNumber?: string;
-  estimatedDelivery?: string;
-  address: {
-    street: string;
-    city: string;
-    state: string;
-    postalCode: string;
-    country: string;
-  };
-}
-
-export interface PaymentSummary {
-  method: string;
-  last4?: string;
   subtotal: number;
-  shippingCost: number;
-  tax: number;
-  discount: number;
-  total: number;
 }
 
-export interface StatusEvent {
-  status: OrderStatus;
-  timestamp: string;
-  note?: string;
+export interface OrderShippingAddress {
+  street: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
 }
 
+/**
+ * Client-side view of order-service's `OrderResponse` (PR#139/#145). Field naming mirrors the
+ * backend record exactly — `orderId` (not `id`), flat `subtotal`/`tax`/`shippingCost`/`total`
+ * (no nested `payment` object), flat `carrier`/`trackingNumber`/`shippedAt`/`deliveredAt`
+ * (no nested `shipping` object) — since the backend has no per-status timeline, the UI
+ * timeline is derived client-side from these fields (see `buildOrderTimeline`).
+ */
 export interface Order {
-  id: string;
+  orderId: string;
   orderNumber: string;
-  userId: string;
   status: OrderStatus;
-  lineItems: OrderLineItem[];
-  shipping: ShippingInfo;
-  payment: PaymentSummary;
-  timeline: StatusEvent[];
+  currency: string;
+  subtotal: number;
+  tax: number;
+  shippingCost: number;
+  discountAmount: number | null;
+  loyaltyDiscount: number | null;
+  total: number;
+  items: OrderItem[];
+  shippingAddress: OrderShippingAddress | null;
+  paymentIntentId: string | null;
+  guestOrder: boolean;
+  carrier: string | null;
+  trackingNumber: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,4 +65,10 @@ export interface OrderFilterParams {
   status?: OrderStatus;
   page: number;
   size: number;
+}
+
+/** A single milestone in the client-derived order status timeline. */
+export interface TimelineEvent {
+  status: OrderStatus;
+  timestamp: string;
 }

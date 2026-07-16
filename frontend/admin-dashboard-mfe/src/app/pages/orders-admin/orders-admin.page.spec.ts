@@ -6,19 +6,24 @@ import { of } from 'rxjs';
 import { Order, PagedOrders } from '../../core/models/order.model';
 
 const mockOrder: Order = {
-  id: 'ord-1',
+  orderId: 'ord-1',
   orderNumber: 'ORD-0001',
-  userId: 'user-1',
-  customerName: 'Alice Smith',
-  customerEmail: 'alice@example.com',
   status: 'PENDING',
-  lineItems: [],
-  shipping: {
-    carrier: 'FedEx',
-    address: { street: '1 Main St', city: 'NY', state: 'NY', postalCode: '10001', country: 'US' },
-  },
-  payment: { method: 'CARD', subtotal: 100, shippingCost: 10, tax: 5, discount: 0, total: 115 },
-  timeline: [],
+  currency: 'USD',
+  subtotal: 100,
+  tax: 5,
+  shippingCost: 10,
+  discountAmount: null,
+  loyaltyDiscount: null,
+  total: 115,
+  items: [{ productId: 'p1', productName: 'Widget', price: 100, quantity: 1, subtotal: 100 }],
+  shippingAddress: { street: '1 Main St', city: 'NY', state: 'NY', postalCode: '10001', country: 'US' },
+  paymentIntentId: 'pi_1',
+  guestOrder: false,
+  carrier: 'FedEx',
+  trackingNumber: null,
+  shippedAt: null,
+  deliveredAt: null,
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 };
@@ -67,7 +72,13 @@ describe('OrdersAdminPage', () => {
     fixture.componentInstance.onRowClick(mockOrder as unknown as Record<string, unknown> & Order);
     fixture.detectChanges();
     expect(fixture.componentInstance.drawerOpen()).toBeTrue();
-    expect(fixture.componentInstance.selectedOrder()?.id).toBe('ord-1');
+    expect(fixture.componentInstance.selectedOrder()?.orderId).toBe('ord-1');
+  });
+
+  it('should display item lines in the drawer', async () => {
+    fixture.componentInstance.onRowClick(mockOrder as unknown as Record<string, unknown> & Order);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Widget');
   });
 
   it('should close drawer and clear selectedOrder on closeDrawer', () => {

@@ -93,7 +93,7 @@ const DEMO_USER_ID = 'me';
           </div>
         } @else {
           <div class="orders-grid">
-            @for (order of recentOrders(); track order.id) {
+            @for (order of recentOrders(); track order.orderId) {
               <app-order-card
                 [order]="order"
                 (viewDetails)="onViewOrder($event)"

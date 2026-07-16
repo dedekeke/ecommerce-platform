@@ -50,6 +50,14 @@ describe('ApiClientService', () => {
     req.flush({});
   });
 
+  it('should append query params for PUT requests', () => {
+    service.put('/items/1/status', null, { status: 'CONFIRMED' }).subscribe();
+    const req = httpMock.expectOne((r) => r.url === '/api/items/1/status');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.params.get('status')).toBe('CONFIRMED');
+    req.flush({});
+  });
+
   it('should make PATCH request', () => {
     service.patch('/users/1', { role: 'ADMIN' }).subscribe();
     const req = httpMock.expectOne('/api/users/1');

@@ -19,17 +19,24 @@ const mockProfile: UserProfile = {
 };
 
 const mockOrder: Order = {
-  id: 'order-dash-1',
+  orderId: 'order-dash-1',
   orderNumber: 'ORD-DASH-001',
-  userId: 'user-1',
   status: 'CONFIRMED',
-  lineItems: [],
-  shipping: {
-    carrier: 'DHL',
-    address: { street: '3 Oak Ave', city: 'Chicago', state: 'IL', postalCode: '60601', country: 'US' },
-  },
-  payment: { method: 'CARD', subtotal: 45, shippingCost: 5, tax: 4, discount: 0, total: 54 },
-  timeline: [{ status: 'CONFIRMED', timestamp: '2024-03-01T10:00:00Z' }],
+  currency: 'USD',
+  subtotal: 45,
+  tax: 4,
+  shippingCost: 5,
+  discountAmount: null,
+  loyaltyDiscount: null,
+  total: 54,
+  items: [],
+  shippingAddress: { street: '3 Oak Ave', city: 'Chicago', state: 'IL', postalCode: '60601', country: 'US' },
+  paymentIntentId: 'pi_1',
+  guestOrder: false,
+  carrier: 'DHL',
+  trackingNumber: null,
+  shippedAt: null,
+  deliveredAt: null,
   createdAt: '2024-03-01T00:00:00Z',
   updatedAt: '2024-03-01T00:00:00Z',
 };

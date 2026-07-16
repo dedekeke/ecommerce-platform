@@ -6,8 +6,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { OrderService } from '../../core/services/order.service';
-import { Order } from '../../core/models/order.model';
+import { Order, TimelineEvent } from '../../core/models/order.model';
 import { OrderTimelineComponent } from '../../shared/components/order-timeline/order-timeline.component';
+import { buildOrderTimeline } from '../../core/utils/order-timeline.util';
 
 @Component({
   selector: 'app-order-detail-page',
@@ -48,69 +49,64 @@ import { OrderTimelineComponent } from '../../shared/components/order-timeline/o
             <section class="detail-card" aria-labelledby="items-heading">
               <h2 id="items-heading" class="detail-card__title">Items</h2>
               <ul class="line-items" role="list">
-                @for (item of order()!.lineItems; track item.id) {
+                @for (item of order()!.items; track item.productId) {
                   <li class="line-item">
-                    @if (item.imageUrl) {
-                      <img [src]="item.imageUrl" [alt]="item.productName" class="line-item__image" />
-                    }
                     <div class="line-item__info">
                       <span class="line-item__name">{{ item.productName }}</span>
-                      <span class="line-item__sku">SKU: {{ item.sku }}</span>
                       <span class="line-item__qty">Qty: {{ item.quantity }}</span>
                     </div>
-                    <span class="line-item__price">{{ item.totalPrice | currency }}</span>
+                    <span class="line-item__price">{{ item.subtotal | currency }}</span>
                   </li>
                 }
               </ul>
             </section>
 
-            <section class="detail-card" aria-labelledby="shipping-heading">
-              <h2 id="shipping-heading" class="detail-card__title">Shipping</h2>
-              <dl class="detail-dl">
-                <dt>Carrier</dt>
-                <dd>{{ order()!.shipping.carrier }}</dd>
-                @if (order()!.shipping.trackingNumber) {
-                  <dt>Tracking</dt>
-                  <dd>{{ order()!.shipping.trackingNumber }}</dd>
-                }
-                @if (order()!.shipping.estimatedDelivery) {
-                  <dt>Est. Delivery</dt>
-                  <dd>{{ order()!.shipping.estimatedDelivery | date: 'mediumDate' }}</dd>
-                }
-                <dt>Address</dt>
-                <dd>
-                  {{ order()!.shipping.address.street }},
-                  {{ order()!.shipping.address.city }},
-                  {{ order()!.shipping.address.state }}
-                  {{ order()!.shipping.address.postalCode }}
-                </dd>
-              </dl>
-            </section>
+            @if (order()!.shippingAddress) {
+              <section class="detail-card" aria-labelledby="shipping-heading">
+                <h2 id="shipping-heading" class="detail-card__title">Shipping</h2>
+                <dl class="detail-dl">
+                  @if (order()!.carrier) {
+                    <dt>Carrier</dt>
+                    <dd>{{ order()!.carrier }}</dd>
+                  }
+                  @if (order()!.trackingNumber) {
+                    <dt>Tracking</dt>
+                    <dd>{{ order()!.trackingNumber }}</dd>
+                  }
+                  <dt>Address</dt>
+                  <dd>
+                    {{ order()!.shippingAddress!.street }},
+                    {{ order()!.shippingAddress!.city }},
+                    {{ order()!.shippingAddress!.state }}
+                    {{ order()!.shippingAddress!.postalCode }}
+                  </dd>
+                </dl>
+              </section>
+            }
           </div>
 
           <aside class="order-detail-page__aside">
             <section class="detail-card" aria-labelledby="payment-heading">
               <h2 id="payment-heading" class="detail-card__title">Payment Summary</h2>
               <dl class="detail-dl detail-dl--summary">
-                <dt>Subtotal</dt><dd>{{ order()!.payment.subtotal | currency }}</dd>
-                <dt>Shipping</dt><dd>{{ order()!.payment.shippingCost | currency }}</dd>
-                <dt>Tax</dt><dd>{{ order()!.payment.tax | currency }}</dd>
-                @if (order()!.payment.discount > 0) {
-                  <dt>Discount</dt><dd>-{{ order()!.payment.discount | currency }}</dd>
+                <dt>Subtotal</dt><dd>{{ order()!.subtotal | currency }}</dd>
+                <dt>Shipping</dt><dd>{{ order()!.shippingCost | currency }}</dd>
+                <dt>Tax</dt><dd>{{ order()!.tax | currency }}</dd>
+                @if (order()!.discountAmount && order()!.discountAmount! > 0) {
+                  <dt>Discount</dt><dd>-{{ order()!.discountAmount | currency }}</dd>
+                }
+                @if (order()!.loyaltyDiscount && order()!.loyaltyDiscount! > 0) {
+                  <dt>Loyalty Discount</dt><dd>-{{ order()!.loyaltyDiscount | currency }}</dd>
                 }
                 <mat-divider />
                 <dt class="detail-dl__total-label">Total</dt>
-                <dd class="detail-dl__total-value">{{ order()!.payment.total | currency }}</dd>
+                <dd class="detail-dl__total-value">{{ order()!.total | currency }}</dd>
               </dl>
-              <p class="detail-card__payment-method">
-                {{ order()!.payment.method }}
-                @if (order()!.payment.last4) { •••• {{ order()!.payment.last4 }} }
-              </p>
             </section>
 
             <section class="detail-card" aria-labelledby="timeline-heading">
               <h2 id="timeline-heading" class="detail-card__title">Status Timeline</h2>
-              <app-order-timeline [timeline]="order()!.timeline" />
+              <app-order-timeline [timeline]="timeline()" />
             </section>
           </aside>
         </div>
@@ -124,6 +120,7 @@ export class OrderDetailPage implements OnInit {
   private readonly route = inject(ActivatedRoute);
 
   readonly order = signal<Order | null>(null);
+  readonly timeline = signal<TimelineEvent[]>([]);
   readonly loading = signal(true);
 
   ngOnInit(): void {
@@ -132,6 +129,7 @@ export class OrderDetailPage implements OnInit {
       this.orderService.getOrderById(orderId).subscribe({
         next: (o) => {
           this.order.set(o);
+          this.timeline.set(buildOrderTimeline(o));
           this.loading.set(false);
         },
         error: () => this.loading.set(false),

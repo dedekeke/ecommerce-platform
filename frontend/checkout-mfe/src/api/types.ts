@@ -1,9 +1,3 @@
-export interface OrderItem {
-  productId: string
-  quantity: number
-  price: number
-}
-
 export interface ShippingAddress {
   fullName: string
   line1: string
@@ -83,14 +77,50 @@ export interface CheckoutResponse {
   createdAt?: string
 }
 
+export type OrderStatus =
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'PROCESSING'
+  | 'SHIPPED'
+  | 'DELIVERED'
+  | 'CANCELLED'
+  | 'REFUNDED'
+
+export interface OrderResponseItem {
+  productId: string
+  productName: string
+  price: number
+  quantity: number
+  subtotal: number
+}
+
+/**
+ * Response of `GET /api/orders/{orderId}` (order-service OrderResponse, PR#139/#145). Field
+ * naming mirrors the backend record exactly — `orderId` (not `id`), `total` (not `totalAmount`).
+ * `shippingAddress` reuses {@link AddressDto}'s shape since the backend's `OrderResponse.ShippingAddress`
+ * is field-for-field identical (street/city/state/postalCode/country).
+ */
 export interface Order {
-  id: string
+  orderId: string
   orderNumber: string
-  status: 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'
-  items: OrderItem[]
-  shippingAddress: ShippingAddress
-  totalAmount: number
-  createdAt?: string
+  status: OrderStatus
+  currency: string
+  subtotal: number
+  tax: number
+  shippingCost: number
+  discountAmount: number | null
+  loyaltyDiscount: number | null
+  total: number
+  items: OrderResponseItem[]
+  shippingAddress: AddressDto | null
+  paymentIntentId: string | null
+  guestOrder: boolean
+  carrier: string | null
+  trackingNumber: string | null
+  shippedAt: string | null
+  deliveredAt: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 /**
