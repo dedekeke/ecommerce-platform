@@ -484,6 +484,31 @@ class OrderServiceTest {
     // ---- guest checkout: flag + claim --------------------------------------
 
     @Test
+    void should_flagGuestOrderAtomically_when_createOrderWithGuestEmail() {
+        when(orderNumberGenerator.generateOrderNumber()).thenReturn("ORD-2026-0500");
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        // A non-null guestEmail flags the order + persists the claim key as part of
+        // the same INSERT — there is no separate markAsGuestOrder step to fail.
+        Order order = orderService.createOrder(
+            "guest:hash", orderItems, shippingAddress, null, "guest@example.com");
+
+        assertTrue(order.isGuestOrder());
+        assertEquals("guest@example.com", order.getGuestEmail());
+    }
+
+    @Test
+    void should_leaveGuestFlagsUnset_when_createOrderWithoutGuestEmail() {
+        when(orderNumberGenerator.generateOrderNumber()).thenReturn("ORD-2026-0501");
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        Order order = orderService.createOrder(userId, orderItems, shippingAddress, null);
+
+        assertFalse(order.isGuestOrder());
+        assertNull(order.getGuestEmail());
+    }
+
+    @Test
     void should_flagOrderAndPersistClaimKey_when_markAsGuestOrder() {
         Order order = new Order();
         order.setId("order-guest-1");

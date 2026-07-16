@@ -103,7 +103,22 @@ public class OrderCreationSaga {
         String userEmail,
         String userName
     ) {
-        return executeCheckout(userId, shippingAddress, promotionCode, userEmail, userName).order();
+        return executeCheckout(userId, shippingAddress, promotionCode, userEmail, userName, null).order();
+    }
+
+    /**
+     * Backwards-compatible overload for the authenticated checkout (no guest
+     * email). Delegates to the guest-aware {@link #executeCheckout(String,
+     * Address, String, String, String, String)} with a null guest email.
+     */
+    public CheckoutResult executeCheckout(
+        String userId,
+        Address shippingAddress,
+        String promotionCode,
+        String userEmail,
+        String userName
+    ) {
+        return executeCheckout(userId, shippingAddress, promotionCode, userEmail, userName, null);
     }
 
     /**
@@ -134,7 +149,8 @@ public class OrderCreationSaga {
         Address shippingAddress,
         String promotionCode,
         String userEmail,
-        String userName
+        String userName,
+        String guestEmail
     ) {
         log.info("Starting order creation saga for user: {}", userId);
 
@@ -165,7 +181,10 @@ public class OrderCreationSaga {
                 CompletableFuture.supplyAsync(() -> reserveStock(orderItems), SAGA_FANOUT_EXECUTOR);
             CompletableFuture<Order> createOrderFuture =
                 CompletableFuture.supplyAsync(
-                    () -> orderService.createOrder(userId, orderItems, shippingAddress, promotionCode),
+                    // guestEmail (nullable) flags the order as a guest order in the
+                    // same transaction as the INSERT — no unflagged-order window.
+                    () -> orderService.createOrder(
+                        userId, orderItems, shippingAddress, promotionCode, guestEmail),
                     SAGA_FANOUT_EXECUTOR
                 );
 

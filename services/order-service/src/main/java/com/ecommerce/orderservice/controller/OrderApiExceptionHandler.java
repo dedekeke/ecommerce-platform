@@ -2,6 +2,7 @@ package com.ecommerce.orderservice.controller;
 
 import com.ecommerce.orderservice.exception.ConcurrentCheckoutException;
 import com.ecommerce.orderservice.exception.EmptyCartException;
+import com.ecommerce.orderservice.exception.GuestCheckoutAuthenticationException;
 import com.ecommerce.orderservice.exception.UserMismatchException;
 import com.ecommerce.orderservice.saga.OrderCreationSaga;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,19 @@ public class OrderApiExceptionHandler {
         body.put("status", HttpStatus.FORBIDDEN.value());
         body.put("message", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
+    /**
+     * A JWT/Authorization credential was presented to the guest checkout path.
+     * 400 (client error): the caller is authenticated and must instead use
+     * {@code POST /api/orders}. Not a 401/403 — the credential itself may be
+     * perfectly valid; it is simply not accepted on this endpoint.
+     */
+    @ExceptionHandler(GuestCheckoutAuthenticationException.class)
+    public ResponseEntity<Map<String, Object>> handleGuestAuth(GuestCheckoutAuthenticationException ex) {
+        log.warn("Guest checkout rejected — Authorization present: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(errorBody(HttpStatus.BAD_REQUEST, ex.getMessage()));
     }
 
     /**

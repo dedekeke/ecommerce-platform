@@ -7,6 +7,7 @@ import com.ecommerce.orderservice.dto.CheckoutResponse;
 import com.ecommerce.orderservice.dto.GuestCheckoutRequest;
 import com.ecommerce.orderservice.dto.OrderResponse;
 import com.ecommerce.orderservice.dto.PageResponse;
+import com.ecommerce.orderservice.exception.GuestCheckoutAuthenticationException;
 import com.ecommerce.orderservice.security.UserIdentityResolver;
 import com.ecommerce.orderservice.service.CheckoutService;
 import com.ecommerce.orderservice.service.OrderService;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -57,13 +59,25 @@ public class OrderController {
 
     @PostMapping("/guest")
     @Operation(summary = "Create an order as an unauthenticated guest",
-        description = "Guest checkout: no JWT required. The owning identity is derived server-side "
-            + "from the validated email — the client cannot assert who it is. Same Idempotency-Key "
-            + "and clientSecret contract as the authenticated create.")
+        description = "Guest checkout: no JWT allowed. The owning identity is derived server-side "
+            + "from the validated email — the client cannot assert who it is. A request carrying an "
+            + "Authorization credential is rejected with 400: authenticated callers must use "
+            + "POST /api/orders. Same Idempotency-Key and clientSecret contract as the "
+            + "authenticated create.")
     public ResponseEntity<CheckoutResponse> createGuestOrder(
         @Valid @RequestBody GuestCheckoutRequest request,
-        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+        @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization
     ) {
+        // An authenticated caller must NOT use the guest path: the order would be
+        // owned by an email-derived guest identity, divorced from their account.
+        // Reject on the mere presence of an Authorization credential (validity is
+        // irrelevant — they should drop the header and use POST /api/orders).
+        if (authorization != null && !authorization.isBlank()) {
+            throw new GuestCheckoutAuthenticationException(
+                "Guest checkout does not accept an Authorization credential; "
+                    + "authenticated users must use POST /api/orders");
+        }
         // No JWT and no client-supplied identity: the owner is derived from the
         // email inside CheckoutService, so this endpoint cannot be used to place
         // an order on behalf of an authenticated user.

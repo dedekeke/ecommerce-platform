@@ -137,7 +137,7 @@ class OrderCreationSagaTest {
         mockPaymentService.setPaymentSuccess(true);
 
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
             .thenReturn(mockOrder);
         when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
             .thenReturn(mockOrder);
@@ -148,7 +148,7 @@ class OrderCreationSagaTest {
         assertEquals(orderNumber, result.getOrderNumber());
         assertEquals(userId, result.getUserId());
 
-        verify(orderService).createOrder(eq(userId), anyList(), eq(address), isNull());
+        verify(orderService).createOrder(eq(userId), anyList(), eq(address), isNull(), isNull());
         // ORDER_CREATED is now published atomically inside finalizeSuccessfulOrder.
         verify(orderService).finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), isNull(), isNull());
 
@@ -172,7 +172,7 @@ class OrderCreationSagaTest {
         mockPaymentService.setPaymentSuccess(true);
 
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
             .thenReturn(mockOrder);
         when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), eq(userEmail), eq(userName)))
             .thenReturn(mockOrder);
@@ -200,7 +200,7 @@ class OrderCreationSagaTest {
 
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
         ArgumentCaptor<List<OrderItem>> itemsCaptor = ArgumentCaptor.forClass(List.class);
-        when(orderService.createOrder(eq(userId), itemsCaptor.capture(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), itemsCaptor.capture(), eq(address), isNull(), isNull()))
             .thenReturn(mockOrder);
         when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
             .thenReturn(mockOrder);
@@ -220,6 +220,33 @@ class OrderCreationSagaTest {
     }
 
     @Test
+    void should_threadGuestEmailIntoCreateOrder_when_guestCheckout() {
+        // The guest flag is set atomically inside createOrder: the saga must pass
+        // the normalized guest email through as the 5th createOrder argument.
+        String guestId = "guest:abc123";
+        String guestEmail = "guest@example.com";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-GST1";
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockPaymentService.setPaymentSuccess(true);
+
+        Order mockOrder = createMockOrder(orderId, orderNumber, guestId, address);
+        when(orderService.createOrder(eq(guestId), anyList(), eq(address), isNull(), eq(guestEmail)))
+            .thenReturn(mockOrder);
+        when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
+            .thenReturn(mockOrder);
+
+        OrderCreationSaga.CheckoutResult result =
+            saga.executeCheckout(guestId, address, null, guestEmail, "Guest", guestEmail);
+
+        assertSame(mockOrder, result.order());
+        verify(orderService).createOrder(eq(guestId), anyList(), eq(address), isNull(), eq(guestEmail));
+    }
+
+    @Test
     void testOrderCreation_WithPromotionCode() {
         String userId = "user123";
         Address address = createMockAddress();
@@ -232,7 +259,7 @@ class OrderCreationSagaTest {
         mockPaymentService.setPaymentSuccess(true);
 
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), eq(promotionCode)))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), eq(promotionCode), isNull()))
             .thenReturn(mockOrder);
         when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
             .thenReturn(mockOrder);
@@ -240,7 +267,7 @@ class OrderCreationSagaTest {
         Order result = saga.executeOrderCreationSaga(userId, address, promotionCode);
 
         assertNotNull(result);
-        verify(orderService).createOrder(eq(userId), anyList(), eq(address), eq(promotionCode));
+        verify(orderService).createOrder(eq(userId), anyList(), eq(address), eq(promotionCode), isNull());
     }
 
     @Test
@@ -258,7 +285,7 @@ class OrderCreationSagaTest {
         mockPaymentService.setPaymentSuccess(true);
 
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
             .thenAnswer(invocation -> {
                 Thread.sleep(stepDelayMs);
                 return mockOrder;
@@ -273,7 +300,7 @@ class OrderCreationSagaTest {
         assertNotNull(result);
         assertEquals(orderNumber, result.getOrderNumber());
         assertTrue(mockInventoryService.wasReserveStockCalled());
-        verify(orderService).createOrder(eq(userId), anyList(), eq(address), isNull());
+        verify(orderService).createOrder(eq(userId), anyList(), eq(address), isNull(), isNull());
 
         assertTrue(
             elapsedMs < 200L,
@@ -293,7 +320,7 @@ class OrderCreationSagaTest {
         assertThrows(EmptyCartException.class,
             () -> saga.executeOrderCreationSaga(userId, address, null));
 
-        verify(orderService, never()).createOrder(anyString(), anyList(), any(), any());
+        verify(orderService, never()).createOrder(anyString(), anyList(), any(), any(), any());
         verify(orderService, never()).compensateCancelOrder(anyString());
     }
 
@@ -312,7 +339,7 @@ class OrderCreationSagaTest {
         // Fan-out means createOrder may still run when reservation fails; the
         // speculatively-persisted order must be compensated.
         Order speculativeOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
             .thenReturn(speculativeOrder);
 
         OrderCreationSaga.SagaException exception = assertThrows(
@@ -339,7 +366,7 @@ class OrderCreationSagaTest {
         mockPaymentService.setPaymentSuccess(false);
 
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
             .thenReturn(mockOrder);
 
         OrderCreationSaga.SagaException exception = assertThrows(
@@ -364,7 +391,7 @@ class OrderCreationSagaTest {
 
         mockCartService.setCartItems(createMockCartItems());
         mockInventoryService.setReservationSuccess(true);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
             .thenThrow(new RuntimeException("order DB write failed"));
 
         assertThrows(OrderCreationSaga.SagaException.class,
@@ -389,7 +416,7 @@ class OrderCreationSagaTest {
         mockInventoryService.setFailWithError(true);
 
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
             .thenReturn(mockOrder);
 
         assertThrows(OrderCreationSaga.SagaException.class,

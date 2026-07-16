@@ -47,7 +47,7 @@ public class OrderService {
     private Double freeShippingThreshold;
 
     /**
-     * Create a new order
+     * Create a new authenticated (non-guest) order.
      */
     @Transactional
     public Order createOrder(
@@ -55,6 +55,28 @@ public class OrderService {
         List<OrderItem> items,
         Address shippingAddress,
         String promotionCode
+    ) {
+        return createOrder(userId, items, shippingAddress, promotionCode, null);
+    }
+
+    /**
+     * Create a new order, optionally flagged as a guest order in the SAME
+     * transaction as the INSERT.
+     *
+     * <p>{@code guestEmail} non-null marks this as a guest order and persists the
+     * claim key atomically with order creation. This is intentional: doing it as
+     * one transaction (rather than a follow-up {@code markAsGuestOrder} call)
+     * means a guest order can NEVER be committed unflagged — there is no window
+     * in which the row exists without its {@code guest_order}/{@code guest_email}
+     * markers, so the later account-claim lookup can always find it.</p>
+     */
+    @Transactional
+    public Order createOrder(
+        String userId,
+        List<OrderItem> items,
+        Address shippingAddress,
+        String promotionCode,
+        String guestEmail
     ) {
         log.info("Creating order for user: {}", userId);
 
@@ -131,6 +153,8 @@ public class OrderService {
             .promotionCode(validPromotionCode)
             .discountAmount(discountAmount)
             .loyaltyDiscount(loyaltyDiscount.signum() > 0 ? loyaltyDiscount : null)
+            .guestOrder(guestEmail != null)
+            .guestEmail(guestEmail)
             .build();
 
         // Add items to order
@@ -280,10 +304,14 @@ public class OrderService {
     }
 
     /**
-     * Mark an order as a guest order and persist the claim key (the normalized
-     * email the guest checked out under). Called by the guest-checkout path
-     * after the saga has created the order. Idempotent — safe to re-apply on an
-     * order already flagged.
+     * Backfill/reconcile helper: mark an existing order as a guest order and
+     * persist the claim key (the normalized email the guest checked out under).
+     *
+     * <p>The guest-checkout path no longer relies on this — the flag is now set
+     * atomically inside {@link #createOrder(String, List, Address, String, String)}
+     * so a guest order can never be committed unflagged. This method is retained
+     * as an idempotent reconcile/admin utility (e.g. to backfill pre-existing
+     * rows); safe to re-apply on an already-flagged order.</p>
      */
     @Transactional
     public Order markAsGuestOrder(String orderId, String normalizedEmail) {
