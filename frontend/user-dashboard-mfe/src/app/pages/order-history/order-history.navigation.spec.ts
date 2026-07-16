@@ -10,17 +10,24 @@ import { of, throwError } from 'rxjs';
 import { PagedOrders, Order } from '../../core/models/order.model';
 
 const mockOrder: Order = {
-  id: 'order-nav-1',
+  orderId: 'order-nav-1',
   orderNumber: 'ORD-NAV-001',
-  userId: 'user-1',
   status: 'SHIPPED',
-  lineItems: [],
-  shipping: {
-    carrier: 'UPS',
-    address: { street: '2 Elm St', city: 'Boston', state: 'MA', postalCode: '02101', country: 'US' },
-  },
-  payment: { method: 'CARD', subtotal: 30, shippingCost: 0, tax: 3, discount: 0, total: 33 },
-  timeline: [{ status: 'SHIPPED', timestamp: '2024-02-01T10:00:00Z' }],
+  currency: 'USD',
+  subtotal: 30,
+  tax: 3,
+  shippingCost: 0,
+  discountAmount: null,
+  loyaltyDiscount: null,
+  total: 33,
+  items: [],
+  shippingAddress: { street: '2 Elm St', city: 'Boston', state: 'MA', postalCode: '02101', country: 'US' },
+  paymentIntentId: 'pi_1',
+  guestOrder: false,
+  carrier: 'UPS',
+  trackingNumber: null,
+  shippedAt: '2024-02-01T10:00:00Z',
+  deliveredAt: null,
   createdAt: '2024-02-01T00:00:00Z',
   updatedAt: '2024-02-01T00:00:00Z',
 };

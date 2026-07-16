@@ -1,6 +1,6 @@
 import { Component, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { StatusEvent } from '../../../core/models/order.model';
+import { TimelineEvent } from '../../../core/models/order.model';
 
 @Component({
   selector: 'app-order-timeline',
@@ -20,9 +20,6 @@ import { StatusEvent } from '../../../core/models/order.model';
             <time class="timeline__time" [dateTime]="event.timestamp">
               {{ event.timestamp | date: 'medium' }}
             </time>
-            @if (event.note) {
-              <p class="timeline__note">{{ event.note }}</p>
-            }
           </div>
         </li>
       }
@@ -31,5 +28,5 @@ import { StatusEvent } from '../../../core/models/order.model';
   styleUrl: './order-timeline.component.scss',
 })
 export class OrderTimelineComponent {
-  readonly timeline = input.required<StatusEvent[]>();
+  readonly timeline = input.required<TimelineEvent[]>();
 }

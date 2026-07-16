@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { OrderTimelineComponent } from './order-timeline.component';
-import { StatusEvent } from '../../../core/models/order.model';
+import { TimelineEvent } from '../../../core/models/order.model';
 
-const mockTimeline: StatusEvent[] = [
+const mockTimeline: TimelineEvent[] = [
   { status: 'PENDING', timestamp: '2024-01-10T08:00:00Z' },
   { status: 'CONFIRMED', timestamp: '2024-01-10T09:00:00Z' },
   { status: 'SHIPPED', timestamp: '2024-01-12T14:00:00Z' },

@@ -53,7 +53,7 @@ const PAGE_SIZE = 10;
         </div>
       } @else {
         <div class="orders-grid">
-          @for (order of orders(); track order.id) {
+          @for (order of orders(); track order.orderId) {
             <app-order-card
               [order]="order"
               (viewDetails)="onViewOrder($event)"

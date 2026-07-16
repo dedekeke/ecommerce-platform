@@ -24,12 +24,12 @@ import { Order, OrderStatus } from '../../../core/models/order.model';
 
         <div class="order-card__meta">
           <span class="order-card__date">{{ order().createdAt | date: 'mediumDate' }}</span>
-          <span class="order-card__items">{{ order().lineItems.length }} item{{ order().lineItems.length !== 1 ? 's' : '' }}</span>
+          <span class="order-card__items">{{ order().items.length }} item{{ order().items.length !== 1 ? 's' : '' }}</span>
         </div>
 
         <div class="order-card__total">
           <span class="order-card__total-label">Total</span>
-          <span class="order-card__total-value">{{ order().payment.total | currency }}</span>
+          <span class="order-card__total-value">{{ order().total | currency }}</span>
         </div>
       </mat-card-content>
 
@@ -38,7 +38,7 @@ import { Order, OrderStatus } from '../../../core/models/order.model';
           mat-stroked-button
           color="primary"
           data-testid="view-details-btn"
-          (click)="viewDetails.emit(order().id)"
+          (click)="viewDetails.emit(order().orderId)"
           [attr.aria-label]="'View order details for ' + order().orderNumber"
         >
           View Details

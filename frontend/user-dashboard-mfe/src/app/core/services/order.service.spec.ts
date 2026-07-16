@@ -5,17 +5,24 @@ import { OrderService } from './order.service';
 import { PagedOrders, Order } from '../models/order.model';
 
 const mockOrder: Order = {
-  id: 'order-1',
+  orderId: 'order-1',
   orderNumber: 'ORD-001',
-  userId: 'user-1',
   status: 'DELIVERED',
-  lineItems: [],
-  shipping: {
-    carrier: 'FedEx',
-    address: { street: '1 Main', city: 'NYC', state: 'NY', postalCode: '10001', country: 'US' },
-  },
-  payment: { method: 'CARD', subtotal: 50, shippingCost: 5, tax: 4, discount: 0, total: 59 },
-  timeline: [],
+  currency: 'USD',
+  subtotal: 50,
+  tax: 4,
+  shippingCost: 5,
+  discountAmount: null,
+  loyaltyDiscount: null,
+  total: 59,
+  items: [],
+  shippingAddress: { street: '1 Main', city: 'NYC', state: 'NY', postalCode: '10001', country: 'US' },
+  paymentIntentId: 'pi_1',
+  guestOrder: false,
+  carrier: 'FedEx',
+  trackingNumber: null,
+  shippedAt: null,
+  deliveredAt: '2024-01-15T00:00:00Z',
   createdAt: '2024-01-10T00:00:00Z',
   updatedAt: '2024-01-15T00:00:00Z',
 };
