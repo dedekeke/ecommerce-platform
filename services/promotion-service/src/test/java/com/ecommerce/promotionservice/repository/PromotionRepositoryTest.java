@@ -224,16 +224,14 @@ class PromotionRepositoryTest {
     }
 
     @Test
-    @DisplayName("Should increment current uses when saved")
-    void shouldIncrementCurrentUsesWhenSaved() {
-        Promotion promotion = promotionRepository.findByCode("ACTIVE20").orElseThrow();
-        int initialUses = promotion.getCurrentUses();
+    @DisplayName("Should increment current uses via atomic redeemByCode")
+    void shouldIncrementCurrentUsesWhenRedeemed() {
+        int initialUses = promotionRepository.findByCode("ACTIVE20").orElseThrow().getCurrentUses();
 
-        promotion.incrementUsage();
-        promotionRepository.save(promotion);
-        entityManager.flush();
+        int redeemed = promotionRepository.redeemByCode("ACTIVE20", LocalDateTime.now());
         entityManager.clear();
 
+        assertThat(redeemed).isEqualTo(1);
         Promotion updated = promotionRepository.findByCode("ACTIVE20").orElseThrow();
         assertThat(updated.getCurrentUses()).isEqualTo(initialUses + 1);
     }
