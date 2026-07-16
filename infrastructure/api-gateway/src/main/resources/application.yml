@@ -404,10 +404,14 @@ spring:
                 redis-rate-limiter.requestedTokens: 1
 
         # ---------- Promotion Service ----------
+        # /api/currency/** (CurrencyController) also lives in promotion-service
+        # — shared route, same pattern as order-service's /api/returns/** above.
+        # Previously missing here, so currency-rate requests never reached
+        # promotion-service through the gateway (404 at the edge).
         - id: promotion-service
           uri: lb://promotion-service
           predicates:
-            - Path=/api/promotions/**
+            - Path=/api/promotions/**,/api/currency/**
           filters:
             - name: RequestRateLimiter
               args:
@@ -420,7 +424,7 @@ spring:
         - id: promotion-service-v1
           uri: lb://promotion-service
           predicates:
-            - Path=/api/v1/promotions/**
+            - Path=/api/v1/promotions/**,/api/v1/currency/**
           filters:
             - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
             - AddRequestHeader=X-API-Version, v1
