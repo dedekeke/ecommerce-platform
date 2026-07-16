@@ -142,11 +142,4 @@ public class Promotion implements Serializable {
     public boolean isApplicableToProduct(Long productId) {
         return applicableProducts.contains(productId);
     }
-
-    public void incrementUsage() {
-        if (maxUses != null && currentUses >= maxUses) {
-            throw new IllegalStateException("Promotion has reached maximum usage limit");
-        }
-        this.currentUses++;
-    }
 }
