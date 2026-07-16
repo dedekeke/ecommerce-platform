@@ -1,9 +1,12 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Elements } from '@stripe/react-stripe-js'
 import type { Stripe } from '@stripe/stripe-js'
 import Alert from '@mui/material/Alert'
+import Box from '@mui/material/Box'
 import { STRIPE_PUBLISHABLE_KEY } from '../config/payments'
 import StripePaymentForm from './StripePaymentForm'
+import SavedMethodPicker, { type SavedMethodSelection } from './SavedMethodPicker'
+import SavedMethodConfirmButton from './SavedMethodConfirmButton'
 
 // The ~120KB Stripe JS SDK is loaded via a dynamic import so it lands in its own chunk and is only
 // fetched when the Stripe provider is actually active. Memoised at module scope so the SDK is
@@ -28,16 +31,28 @@ export interface StripeCheckoutProps {
    */
   clientSecret: string
   onConfirmed: (paymentIntentId: string) => void
+  /**
+   * Authenticated user id. When present, a saved-card picker (SavedMethodPicker) is shown above
+   * the new-card form so a returning shopper can reuse a stored Stripe payment method instead of
+   * retyping a card. Omit/null for guest checkout — guests never have saved methods and must
+   * never be queried for them.
+   */
+  userId?: string | null
 }
 
 /**
- * Real Stripe checkout step. Renders Stripe Elements against a clientSecret obtained from order
- * creation so the user can confirm the payment with Stripe.js. This is the only payment step in
- * checkout — raw card data is never collected by this app (PCI SAQ-A).
+ * Real Stripe checkout step. For an authenticated user, offers a choice between a previously
+ * saved payment method (confirmed directly by its payment_method id, no Elements mounted) and the
+ * new-card flow (Stripe Elements against the order's clientSecret). Guests only ever see the
+ * new-card flow. This is the only payment step in checkout — raw card data is never collected by
+ * this app (PCI SAQ-A).
  */
-export default function StripeCheckout({ clientSecret, onConfirmed }: StripeCheckoutProps) {
+export default function StripeCheckout({ clientSecret, onConfirmed, userId }: StripeCheckoutProps) {
   const stripeInstance = useMemo(() => getStripe(), [])
   const options = useMemo(() => ({ clientSecret }), [clientSecret])
+  const [selection, setSelection] = useState<SavedMethodSelection>({ type: 'new' })
+
+  const handleSelectionChange = useCallback((next: SavedMethodSelection) => setSelection(next), [])
 
   if (!stripeInstance) {
     return (
@@ -48,8 +63,21 @@ export default function StripeCheckout({ clientSecret, onConfirmed }: StripeChec
   }
 
   return (
-    <Elements stripe={stripeInstance} options={options}>
-      <StripePaymentForm onConfirmed={onConfirmed} />
-    </Elements>
+    <Box>
+      {userId && <SavedMethodPicker userId={userId} onSelectionChange={handleSelectionChange} />}
+
+      {selection.type === 'saved' ? (
+        <SavedMethodConfirmButton
+          stripePromise={stripeInstance}
+          clientSecret={clientSecret}
+          providerId={selection.method.providerId}
+          onConfirmed={onConfirmed}
+        />
+      ) : (
+        <Elements stripe={stripeInstance} options={options}>
+          <StripePaymentForm onConfirmed={onConfirmed} />
+        </Elements>
+      )}
+    </Box>
   )
 }

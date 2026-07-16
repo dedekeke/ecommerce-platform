@@ -92,3 +92,22 @@ export interface Order {
   totalAmount: number
   createdAt?: string
 }
+
+/**
+ * A previously-saved payment method for an authenticated user (see payment-service). `providerId`
+ * is the Stripe payment_method id (`pm_...`) used to confirm a PaymentIntent without collecting
+ * raw card data (PCI SAQ-A). `GET /api/payments/methods/user/{userId}` only ever returns the
+ * requesting user's own methods.
+ */
+export interface SavedPaymentMethod {
+  id: number
+  userId: string
+  provider: string
+  providerId: string
+  last4: string
+  brand: string
+  expMonth: number
+  expYear: number
+  isDefault: boolean
+  createdAt: string
+}

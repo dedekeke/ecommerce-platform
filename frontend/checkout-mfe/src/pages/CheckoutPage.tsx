@@ -184,6 +184,7 @@ export default function CheckoutPage() {
             >
               <StripeCheckout
                 clientSecret={checkoutResult.clientSecret}
+                userId={userId}
                 onConfirmed={() => {
                   reset()
                   navigate(`confirmation/${checkoutResult.orderId}`)
