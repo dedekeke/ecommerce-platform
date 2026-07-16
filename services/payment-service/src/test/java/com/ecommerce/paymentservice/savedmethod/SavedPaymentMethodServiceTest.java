@@ -1,5 +1,6 @@
 package com.ecommerce.paymentservice.savedmethod;
 
+import com.ecommerce.paymentservice.domain.Payment;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +34,9 @@ class SavedPaymentMethodServiceTest {
 
     @Mock
     private PaymentProviderAdapter providerAdapter;
+
+    @Mock
+    private com.ecommerce.paymentservice.service.PaymentService paymentService;
 
     @InjectMocks
     private SavedPaymentMethodService service;
@@ -201,7 +205,33 @@ class SavedPaymentMethodServiceTest {
         when(repository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.setDefault("user-1", 99L))
-            .isInstanceOf(IllegalArgumentException.class);
+            .isInstanceOf(SavedPaymentMethodNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("payWithSavedMethod_should_confirm_when_callerOwnsMethod")
+    void payWithSavedMethod_should_confirm_when_callerOwnsMethod() {
+        SavedPaymentMethod owned = method(4L, "user-1", true);
+        Payment confirmed = new Payment();
+        when(repository.findByUserIdAndProviderId("user-1", "pm_4")).thenReturn(Optional.of(owned));
+        when(paymentService.confirmPayment("pi_1", "pm_4")).thenReturn(confirmed);
+
+        Payment result = service.payWithSavedMethod("user-1", "pi_1", "pm_4");
+
+        assertThat(result).isSameAs(confirmed);
+        verify(paymentService).confirmPayment("pi_1", "pm_4");
+    }
+
+    @Test
+    @DisplayName("payWithSavedMethod_should_rejectAndNotCharge_when_methodNotCallers")
+    void payWithSavedMethod_should_rejectAndNotCharge_when_methodNotCallers() {
+        // The pm id is real but belongs to another user -> not in THIS caller's vault.
+        when(repository.findByUserIdAndProviderId("attacker", "pm_victim")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.payWithSavedMethod("attacker", "pi_1", "pm_victim"))
+            .isInstanceOf(SecurityException.class);
+        // Critical: no gateway charge is ever attempted for an unowned method.
+        verify(paymentService, never()).confirmPayment(any(), any());
     }
 
     @Test

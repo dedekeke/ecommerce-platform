@@ -33,12 +33,15 @@ class PaymentIntentControllerTest {
 
     private MockMvc mockMvc;
     private PaymentService paymentService;
+    private com.ecommerce.paymentservice.savedmethod.SavedPaymentMethodService savedPaymentMethodService;
 
     @BeforeEach
     void setUp() {
         paymentService = Mockito.mock(PaymentService.class);
+        savedPaymentMethodService =
+                Mockito.mock(com.ecommerce.paymentservice.savedmethod.SavedPaymentMethodService.class);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new PaymentIntentController(paymentService))
+                .standaloneSetup(new PaymentIntentController(paymentService, savedPaymentMethodService))
                 .setControllerAdvice(new PaymentApiExceptionHandler())
                 // Resolves @AuthenticationPrincipal Jwt to null in this unauthenticated standalone
                 // setup so the controller falls back to the body userId (security is covered separately).
@@ -109,6 +112,22 @@ class PaymentIntentControllerTest {
                 .doesNotContain("failureReason")
                 .doesNotContain("insufficient_funds")
                 .doesNotContain("req_abc123");
+    }
+
+    @Test
+    @DisplayName("confirm-saved should confirm server-side and return the payment when caller owns the method")
+    void confirmSaved_should_return200_when_ownershipVerified() throws Exception {
+        when(savedPaymentMethodService.payWithSavedMethod("user-1", "pi_123", "pm_1"))
+                .thenReturn(payment());
+
+        mockMvc.perform(post("/api/payments/intents/confirm-saved")
+                        .header("X-User-Id", "user-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"paymentIntentId\":\"pi_123\",\"paymentMethodId\":\"pm_1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentIntentId").value("pi_123"));
+
+        verify(savedPaymentMethodService).payWithSavedMethod("user-1", "pi_123", "pm_1");
     }
 
     @Test

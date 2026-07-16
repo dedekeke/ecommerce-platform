@@ -1,5 +1,6 @@
 package com.ecommerce.paymentservice.api;
 
+import com.ecommerce.paymentservice.savedmethod.SavedPaymentMethodNotFoundException;
 import com.ecommerce.paymentservice.service.InvalidPaymentStateException;
 import com.ecommerce.paymentservice.service.PaymentNotFoundException;
 import com.ecommerce.paymentservice.webhook.WebhookVerificationException;
@@ -14,10 +15,36 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Translates checkout PaymentIntent API errors into structured JSON responses. */
-@RestControllerAdvice(basePackages = "com.ecommerce.paymentservice.api")
+/**
+ * Translates payment REST API errors into structured JSON responses.
+ *
+ * <p>Scoped to the whole payment-service so it covers both the {@code api} controllers
+ * (PaymentIntent/webhook) and the {@code savedmethod} controller — the latter's
+ * ownership/not-found/state errors previously fell through to a generic 500.</p>
+ */
+@RestControllerAdvice(basePackages = "com.ecommerce.paymentservice")
 @Slf4j
 public class PaymentApiExceptionHandler {
+
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<Map<String, Object>> handleSecurity(SecurityException ex) {
+        // Ownership / IDOR guard rejections (e.g. managing or paying with another user's method).
+        log.warn("Forbidden payment operation: {}", ex.getMessage());
+        return build(HttpStatus.FORBIDDEN, "You are not allowed to access this payment resource", null);
+    }
+
+    @ExceptionHandler(SavedPaymentMethodNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleSavedMethodNotFound(SavedPaymentMethodNotFoundException ex) {
+        log.warn("Saved payment method not found: {}", ex.getMessage());
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
+        // e.g. confirming a SetupIntent that has not succeeded / carries no payment method.
+        log.warn("Invalid payment-method state: {}", ex.getMessage());
+        return build(HttpStatus.CONFLICT, ex.getMessage(), null);
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {

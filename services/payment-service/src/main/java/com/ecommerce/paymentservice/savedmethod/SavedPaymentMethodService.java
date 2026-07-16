@@ -1,5 +1,7 @@
 package com.ecommerce.paymentservice.savedmethod;
 
+import com.ecommerce.paymentservice.domain.Payment;
+import com.ecommerce.paymentservice.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,6 +26,7 @@ public class SavedPaymentMethodService {
 
     private final SavedPaymentMethodRepository repository;
     private final PaymentProviderAdapter providerAdapter;
+    private final PaymentService paymentService;
 
     @Transactional
     public SavedPaymentMethod attach(String userId, String token) {
@@ -132,10 +135,30 @@ public class SavedPaymentMethodService {
         return repository.findByUserId(userId);
     }
 
+    /**
+     * Pay for an order's PaymentIntent with one of the caller's OWN saved methods.
+     *
+     * <p>This is the authoritative ownership gate for saved-card checkout: the payment
+     * method is confirmed SERVER-SIDE only after we prove the (userId, providerId) row
+     * belongs to the authenticated caller. The browser never confirms a PaymentIntent
+     * with a client-supplied payment_method id directly — a leaked/guessed {@code pm_...}
+     * cannot be used to charge someone else's card because it is not in the caller's vault
+     * and this method rejects it with {@link SecurityException} (HTTP 403) before any
+     * gateway call.</p>
+     */
+    @Transactional
+    public Payment payWithSavedMethod(String userId, String paymentIntentId, String providerId) {
+        repository.findByUserIdAndProviderId(userId, providerId)
+            .orElseThrow(() -> new SecurityException(
+                "Saved payment method does not belong to user " + userId));
+        log.info("Confirming payment intent {} with saved method (user={})", paymentIntentId, userId);
+        return paymentService.confirmPayment(paymentIntentId, providerId);
+    }
+
     @Transactional
     public SavedPaymentMethod setDefault(String userId, Long id) {
         SavedPaymentMethod target = repository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Saved payment method not found: " + id));
+            .orElseThrow(() -> new SavedPaymentMethodNotFoundException("Saved payment method not found: " + id));
         if (!target.getUserId().equals(userId)) {
             throw new SecurityException("User " + userId + " does not own payment method " + id);
         }
@@ -154,7 +177,7 @@ public class SavedPaymentMethodService {
     @Transactional
     public void delete(String userId, Long id) {
         SavedPaymentMethod target = repository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Saved payment method not found: " + id));
+            .orElseThrow(() -> new SavedPaymentMethodNotFoundException("Saved payment method not found: " + id));
         if (!target.getUserId().equals(userId)) {
             throw new SecurityException("User " + userId + " does not own payment method " + id);
         }

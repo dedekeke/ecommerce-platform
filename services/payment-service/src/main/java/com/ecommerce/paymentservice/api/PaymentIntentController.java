@@ -1,6 +1,7 @@
 package com.ecommerce.paymentservice.api;
 
 import com.ecommerce.paymentservice.domain.Payment;
+import com.ecommerce.paymentservice.savedmethod.SavedPaymentMethodService;
 import com.ecommerce.paymentservice.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,6 +15,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PaymentIntentController {
 
     private final PaymentService paymentService;
+    private final SavedPaymentMethodService savedPaymentMethodService;
 
     @PostMapping("/intents")
     @Operation(summary = "Create a payment intent and return its client secret for Stripe.js confirmation")
@@ -48,6 +51,35 @@ public class PaymentIntentController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(PaymentIntentDtos.Response.from(payment));
+    }
+
+    @PostMapping("/intents/confirm-saved")
+    @Operation(summary = "Confirm an order's payment with the caller's saved method (server-verified ownership)")
+    public ResponseEntity<PaymentIntentDtos.Response> confirmWithSavedMethod(
+            @Valid @RequestBody PaymentIntentDtos.SavedMethodPayRequest request,
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader(value = "X-User-Id", required = false) String headerUserId) {
+
+        // Ownership is enforced server-side: the browser sends a saved payment_method id, but the
+        // service confirms the PaymentIntent only after proving that id belongs to this JWT subject.
+        String userId = requireUserId(jwt, headerUserId);
+        log.info("REST: confirm payment intent {} with a saved method (user {})",
+                request.paymentIntentId(), userId);
+
+        Payment payment = savedPaymentMethodService.payWithSavedMethod(
+                userId, request.paymentIntentId(), request.paymentMethodId());
+
+        return ResponseEntity.ok(PaymentIntentDtos.Response.from(payment));
+    }
+
+    private String requireUserId(Jwt jwt, String headerUserId) {
+        if (jwt != null && StringUtils.hasText(jwt.getSubject())) {
+            return jwt.getSubject();
+        }
+        if (StringUtils.hasText(headerUserId)) {
+            return headerUserId;
+        }
+        throw new SecurityException("Authenticated user required");
     }
 
     private String resolveUserId(PaymentIntentDtos.CreateRequest request, Jwt jwt) {
