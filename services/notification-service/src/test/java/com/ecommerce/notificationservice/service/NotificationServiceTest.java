@@ -370,11 +370,60 @@ class NotificationServiceTest {
         notificationService.retryNotification("log123");
 
         // Then — the resend goes through the proxy (so @Async takes effect),
-        // NOT inline via this.sendNotification.
-        verify(asyncProxy).sendNotification(
+        // NOT inline via this.resend. It re-sends the same row by id so the
+        // retryCount is carried forward across the chain.
+        verify(asyncProxy).resend("log123");
+        verify(emailService, never()).sendEmail(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void should_boundTotalAttempts_acrossRetryChain_when_notificationPermanentlyFails() {
+        // Given — an in-memory store so the SAME row is carried across the chain,
+        // and a permanently failing email channel.
+        Map<String, NotificationLog> store = new HashMap<>();
+        when(logRepository.save(any(NotificationLog.class))).thenAnswer(invocation -> {
+            NotificationLog log = invocation.getArgument(0);
+            if (log.getId() == null) {
+                log.setId("log-1");
+            }
+            store.put(log.getId(), log);
+            return log;
+        });
+        when(logRepository.findById(anyString()))
+                .thenAnswer(invocation -> Optional.ofNullable(store.get(invocation.getArgument(0))));
+        when(templateRepository.findByCode("ORDER_CONFIRMATION"))
+                .thenReturn(Optional.of(emailTemplate));
+        doThrow(new RuntimeException("smtp permanently down"))
+                .when(emailService).sendEmail(anyString(), anyString(), anyString(), any());
+
+        // self resolves to the real instance so resend runs synchronously here.
+        notificationService.setSelf(notificationService);
+
+        // When — initial send (attempt 1), then drive scheduler-style retries.
+        notificationService.sendNotification(
                 "user123", "test@example.com", "ORDER_CONFIRMATION",
                 variables, "order123", "ORDER");
-        verify(emailService, never()).sendEmail(anyString(), anyString(), anyString(), any());
+
+        int safetyGuard = 0;
+        while (store.get("log-1").getStatus() == NotificationStatus.RETRYING && safetyGuard++ < 100) {
+            notificationService.retryNotification("log-1");
+        }
+
+        // Then — attempts are bounded: 1 initial + MAX_RETRY_ATTEMPTS (3) retries.
+        verify(emailService, times(4)).sendEmail(anyString(), anyString(), anyString(), any());
+
+        // No fan-out: exactly one row exists (retry re-used it, never created new ones).
+        assertThat(store).hasSize(1);
+
+        NotificationLog finalRow = store.get("log-1");
+        assertThat(finalRow.getRetryCount()).isEqualTo(3);
+        assertThat(finalRow.getStatus()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(finalRow.getNextRetryAt()).isNull();
+
+        // And the cap is hard-enforced: a further retry is rejected.
+        assertThatThrownBy(() -> notificationService.retryNotification("log-1"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Max retry attempts reached");
     }
 
     @Test

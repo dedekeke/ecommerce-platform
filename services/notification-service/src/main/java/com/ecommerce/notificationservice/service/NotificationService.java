@@ -88,7 +88,44 @@ public class NotificationService {
 
         notificationLog = logRepository.save(notificationLog);
 
-        // Send based on type
+        dispatch(notificationLog, template);
+    }
+
+    /**
+     * Re-send an existing notification row <em>in place</em>.
+     *
+     * <p>Reusing the same row — rather than creating a fresh {@link NotificationLog}
+     * per retry — is what makes {@link #MAX_RETRY_ATTEMPTS} bound the TOTAL number
+     * of attempts across the whole retry chain. A new row per retry would reset
+     * {@code retryCount} to 0 every time, so a permanently-failing notification
+     * would fan out into ever more rows and retry unboundedly.</p>
+     */
+    @Async("notificationExecutor")
+    public void resend(String notificationId) {
+        NotificationLog notificationLog = logRepository.findById(notificationId)
+                .orElseThrow(() -> new RuntimeException("Notification not found: " + notificationId));
+
+        NotificationTemplate template = templateRepository.findByCode(notificationLog.getTemplateCode())
+                .orElseThrow(() -> new RuntimeException(
+                        "Template not found: " + notificationLog.getTemplateCode()));
+
+        if (!template.getActive()) {
+            log.warn("Template {} is not active, skipping retry", notificationLog.getTemplateCode());
+            return;
+        }
+
+        dispatch(notificationLog, template);
+    }
+
+    /**
+     * Send the given log via its channel and persist the outcome. On failure the
+     * row's own {@code retryCount} decides whether another retry is scheduled, so
+     * the cap bounds attempts across the retry chain.
+     */
+    private void dispatch(NotificationLog notificationLog, NotificationTemplate template) {
+        String recipient = notificationLog.getRecipient();
+        Map<String, Object> variables = notificationLog.getVariables();
+
         try {
             if (template.getType() == NotificationType.EMAIL) {
                 emailService.sendEmail(recipient, template.getSubject(), template.getBody(), variables);
@@ -100,9 +137,9 @@ public class NotificationService {
                 pushService.sendPush(recipient, template.getSubject(), body, variables);
             }
 
-            // Update status to SENT
             notificationLog.setStatus(NotificationStatus.SENT);
             notificationLog.setSentAt(Instant.now());
+            notificationLog.setErrorMessage(null);
             logRepository.save(notificationLog);
 
             log.info("Notification sent successfully - id: {}", notificationLog.getId());
@@ -110,11 +147,14 @@ public class NotificationService {
         } catch (Exception e) {
             log.error("Failed to send notification - id: {}", notificationLog.getId(), e);
 
-            // Update status to FAILED
             notificationLog.setStatus(NotificationStatus.FAILED);
             notificationLog.setErrorMessage(e.getMessage());
+            // Clear any retry time carried over from a prior attempt; only re-set
+            // it when we actually schedule another retry, so a terminally-failed
+            // row never looks retry-eligible.
+            notificationLog.setNextRetryAt(null);
 
-            // Schedule retry if under max attempts
+            // Schedule another retry only while total attempts are under the cap.
             if (notificationLog.getRetryCount() < MAX_RETRY_ATTEMPTS) {
                 notificationLog.setStatus(NotificationStatus.RETRYING);
                 notificationLog.setNextRetryAt(calculateNextRetryTime(notificationLog.getRetryCount()));
@@ -125,7 +165,8 @@ public class NotificationService {
     }
 
     /**
-     * Retry failed notification
+     * Retry a failed notification by re-sending the same row, carrying its
+     * {@code retryCount} forward so {@link #MAX_RETRY_ATTEMPTS} caps total attempts.
      */
     public void retryNotification(String notificationId) {
         NotificationLog notification = logRepository.findById(notificationId)
@@ -143,16 +184,9 @@ public class NotificationService {
         notification.setStatus(NotificationStatus.RETRYING);
         logRepository.save(notification);
 
-        // Re-send through the proxy so the @Async dispatch actually happens off
-        // the retry scheduler thread.
-        self.sendNotification(
-                notification.getUserId(),
-                notification.getRecipient(),
-                notification.getTemplateCode(),
-                notification.getVariables(),
-                notification.getRelatedEntityId(),
-                notification.getRelatedEntityType()
-        );
+        // Re-send the SAME row through the proxy so the @Async dispatch actually
+        // happens off the retry scheduler thread and the retryCount is preserved.
+        self.resend(notificationId);
     }
 
     /**

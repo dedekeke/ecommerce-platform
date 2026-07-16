@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Test class for NotificationTemplateRepository
@@ -182,6 +183,17 @@ class NotificationTemplateRepositoryTest extends BaseMongoTest {
 
         // Then
         assertThat(result.getContent()).hasSize(3);
+    }
+
+    @Test
+    void should_rejectDuplicateCode_when_uniqueIndexEnforced() {
+        // Given a seeded template code.
+        repository.insert(createTemplate("UNIQUE_CODE", "First"));
+
+        // When a second insert reuses the same code / Then the unique index rejects it.
+        NotificationTemplate duplicate = createTemplate("UNIQUE_CODE", "Second");
+        assertThatThrownBy(() -> repository.insert(duplicate))
+                .isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
     }
 
     private NotificationTemplate createTemplate(String code, String name) {
