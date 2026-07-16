@@ -22,12 +22,37 @@ import java.util.List;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/payment-methods")
+@RequestMapping("/api/payments/methods")
 @RequiredArgsConstructor
 @Tag(name = "Saved Payment Methods", description = "User payment-method vault (§3.9)")
 public class SavedPaymentMethodController {
 
     private final SavedPaymentMethodService service;
+
+    @PostMapping("/setup-intent")
+    @Operation(summary = "Start the secure add-a-card flow; returns a Stripe SetupIntent client secret")
+    public ResponseEntity<SavedPaymentMethodDtos.SetupIntentResponse> createSetupIntent(
+        @AuthenticationPrincipal Jwt jwt,
+        @RequestHeader(value = "X-User-Id", required = false) String headerUserId
+    ) {
+        String userId = resolveUserId(jwt, headerUserId);
+        log.info("REST: Create setup intent for user={}", userId);
+        var result = service.createSetupIntent(userId);
+        return ResponseEntity.ok(
+            new SavedPaymentMethodDtos.SetupIntentResponse(result.setupIntentId(), result.clientSecret()));
+    }
+
+    @PostMapping("/confirm")
+    @Operation(summary = "Persist the card saved via a completed SetupIntent (owner-verified)")
+    public ResponseEntity<SavedPaymentMethod> confirm(
+        @Valid @RequestBody SavedPaymentMethodDtos.ConfirmRequest req,
+        @AuthenticationPrincipal Jwt jwt,
+        @RequestHeader(value = "X-User-Id", required = false) String headerUserId
+    ) {
+        String userId = resolveUserId(jwt, headerUserId);
+        log.info("REST: Confirm setup intent {} for user={}", req.setupIntentId(), userId);
+        return ResponseEntity.status(201).body(service.confirmSetupIntent(userId, req.setupIntentId()));
+    }
 
     @PostMapping
     @Operation(summary = "Attach a tokenized payment method to the authenticated user")

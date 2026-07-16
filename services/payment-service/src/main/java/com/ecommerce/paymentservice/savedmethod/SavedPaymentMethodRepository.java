@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface SavedPaymentMethodRepository extends JpaRepository<SavedPaymentMethod, Long> {
@@ -11,4 +12,6 @@ public interface SavedPaymentMethodRepository extends JpaRepository<SavedPayment
     List<SavedPaymentMethod> findByUserId(String userId);
 
     List<SavedPaymentMethod> findByUserIdAndIsDefaultTrue(String userId);
+
+    Optional<SavedPaymentMethod> findByUserIdAndProviderId(String userId, String providerId);
 }

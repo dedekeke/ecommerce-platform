@@ -83,4 +83,42 @@ class MockStripeAdapterTest {
         PaymentProviderAdapter.AttachResult result = adapter.attachPaymentMethod("user-1", "tok_visa_4242");
         assertThat(result.providerId()).contains("tok_visa_4242");
     }
+
+    @Test
+    @DisplayName("createSetupIntent_should_returnIdAndClientSecret")
+    void createSetupIntent_should_returnIdAndClientSecret() {
+        PaymentProviderAdapter.SetupIntentResult result = adapter.createSetupIntent("user-1");
+
+        assertThat(result.setupIntentId()).isNotBlank();
+        assertThat(result.clientSecret()).contains(result.setupIntentId());
+    }
+
+    @Test
+    @DisplayName("createSetupIntent_should_throw_when_userBlank")
+    void createSetupIntent_should_throw_when_userBlank() {
+        assertThatThrownBy(() -> adapter.createSetupIntent(" "))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("retrieveSetupIntent_should_recoverOwningUser_andSucceededStatus")
+    void retrieveSetupIntent_should_recoverOwningUser_andSucceededStatus() {
+        PaymentProviderAdapter.SetupIntentResult created = adapter.createSetupIntent("user-42");
+
+        PaymentProviderAdapter.SetupIntentDetails details =
+            adapter.retrieveSetupIntent(created.setupIntentId());
+
+        assertThat(details.status()).isEqualTo("succeeded");
+        assertThat(details.userId()).isEqualTo("user-42");
+        assertThat(details.paymentMethodId()).isNotBlank();
+        assertThat(details.last4()).hasSize(4);
+        assertThat(details.brand()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("retrieveSetupIntent_should_throw_when_idBlank")
+    void retrieveSetupIntent_should_throw_when_idBlank() {
+        assertThatThrownBy(() -> adapter.retrieveSetupIntent(""))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
 }

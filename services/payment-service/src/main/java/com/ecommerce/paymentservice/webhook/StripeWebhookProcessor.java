@@ -1,9 +1,11 @@
 package com.ecommerce.paymentservice.webhook;
 
+import com.ecommerce.paymentservice.savedmethod.SavedPaymentMethodService;
 import com.ecommerce.paymentservice.service.PaymentService;
 import com.stripe.model.Event;
 import com.stripe.model.EventDataObjectDeserializer;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.SetupIntent;
 import com.stripe.model.StripeError;
 import com.stripe.model.StripeObject;
 import lombok.RequiredArgsConstructor;
@@ -36,9 +38,11 @@ public class StripeWebhookProcessor {
     static final String EVENT_SUCCEEDED = "payment_intent.succeeded";
     static final String EVENT_FAILED = "payment_intent.payment_failed";
     static final String EVENT_CANCELED = "payment_intent.canceled";
+    static final String EVENT_SETUP_SUCCEEDED = "setup_intent.succeeded";
 
     private final ProcessedStripeEventRepository processedEventRepository;
     private final PaymentService paymentService;
+    private final SavedPaymentMethodService savedPaymentMethodService;
 
     /**
      * @throws org.springframework.dao.DataIntegrityViolationException if the
@@ -53,12 +57,17 @@ public class StripeWebhookProcessor {
             return;
         }
 
-        // Insert-first: fails here on a duplicate, before any payment state is touched.
+        // Insert-first: fails here on a duplicate, before any state is touched.
         processedEventRepository.saveAndFlush(ProcessedStripeEvent.builder()
                 .eventId(event.getId())
                 .eventType(type)
                 .processedAt(Instant.now())
                 .build());
+
+        if (EVENT_SETUP_SUCCEEDED.equals(type)) {
+            handleSetupIntentSucceeded(event);
+            return;
+        }
 
         PaymentIntent intent = extractPaymentIntent(event);
         if (intent == null || intent.getId() == null) {
@@ -76,7 +85,43 @@ public class StripeWebhookProcessor {
     }
 
     private boolean isHandled(String type) {
-        return EVENT_SUCCEEDED.equals(type) || EVENT_FAILED.equals(type) || EVENT_CANCELED.equals(type);
+        return EVENT_SUCCEEDED.equals(type) || EVENT_FAILED.equals(type)
+                || EVENT_CANCELED.equals(type) || EVENT_SETUP_SUCCEEDED.equals(type);
+    }
+
+    /**
+     * Authoritatively persist a saved card once its SetupIntent succeeds. The owning
+     * user is read from the intent metadata (stamped at creation) — never from a
+     * client — and persistence is idempotent, so a redelivery is a no-op.
+     */
+    private void handleSetupIntentSucceeded(Event event) {
+        SetupIntent setupIntent = extractSetupIntent(event);
+        if (setupIntent == null) {
+            log.warn("Stripe event {} carried no deserializable SetupIntent; acknowledging", event.getId());
+            return;
+        }
+        String userId = setupIntent.getMetadata() == null ? null : setupIntent.getMetadata().get("userId");
+        String paymentMethodId = setupIntent.getPaymentMethod();
+        if (userId == null || userId.isBlank() || paymentMethodId == null || paymentMethodId.isBlank()) {
+            log.warn("SetupIntent {} missing userId metadata or payment method; skipping persist",
+                    setupIntent.getId());
+            return;
+        }
+        savedPaymentMethodService.persistFromWebhook(userId, paymentMethodId);
+    }
+
+    private SetupIntent extractSetupIntent(Event event) {
+        EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+        StripeObject object = deserializer.getObject().orElse(null);
+        if (object == null) {
+            try {
+                object = deserializer.deserializeUnsafe();
+            } catch (Exception e) {
+                log.warn("Could not deserialize SetupIntent from event {}: {}", event.getId(), e.getMessage());
+                return null;
+            }
+        }
+        return (object instanceof SetupIntent setupIntent) ? setupIntent : null;
     }
 
     /**

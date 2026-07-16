@@ -23,9 +23,14 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "saved_payment_methods", indexes = {
-    @Index(name = "idx_saved_payment_user", columnList = "userId")
-})
+@Table(name = "saved_payment_methods",
+    indexes = {
+        @Index(name = "idx_saved_payment_user", columnList = "userId")
+    },
+    uniqueConstraints = {
+        // One row per (user, tokenized method): lets confirm + webhook converge idempotently.
+        @UniqueConstraint(name = "uq_saved_payment_user_provider", columnNames = {"userId", "providerId"})
+    })
 public class SavedPaymentMethod {
 
     @Id

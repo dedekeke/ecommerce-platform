@@ -45,6 +45,25 @@ final class StripeWebhookTestSupport {
                 .formatted(eventId, Stripe.API_VERSION, intentId);
     }
 
+    static String setupIntentSucceededEventJson(String eventId, String setupIntentId,
+            String paymentMethodId, String userId) {
+        return """
+                {"id":"%s","object":"event","api_version":"%s","type":"setup_intent.succeeded",
+                 "data":{"object":{"id":"%s","object":"setup_intent","status":"succeeded",
+                 "payment_method":"%s","metadata":{"userId":"%s"}}}}"""
+                .formatted(eventId, Stripe.API_VERSION, setupIntentId, paymentMethodId, userId);
+    }
+
+    /** setup_intent.succeeded whose metadata carries no userId — must be skipped, not persisted. */
+    static String setupIntentSucceededEventJsonNoUser(String eventId, String setupIntentId,
+            String paymentMethodId) {
+        return """
+                {"id":"%s","object":"event","api_version":"%s","type":"setup_intent.succeeded",
+                 "data":{"object":{"id":"%s","object":"setup_intent","status":"succeeded",
+                 "payment_method":"%s","metadata":{}}}}"""
+                .formatted(eventId, Stripe.API_VERSION, setupIntentId, paymentMethodId);
+    }
+
     static String unhandledEventJson(String eventId) {
         return """
                 {"id":"%s","object":"event","api_version":"%s","type":"charge.refunded",

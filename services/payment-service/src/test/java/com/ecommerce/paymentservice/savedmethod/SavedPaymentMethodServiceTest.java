@@ -71,6 +71,95 @@ class SavedPaymentMethodServiceTest {
     }
 
     @Test
+    @DisplayName("createSetupIntent_should_delegateToAdapter")
+    void createSetupIntent_should_delegateToAdapter() {
+        when(providerAdapter.createSetupIntent("user-1"))
+            .thenReturn(new PaymentProviderAdapter.SetupIntentResult("seti_1", "seti_1_secret"));
+
+        PaymentProviderAdapter.SetupIntentResult result = service.createSetupIntent("user-1");
+
+        assertThat(result.setupIntentId()).isEqualTo("seti_1");
+        assertThat(result.clientSecret()).isEqualTo("seti_1_secret");
+    }
+
+    @Test
+    @DisplayName("confirmSetupIntent_should_persistSafeFields_when_succeededAndOwned")
+    void confirmSetupIntent_should_persistSafeFields_when_succeededAndOwned() {
+        when(providerAdapter.providerName()).thenReturn("STRIPE");
+        when(providerAdapter.retrieveSetupIntent("seti_1")).thenReturn(
+            new PaymentProviderAdapter.SetupIntentDetails(
+                "seti_1", "succeeded", "user-1", "pm_9", "4242", "VISA", 11, 2031));
+        when(repository.findByUserIdAndProviderId("user-1", "pm_9")).thenReturn(Optional.empty());
+        when(repository.findByUserId("user-1")).thenReturn(List.of());
+        when(repository.saveAndFlush(any(SavedPaymentMethod.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        SavedPaymentMethod saved = service.confirmSetupIntent("user-1", "seti_1");
+
+        assertThat(saved.getUserId()).isEqualTo("user-1");
+        assertThat(saved.getProviderId()).isEqualTo("pm_9");
+        assertThat(saved.getLast4()).isEqualTo("4242");
+        assertThat(saved.getBrand()).isEqualTo("VISA");
+        assertThat(saved.getExpMonth()).isEqualTo(11);
+        assertThat(saved.getIsDefault()).isTrue();
+    }
+
+    @Test
+    @DisplayName("confirmSetupIntent_should_throwSecurity_when_metadataUserMismatch")
+    void confirmSetupIntent_should_throwSecurity_when_metadataUserMismatch() {
+        when(providerAdapter.retrieveSetupIntent("seti_x")).thenReturn(
+            new PaymentProviderAdapter.SetupIntentDetails(
+                "seti_x", "succeeded", "attacker", "pm_evil", "4242", "VISA", 1, 2030));
+
+        assertThatThrownBy(() -> service.confirmSetupIntent("user-1", "seti_x"))
+            .isInstanceOf(SecurityException.class);
+        verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("confirmSetupIntent_should_throwState_when_notSucceeded")
+    void confirmSetupIntent_should_throwState_when_notSucceeded() {
+        when(providerAdapter.retrieveSetupIntent("seti_p")).thenReturn(
+            new PaymentProviderAdapter.SetupIntentDetails(
+                "seti_p", "requires_payment_method", "user-1", null, null, null, null, null));
+
+        assertThatThrownBy(() -> service.confirmSetupIntent("user-1", "seti_p"))
+            .isInstanceOf(IllegalStateException.class);
+        verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("confirmSetupIntent_should_beIdempotent_when_methodAlreadySaved")
+    void confirmSetupIntent_should_beIdempotent_when_methodAlreadySaved() {
+        SavedPaymentMethod existing = method(3L, "user-1", true);
+        when(providerAdapter.retrieveSetupIntent("seti_1")).thenReturn(
+            new PaymentProviderAdapter.SetupIntentDetails(
+                "seti_1", "succeeded", "user-1", "pm_3", "4242", "VISA", 12, 2030));
+        when(repository.findByUserIdAndProviderId("user-1", "pm_3")).thenReturn(Optional.of(existing));
+
+        SavedPaymentMethod result = service.confirmSetupIntent("user-1", "seti_1");
+
+        assertThat(result).isSameAs(existing);
+        verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("persistFromWebhook_should_resolveCard_andPersistIdempotently")
+    void persistFromWebhook_should_resolveCard_andPersistIdempotently() {
+        when(providerAdapter.providerName()).thenReturn("STRIPE");
+        when(providerAdapter.attachPaymentMethod("user-1", "pm_7"))
+            .thenReturn(new PaymentProviderAdapter.AttachResult("pm_7", "1111", "AMEX", 6, 2029));
+        when(repository.findByUserIdAndProviderId("user-1", "pm_7")).thenReturn(Optional.empty());
+        when(repository.findByUserId("user-1")).thenReturn(List.of());
+        when(repository.saveAndFlush(any(SavedPaymentMethod.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        SavedPaymentMethod saved = service.persistFromWebhook("user-1", "pm_7");
+
+        assertThat(saved.getProviderId()).isEqualTo("pm_7");
+        assertThat(saved.getBrand()).isEqualTo("AMEX");
+        assertThat(saved.getLast4()).isEqualTo("1111");
+    }
+
+    @Test
     @DisplayName("listForUser_should_returnRepoResult")
     void listForUser_should_returnRepoResult() {
         SavedPaymentMethod m = method(1L, "user-1", true);
