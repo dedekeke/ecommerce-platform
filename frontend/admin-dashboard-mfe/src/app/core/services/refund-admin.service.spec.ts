@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { RefundAdminService } from './refund-admin.service';
-import { RefundSagaState } from '../models/refund.model';
+import { PagedRefunds, RefundSagaState } from '../models/refund.model';
 
 const mockSaga: RefundSagaState = {
   id: 'saga-1',
@@ -61,5 +61,38 @@ describe('RefundAdminService', () => {
     const req = httpMock.expectOne('/api/orders/refunds/missing');
     req.flush({ message: 'Not found' }, { status: 404, statusText: 'Not Found' });
     expect(error).toBeTruthy();
+  });
+
+  it('should fetch paginated refund sagas', () => {
+    const mockPaged: PagedRefunds = {
+      content: [mockSaga],
+      totalElements: 1,
+      totalPages: 1,
+      size: 20,
+      number: 0,
+    };
+    let result: PagedRefunds | undefined;
+    service.getRefunds({ page: 0, size: 20 }).subscribe((r) => (result = r));
+
+    const req = httpMock.expectOne((r) => r.url === '/api/orders/refunds');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('page')).toBe('0');
+    expect(req.request.params.get('size')).toBe('20');
+    req.flush(mockPaged);
+    expect(result).toEqual(mockPaged);
+  });
+
+  it('should include status filter when provided when fetching refunds', () => {
+    service.getRefunds({ page: 0, size: 20, status: 'COMPLETED' }).subscribe();
+    const req = httpMock.expectOne((r) => r.url === '/api/orders/refunds');
+    expect(req.request.params.get('status')).toBe('COMPLETED');
+    req.flush({ content: [], totalElements: 0, totalPages: 0, size: 20, number: 0 });
+  });
+
+  it('should not include a status param when not provided when fetching refunds', () => {
+    service.getRefunds({ page: 0, size: 20 }).subscribe();
+    const req = httpMock.expectOne((r) => r.url === '/api/orders/refunds');
+    expect(req.request.params.has('status')).toBeFalse();
+    req.flush({ content: [], totalElements: 0, totalPages: 0, size: 20, number: 0 });
   });
 });

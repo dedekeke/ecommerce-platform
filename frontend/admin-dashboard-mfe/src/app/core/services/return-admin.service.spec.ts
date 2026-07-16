@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { ReturnAdminService } from './return-admin.service';
-import { ReturnRequest } from '../models/return.model';
+import { PagedReturns, ReturnRequest, ReturnSummary } from '../models/return.model';
 
 const mockReturn: ReturnRequest = {
   id: 'rma-1',
@@ -83,5 +83,47 @@ describe('ReturnAdminService', () => {
     const req = httpMock.expectOne('/api/returns/missing');
     req.flush({ error: 'Return not found' }, { status: 404, statusText: 'Not Found' });
     expect(error).toBeTruthy();
+  });
+
+  it('should fetch paginated returns', () => {
+    const summary: ReturnSummary = {
+      id: 'rma-1',
+      rmaNumber: 'RMA-ABC123',
+      orderId: 'ord-1',
+      userId: 'user-1',
+      status: 'AWAITING_SHIPMENT',
+      requestedAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+    const mockPaged: PagedReturns = {
+      content: [summary],
+      totalElements: 1,
+      totalPages: 1,
+      size: 20,
+      number: 0,
+    };
+    let result: PagedReturns | undefined;
+    service.getReturns({ page: 0, size: 20 }).subscribe((r) => (result = r));
+
+    const req = httpMock.expectOne((r) => r.url === '/api/returns');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('page')).toBe('0');
+    expect(req.request.params.get('size')).toBe('20');
+    req.flush(mockPaged);
+    expect(result).toEqual(mockPaged);
+  });
+
+  it('should include status filter when provided when fetching returns', () => {
+    service.getReturns({ page: 0, size: 20, status: 'RECEIVED' }).subscribe();
+    const req = httpMock.expectOne((r) => r.url === '/api/returns');
+    expect(req.request.params.get('status')).toBe('RECEIVED');
+    req.flush({ content: [], totalElements: 0, totalPages: 0, size: 20, number: 0 });
+  });
+
+  it('should not include a status param when not provided when fetching returns', () => {
+    service.getReturns({ page: 0, size: 20 }).subscribe();
+    const req = httpMock.expectOne((r) => r.url === '/api/returns');
+    expect(req.request.params.has('status')).toBeFalse();
+    req.flush({ content: [], totalElements: 0, totalPages: 0, size: 20, number: 0 });
   });
 });

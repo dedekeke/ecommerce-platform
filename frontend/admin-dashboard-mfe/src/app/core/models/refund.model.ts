@@ -37,3 +37,21 @@ export interface RefundSagaState {
 export interface StartRefundPayload {
   reason?: string;
 }
+
+export interface PagedRefunds {
+  content: RefundSagaState[];
+  number: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first?: boolean;
+  last?: boolean;
+  numberOfElements?: number;
+  empty?: boolean;
+}
+
+export interface RefundFilterParams {
+  status?: RefundSagaStatus;
+  page: number;
+  size: number;
+}

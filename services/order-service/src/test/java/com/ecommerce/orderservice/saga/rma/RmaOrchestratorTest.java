@@ -459,4 +459,46 @@ class RmaOrchestratorTest {
         assertThat(orchestrator.findByUser("user-1")).hasSize(1);
         verify(returnRepository, never()).findByUserId("user-1");
     }
+
+    // ---------- listReturns (admin listing) ----------
+
+    @Test
+    @DisplayName("listReturns_should_mapEntitiesToSummary_preservingPageMetadata")
+    void listReturns_should_mapEntitiesToSummary() {
+        org.springframework.data.domain.Pageable pageable =
+            org.springframework.data.domain.PageRequest.of(0, 20);
+        Return rma = Return.builder()
+            .id("rma-1").rmaNumber("RMA-1").orderId("order-1").userId("user-1")
+            .status(ReturnStatus.RECEIVED).outcome("APPROVED").refundSagaId("saga-9")
+            .build();
+        rma.addLine(ReturnLine.builder().orderItemId("i1").quantity(1).build());
+        when(returnRepository.findAll(pageable)).thenReturn(
+            new org.springframework.data.domain.PageImpl<>(List.of(rma), pageable, 1));
+
+        org.springframework.data.domain.Page<ReturnSummary> result =
+            orchestrator.listReturns(null, pageable);
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        ReturnSummary summary = result.getContent().get(0);
+        assertThat(summary.id()).isEqualTo("rma-1");
+        assertThat(summary.rmaNumber()).isEqualTo("RMA-1");
+        assertThat(summary.status()).isEqualTo(ReturnStatus.RECEIVED);
+        assertThat(summary.outcome()).isEqualTo("APPROVED");
+        assertThat(summary.refundSagaId()).isEqualTo("saga-9");
+        verify(returnRepository, never()).findByStatus(any(), any());
+    }
+
+    @Test
+    @DisplayName("listReturns_should_useFindByStatus_whenStatusProvided")
+    void listReturns_should_filterByStatus() {
+        org.springframework.data.domain.Pageable pageable =
+            org.springframework.data.domain.PageRequest.of(0, 20);
+        when(returnRepository.findByStatus(ReturnStatus.AWAITING_SHIPMENT, pageable)).thenReturn(
+            new org.springframework.data.domain.PageImpl<>(List.of(), pageable, 0));
+
+        orchestrator.listReturns(ReturnStatus.AWAITING_SHIPMENT, pageable);
+
+        verify(returnRepository).findByStatus(ReturnStatus.AWAITING_SHIPMENT, pageable);
+        verify(returnRepository, never()).findAll(any(org.springframework.data.domain.Pageable.class));
+    }
 }

@@ -1,5 +1,6 @@
 package com.ecommerce.orderservice.saga.rma;
 
+import com.ecommerce.orderservice.dto.PageResponse;
 import com.ecommerce.orderservice.security.UserIdentityResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,6 +13,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,6 +28,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
@@ -65,6 +71,19 @@ public class RmaController {
         Return rma = orchestrator.requestReturn(body.orderId(), resolvedUserId, body.reason(), lines, userEmail);
         URI location = URI.create("/api/returns/" + rma.getId());
         return ResponseEntity.accepted().location(location).body(rma);
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
+    @Operation(summary = "List returns (admin), optionally filtered by status")
+    public ResponseEntity<PageResponse<ReturnSummary>> listReturns(
+        @RequestParam(required = false) ReturnStatus status,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size
+    ) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "requestedAt"));
+        Page<ReturnSummary> result = orchestrator.listReturns(status, pageable);
+        return ResponseEntity.ok(PageResponse.from(result));
     }
 
     @GetMapping("/{rmaId}")

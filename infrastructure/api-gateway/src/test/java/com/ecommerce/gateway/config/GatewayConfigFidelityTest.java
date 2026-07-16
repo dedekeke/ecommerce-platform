@@ -109,4 +109,36 @@ class GatewayConfigFidelityTest {
         paymentTimeoutKeys.forEach(k ->
                 assertThat(props.get(k)).asString().contains("GATEWAY_PAYMENT_RESPONSE_TIMEOUT"));
     }
+
+    /**
+     * The order-service routes must carry {@code /api/returns/**} alongside
+     * {@code /api/orders/**} on both the unversioned and {@code /v1} routes.
+     * Without this, admin list calls to {@code GET /api/returns} (and the
+     * existing {@code /api/returns/{id}} RMA endpoints) are dropped at the edge.
+     * Pinned here so a future edit that reverts the returns path is caught in CI.
+     */
+    @Test
+    void should_routeReturnsPaths_throughOrderService_onBothVersions() {
+        Pattern idKey = Pattern.compile("spring\\.cloud\\.gateway\\.routes\\[(\\d+)]\\.id");
+
+        List<String> orderPredicates = props.entrySet().stream()
+                .filter(e -> {
+                    Matcher m = idKey.matcher(e.getKey());
+                    return m.matches() && String.valueOf(e.getValue()).startsWith("order-service");
+                })
+                .map(e -> {
+                    Matcher m = idKey.matcher(e.getKey());
+                    m.matches();
+                    return "spring.cloud.gateway.routes[" + m.group(1) + "].predicates[0]";
+                })
+                .filter(props::containsKey)
+                .map(props::get)
+                .toList();
+
+        assertThat(orderPredicates).as("order-service routes must be declared").isNotEmpty();
+        assertThat(orderPredicates).anySatisfy(p ->
+                assertThat(p).contains("/api/orders/**").contains("/api/returns/**"));
+        assertThat(orderPredicates).anySatisfy(p ->
+                assertThat(p).contains("/api/v1/orders/**").contains("/api/v1/returns/**"));
+    }
 }

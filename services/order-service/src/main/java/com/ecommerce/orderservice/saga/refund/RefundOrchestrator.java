@@ -261,4 +261,15 @@ public class RefundOrchestrator {
     public Optional<RefundSagaState> findSaga(String sagaId) {
         return sagaRepository.findById(sagaId);
     }
+
+    /**
+     * Admin listing of refund sagas, optionally filtered by status. A null
+     * status returns every saga; the caller supplies paging and sort.
+     */
+    public org.springframework.data.domain.Page<RefundSagaState> listSagas(
+        RefundSagaStatus status, org.springframework.data.domain.Pageable pageable) {
+        return status == null
+            ? sagaRepository.findAll(pageable)
+            : sagaRepository.findByStatus(status, pageable);
+    }
 }

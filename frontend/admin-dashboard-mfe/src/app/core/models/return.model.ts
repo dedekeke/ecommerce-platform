@@ -50,3 +50,34 @@ export interface InspectReturnPayload {
   notes?: string;
   restockingFeePercent?: number;
 }
+
+/** List-row projection returned by GET /api/returns (no line items). */
+export interface ReturnSummary {
+  id: string;
+  rmaNumber: string;
+  orderId: string;
+  userId: string;
+  status: ReturnStatus;
+  outcome?: string;
+  refundSagaId?: string;
+  requestedAt: string;
+  updatedAt: string;
+}
+
+export interface PagedReturns {
+  content: ReturnSummary[];
+  number: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first?: boolean;
+  last?: boolean;
+  numberOfElements?: number;
+  empty?: boolean;
+}
+
+export interface ReturnFilterParams {
+  status?: ReturnStatus;
+  page: number;
+  size: number;
+}
