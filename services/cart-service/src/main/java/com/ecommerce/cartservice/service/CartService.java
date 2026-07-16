@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -41,6 +42,9 @@ public class CartService {
     private final GuestIdentityFactory guestIdentityFactory;
 
     private static final int CART_EXPIRATION_DAYS = 30;
+
+    /** Lightweight edge check for the guest email (mirrors jakarta @Email intent). */
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     /**
      * Get or create active cart for user
@@ -231,34 +235,55 @@ public class CartService {
      * Resolve the opaque owner id for an anonymous (guest) cart from the guest's
      * email. Delegates to {@link GuestIdentityFactory} so the value is identical
      * to the one order-service derives at checkout — this is the whole reason the
-     * guest's cart is findable by the order-creation saga. Throws
-     * {@link IllegalArgumentException} for a blank email (mapped to HTTP 400).
+     * guest's cart is findable by the order-creation saga.
+     *
+     * <p>The email is format-validated here (the single choke point for every
+     * guest-cart endpoint) so a malformed/blank {@code X-Guest-Email} header is
+     * rejected as HTTP 400 rather than silently keying a junk cart. Validation is
+     * done here rather than in the factory to keep the factory's hashing input
+     * byte-for-byte identical to order-service.</p>
      */
     public String guestCartOwnerId(String email) {
+        if (email == null || !EMAIL_PATTERN.matcher(email.trim()).matches()) {
+            throw new IllegalArgumentException("Guest email must be a valid email address");
+        }
         return guestIdentityFactory.guestId(email);
     }
 
     /**
-     * Merge-on-login (claim seam): fold an anonymous guest cart into the
-     * authenticated user's cart. Mirrors order-service's guest-order claim
+     * Merge-on-login (claim seam): fold the caller's OWN anonymous guest cart into
+     * their authenticated cart. Mirrors order-service's guest-order claim
      * ({@code OrderService.claimGuestOrders}).
      *
-     * <p>The guest cart is located by re-deriving {@code guest:sha256(email)} from
-     * the email the shopper browsed under. For every guest line item: if the user
-     * already has that product, the quantities are summed; otherwise the item is
-     * recreated on the user's cart, preserving the guest's price snapshot. The
-     * guest cart is then deleted so it can neither be checked out nor merged
-     * twice.</p>
+     * <p><b>Security:</b> the guest email is NOT accepted from the client. It is
+     * resolved server-side from the authenticated caller's verified email
+     * (user-service) and the guest identity re-derived from it. A caller can
+     * therefore only ever claim a guest cart they themselves built under their own
+     * verified email — they cannot supply a victim's email to steal (and delete)
+     * someone else's guest cart. If the caller's verified email is unresolvable
+     * there is nothing safe to claim, so this is a no-op returning the user cart.</p>
+     *
+     * <p>For every guest line item: if the user already has that product, the
+     * quantities are summed; otherwise the item is recreated on the user's cart,
+     * preserving the guest's price snapshot. The guest cart is then deleted so it
+     * can neither be checked out nor merged twice.</p>
      *
      * <p>Deliberately makes NO product-service call: a login merge must not fail
      * because product-service is briefly unavailable, and cart lines are soft
-     * holds whose availability is re-validated at checkout. If the guest has no
-     * active cart (or it is empty) this is a no-op that simply returns the user's
-     * cart, so the endpoint is idempotent and safe to call on every login.</p>
+     * holds whose availability is re-validated at checkout. Idempotent and safe to
+     * call on every login (empty/absent guest cart → no-op).</p>
      */
     @Transactional
-    public CartResponse mergeGuestCartIntoUser(String userId, String guestEmail) {
-        String guestId = guestIdentityFactory.guestId(guestEmail);
+    public CartResponse mergeGuestCartIntoUser(String userId) {
+        Optional<String> verifiedEmail = resolveUserEmail(userId);
+        if (verifiedEmail.isEmpty()) {
+            // No trustworthy email to derive the caller's own guest identity from —
+            // never fall back to a client-supplied value. Nothing to claim.
+            log.warn("Skipping guest-cart merge for {}: no verified email resolvable", userId);
+            return getOrCreateCart(userId);
+        }
+
+        String guestId = guestIdentityFactory.guestId(verifiedEmail.get());
         if (guestId.equals(userId)) {
             // Defensive: an authenticated user id is an Auth0 sub and can never
             // carry the guest: prefix, but never merge a cart into itself.

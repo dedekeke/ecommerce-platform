@@ -2,7 +2,6 @@ package com.ecommerce.cartservice.controller;
 
 import com.ecommerce.cartservice.dto.AddToCartRequest;
 import com.ecommerce.cartservice.dto.CartResponse;
-import com.ecommerce.cartservice.dto.MergeGuestCartRequest;
 import com.ecommerce.cartservice.dto.UpdateCartItemRequest;
 import com.ecommerce.cartservice.service.CartService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -99,16 +98,16 @@ public class CartController {
     }
 
     @PostMapping("/merge")
-    @Operation(summary = "Merge a guest cart on login",
-            description = "Fold the anonymous cart the shopper built (keyed by the given guest email) "
-                    + "into the authenticated user's cart. Idempotent and safe to call on every login.")
-    public ResponseEntity<CartResponse> mergeGuestCart(
-            @AuthenticationPrincipal Jwt jwt,
-            @Valid @RequestBody MergeGuestCartRequest request) {
+    @Operation(summary = "Merge the caller's guest cart on login",
+            description = "Fold the anonymous cart the shopper built under their OWN verified email "
+                    + "into their authenticated cart. The guest email is resolved server-side from the "
+                    + "caller's verified account email (never supplied by the client), so a caller can "
+                    + "only ever claim their own guest cart. Idempotent and safe to call on every login.")
+    public ResponseEntity<CartResponse> mergeGuestCart(@AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getSubject();
         log.debug("POST /api/cart/merge - userId: {}", userId);
 
-        CartResponse cart = cartService.mergeGuestCartIntoUser(userId, request.getGuestEmail());
+        CartResponse cart = cartService.mergeGuestCartIntoUser(userId);
         return ResponseEntity.ok(cart);
     }
 

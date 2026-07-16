@@ -11,7 +11,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.MethodParameter;
-import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -22,7 +21,6 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -33,6 +31,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Contract test for the authenticated {@code POST /api/cart/merge} claim endpoint.
  * A custom argument resolver supplies the {@code @AuthenticationPrincipal Jwt} so
  * the standalone MockMvc setup needs no security context.
+ *
+ * <p>The endpoint takes NO request body: the guest email is resolved server-side
+ * from the caller's verified account email, so the client cannot assert whose
+ * cart to claim.</p>
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("CartController Merge Endpoint Tests")
@@ -57,38 +59,17 @@ class CartControllerMergeTest {
     }
 
     @Test
-    @DisplayName("Should merge the guest cart into the authenticated user's cart")
-    void should_mergeGuestCart_when_validEmail() throws Exception {
+    @DisplayName("Should merge the caller's guest cart keyed by the authenticated subject")
+    void should_mergeGuestCart_forAuthenticatedCaller() throws Exception {
         CartResponse merged = CartResponse.builder()
                 .id("1").userId(USER_ID).items(List.of()).status("ACTIVE").build();
-        when(cartService.mergeGuestCartIntoUser(USER_ID, "guest@example.com"))
-                .thenReturn(merged);
+        when(cartService.mergeGuestCartIntoUser(USER_ID)).thenReturn(merged);
 
-        mockMvc.perform(post("/api/cart/merge")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"guestEmail\":\"guest@example.com\"}"))
+        mockMvc.perform(post("/api/cart/merge"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userId").value(USER_ID));
 
-        verify(cartService).mergeGuestCartIntoUser(USER_ID, "guest@example.com");
-    }
-
-    @Test
-    @DisplayName("Should return 400 when the guest email is not a valid address")
-    void should_return400_when_emailInvalid() throws Exception {
-        mockMvc.perform(post("/api/cart/merge")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"guestEmail\":\"not-an-email\"}"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @DisplayName("Should return 400 when the guest email is blank")
-    void should_return400_when_emailBlank() throws Exception {
-        mockMvc.perform(post("/api/cart/merge")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"guestEmail\":\"\"}"))
-                .andExpect(status().isBadRequest());
+        verify(cartService).mergeGuestCartIntoUser(USER_ID);
     }
 
     /** Supplies a fixed {@link Jwt} for the {@code @AuthenticationPrincipal Jwt} parameter. */
