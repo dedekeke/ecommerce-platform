@@ -52,6 +52,42 @@ class SavedPaymentMethodControllerTest {
     }
 
     @Test
+    @DisplayName("createSetupIntent_should_return200_withClientSecret")
+    void createSetupIntent_should_return200_withClientSecret() {
+        when(service.createSetupIntent("user-1"))
+            .thenReturn(new PaymentProviderAdapter.SetupIntentResult("seti_1", "seti_1_secret"));
+
+        ResponseEntity<SavedPaymentMethodDtos.SetupIntentResponse> response =
+            controller.createSetupIntent(userJwt, null);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().setupIntentId()).isEqualTo("seti_1");
+        assertThat(response.getBody().clientSecret()).isEqualTo("seti_1_secret");
+    }
+
+    @Test
+    @DisplayName("createSetupIntent_should_throwSecurity_when_noAuthSource")
+    void createSetupIntent_should_throwSecurity_when_noAuthSource() {
+        assertThatThrownBy(() -> controller.createSetupIntent(null, null))
+            .isInstanceOf(SecurityException.class);
+        verify(service, never()).createSetupIntent(any());
+    }
+
+    @Test
+    @DisplayName("confirm_should_return201_withSavedMethod")
+    void confirm_should_return201_withSavedMethod() {
+        SavedPaymentMethod saved = SavedPaymentMethod.builder()
+            .id(5L).userId("user-1").provider("STRIPE").providerId("pm_9").last4("4242").build();
+        when(service.confirmSetupIntent("user-1", "seti_1")).thenReturn(saved);
+
+        ResponseEntity<SavedPaymentMethod> response = controller.confirm(
+            new SavedPaymentMethodDtos.ConfirmRequest("seti_1"), userJwt, null);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isEqualTo(saved);
+    }
+
+    @Test
     @DisplayName("attach_should_return201_andDelegateToService")
     void attach_should_return201_andDelegateToService() {
         SavedPaymentMethod saved = SavedPaymentMethod.builder()

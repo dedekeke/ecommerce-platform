@@ -1,5 +1,6 @@
 package com.ecommerce.paymentservice.webhook;
 
+import com.ecommerce.paymentservice.savedmethod.SavedPaymentMethodService;
 import com.ecommerce.paymentservice.service.PaymentService;
 import com.stripe.model.Event;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +32,9 @@ class StripeWebhookProcessorTest {
 
     @Mock
     private PaymentService paymentService;
+
+    @Mock
+    private SavedPaymentMethodService savedPaymentMethodService;
 
     @InjectMocks
     private StripeWebhookProcessor processor;
@@ -69,6 +73,32 @@ class StripeWebhookProcessorTest {
         processor.process(event);
 
         verify(paymentService).markPaymentFailed(eq("pi_3"), any());
+    }
+
+    @Test
+    @DisplayName("should persist the saved card on setup_intent.succeeded using metadata userId")
+    void should_persistSavedCard_when_setupIntentSucceeded() {
+        Event event = StripeWebhookTestSupport.parse(
+                StripeWebhookTestSupport.setupIntentSucceededEventJson("evt_5", "seti_1", "pm_1", "user-1"));
+
+        processor.process(event);
+
+        verify(processedEventRepository).saveAndFlush(any(ProcessedStripeEvent.class));
+        verify(savedPaymentMethodService).persistFromWebhook("user-1", "pm_1");
+        verifyNoInteractions(paymentService);
+    }
+
+    @Test
+    @DisplayName("should skip persisting when the SetupIntent metadata carries no userId")
+    void should_skipPersist_when_setupIntentMissingUser() {
+        Event event = StripeWebhookTestSupport.parse(
+                StripeWebhookTestSupport.setupIntentSucceededEventJsonNoUser("evt_6", "seti_2", "pm_2"));
+
+        processor.process(event);
+
+        // Event is still recorded (dedup), but no ownerless card is persisted.
+        verify(processedEventRepository).saveAndFlush(any(ProcessedStripeEvent.class));
+        verify(savedPaymentMethodService, never()).persistFromWebhook(any(), any());
     }
 
     @Test

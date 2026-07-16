@@ -1,6 +1,7 @@
 package com.ecommerce.paymentservice.gateway;
 
 import com.ecommerce.paymentservice.config.StripeRequestOptionsFactory;
+import com.ecommerce.paymentservice.customer.StripeCustomerService;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.Refund;
@@ -33,9 +34,12 @@ import java.math.RoundingMode;
 public class StripePaymentIntentProvider implements PaymentIntentProvider {
 
     private final StripeRequestOptionsFactory requestOptions;
+    private final StripeCustomerService customerService;
 
-    public StripePaymentIntentProvider(StripeRequestOptionsFactory requestOptions) {
+    public StripePaymentIntentProvider(StripeRequestOptionsFactory requestOptions,
+                                       StripeCustomerService customerService) {
         this.requestOptions = requestOptions;
+        this.customerService = customerService;
     }
 
     @Override
@@ -45,7 +49,11 @@ public class StripePaymentIntentProvider implements PaymentIntentProvider {
     public PaymentGatewayResponse createPaymentIntent(String orderId, String userId, BigDecimal amount, String currency) {
         log.info("[stripe] Creating payment intent for order: {}, amount: {} {}", orderId, amount, currency);
         try {
-            PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
+            // Attaching the owning Stripe customer lets Stripe bind a re-used saved payment method
+            // to its owner. We deliberately do NOT set setup_future_usage here so a guest/new card
+            // is not silently saved at checkout.
+            String customerId = customerService.getOrCreateCustomerId(userId);
+            PaymentIntentCreateParams.Builder params = PaymentIntentCreateParams.builder()
                     .setAmount(toMinorUnits(amount))
                     .setCurrency(currency.toLowerCase())
                     .putMetadata("orderId", orderId)
@@ -53,12 +61,14 @@ public class StripePaymentIntentProvider implements PaymentIntentProvider {
                     .setAutomaticPaymentMethods(
                             PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
                                     .setEnabled(true)
-                                    .build())
-                    .build();
+                                    .build());
+            if (StringUtils.hasText(customerId)) {
+                params.setCustomer(customerId);
+            }
 
             // Deterministic idempotency key keyed on the order: a Resilience4j retry of this same
             // create call is deduplicated by Stripe and returns the original intent, never a second charge.
-            PaymentIntent intent = PaymentIntent.create(params, requestOptions.build(orderId));
+            PaymentIntent intent = PaymentIntent.create(params.build(), requestOptions.build(orderId));
 
             return PaymentGatewayResponse.builder()
                     .success(true)

@@ -1,0 +1,69 @@
+.payment-method-card {
+  border-radius: 16px;
+  border: 1px solid #e4e4e7;
+  transition: all 0.2s ease-out;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  }
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  &__brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0a0a0a;
+    text-transform: capitalize;
+  }
+
+  &__default-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background: rgba(99, 102, 241, 0.1);
+    color: #6366f1;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  &__number {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 1rem;
+    color: #27272a;
+    margin: 0 0 4px;
+    letter-spacing: 0.05em;
+  }
+
+  &__expiry {
+    font-size: 0.875rem;
+    color: #71717a;
+    margin: 0;
+  }
+
+  &__confirm-label {
+    font-size: 0.875rem;
+    color: #52525b;
+    margin-right: 8px;
+    align-self: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .payment-method-card {
+    transition: none;
+
+    &:hover {
+      transform: none;
+    }
+  }
+}

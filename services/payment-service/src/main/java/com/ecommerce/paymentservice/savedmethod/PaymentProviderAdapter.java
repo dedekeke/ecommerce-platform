@@ -25,11 +25,51 @@ public interface PaymentProviderAdapter {
     AttachResult attachPaymentMethod(String userId, String token);
 
     /**
+     * Create a provider-side SetupIntent so the browser can collect and save a
+     * card via the provider's SDK (Stripe Elements) WITHOUT the raw PAN ever
+     * touching our backend (PCI SAQ-A). The returned {@code clientSecret} is
+     * handed to the browser; the {@code userId} is stamped onto the intent's
+     * metadata so the later confirmation/webhook can be authorized against the
+     * owning user.
+     */
+    SetupIntentResult createSetupIntent(String userId);
+
+    /**
+     * Retrieve a previously-created SetupIntent from the provider (payment
+     * method expanded) so the confirm endpoint can verify it succeeded, verify
+     * ownership via metadata, and read display-safe card fields. No PAN crosses
+     * this boundary.
+     */
+    SetupIntentDetails retrieveSetupIntent(String setupIntentId);
+
+    /**
      * Result of a successful attach call — only display-safe metadata.
      * No PAN ever crosses this boundary.
      */
     record AttachResult(
         String providerId,
+        String last4,
+        String brand,
+        Integer expMonth,
+        Integer expYear
+    ) {}
+
+    /** A freshly-created SetupIntent: its id plus the browser-facing client secret. */
+    record SetupIntentResult(
+        String setupIntentId,
+        String clientSecret
+    ) {}
+
+    /**
+     * A retrieved SetupIntent flattened to what the confirm flow needs: status,
+     * the owning {@code userId} (from metadata), the resulting payment method id,
+     * and display-safe card fields. No PAN.
+     */
+    record SetupIntentDetails(
+        String setupIntentId,
+        String status,
+        String userId,
+        String paymentMethodId,
         String last4,
         String brand,
         Integer expMonth,

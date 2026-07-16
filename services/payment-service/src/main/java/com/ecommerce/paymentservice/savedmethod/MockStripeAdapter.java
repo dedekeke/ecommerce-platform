@@ -51,6 +51,34 @@ public class MockStripeAdapter implements PaymentProviderAdapter {
             expiry.getMonthValue(), expiry.getYear());
     }
 
+    private static final String SETUP_INTENT_PREFIX = "seti_mock_";
+
+    @Override
+    public SetupIntentResult createSetupIntent(String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("userId must not be blank");
+        }
+        // Deterministic id carrying the owning user so retrieveSetupIntent can recover the
+        // metadata that real Stripe would return — no external state needed for dev/tests.
+        String setupIntentId = SETUP_INTENT_PREFIX + userId;
+        log.debug("Mock-created setup intent for user={} -> {}", userId, setupIntentId);
+        return new SetupIntentResult(setupIntentId, setupIntentId + "_secret_mock");
+    }
+
+    @Override
+    public SetupIntentDetails retrieveSetupIntent(String setupIntentId) {
+        if (setupIntentId == null || setupIntentId.isBlank()) {
+            throw new IllegalArgumentException("setupIntentId must not be blank");
+        }
+        String userId = setupIntentId.startsWith(SETUP_INTENT_PREFIX)
+            ? setupIntentId.substring(SETUP_INTENT_PREFIX.length())
+            : null;
+        LocalDate expiry = LocalDate.now().plusYears(3);
+        return new SetupIntentDetails(setupIntentId, "succeeded", userId,
+            "pm_mock_" + setupIntentId, "4242", "VISA",
+            expiry.getMonthValue(), expiry.getYear());
+    }
+
     private static String padLast4(String token) {
         String digits = token.replaceAll("\\D", "");
         if (digits.length() >= 4) {

@@ -32,6 +32,18 @@ public final class PaymentIntentDtos {
     }
 
     /**
+     * Request to pay for an order's PaymentIntent with one of the caller's saved methods. The
+     * owning user is always the JWT subject; {@code paymentMethodId} is validated server-side to
+     * belong to that user before the PaymentIntent is confirmed, so a client-supplied id it does
+     * not own is rejected with 403 (never charged).
+     */
+    public record SavedMethodPayRequest(
+            @NotBlank String paymentIntentId,
+            @NotBlank String paymentMethodId
+    ) {
+    }
+
+    /**
      * Response returned to the checkout client. {@code clientSecret} is what Stripe.js needs to
      * confirm the payment in the browser; the raw secret key never leaves the backend.
      */
