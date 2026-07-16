@@ -25,8 +25,12 @@ import java.nio.charset.StandardCharsets;
  * which claims the event id in the {@link ProcessedLoyaltyEvent} ledger and
  * accumulates spend in one transaction. A duplicate fails the ledger INSERT
  * ({@link DataIntegrityViolationException}) and rolls the spend back; we catch
- * that here and return normally, so a benign duplicate is an idempotent success
- * — it neither double-counts nor triggers a retry/DLT.
+ * that here, confirm via the ledger that the eventId is actually already
+ * committed, and only then return normally — so a benign duplicate is an
+ * idempotent success that neither double-counts nor triggers a retry/DLT. Any
+ * <em>other</em> data-integrity failure (data truncation, a different
+ * constraint) rolls the ledger row back with it, so the confirmation fails and
+ * the exception propagates rather than being mistaken for "already processed".
  *
  * <p><b>Error handling.</b> Genuine failures (DB down, etc.) propagate and are
  * handled by the container's {@code DefaultErrorHandler} (see
@@ -50,6 +54,7 @@ public class OrderCompletedConsumer {
 
     private final ObjectMapper objectMapper;
     private final OrderCompletedProcessor processor;
+    private final ProcessedLoyaltyEventRepository processedEventRepository;
 
     @KafkaListener(topics = TOPIC, groupId = "promotion-service-loyalty")
     public void handle(@Payload String message,
@@ -83,11 +88,21 @@ public class OrderCompletedConsumer {
             processor.process(userId, amount, event.getTimestamp(), eventId);
             log.info("Recorded loyalty spend for userId={} orderId={} amount={} eventId={}",
                     userId, event.getOrderId(), amount, eventId);
-        } catch (DataIntegrityViolationException duplicate) {
-            // Idempotent success: the event id is already in the ledger. Return
-            // normally so the offset is committed — no retry, no DLT.
-            log.warn("Skipping duplicate order.completed eventId={} orderId={}",
-                    eventId, event.getOrderId());
+        } catch (DataIntegrityViolationException ex) {
+            // Narrow the swallow to a TRUE duplicate only. The insert-first ledger
+            // shares one transaction with the spend, so a committed ledger row for
+            // this eventId can only mean a prior delivery already succeeded — a
+            // genuine duplicate. Any other data-integrity failure (truncation,
+            // NOT NULL, ...) rolls the ledger row back too, so existsById stays
+            // false and we must NOT treat it as processed: rethrow so the container
+            // error handler retries / routes to the DLT instead of silently
+            // dropping the spend.
+            if (eventId != null && processedEventRepository.existsById(eventId)) {
+                log.warn("Skipping duplicate order.completed eventId={} orderId={}",
+                        eventId, event.getOrderId());
+                return;
+            }
+            throw ex;
         }
     }
 

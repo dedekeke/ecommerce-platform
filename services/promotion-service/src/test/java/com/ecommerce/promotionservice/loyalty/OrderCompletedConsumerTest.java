@@ -42,6 +42,9 @@ class OrderCompletedConsumerTest {
     @Mock
     private OrderCompletedProcessor processor;
 
+    @Mock
+    private ProcessedLoyaltyEventRepository processedEventRepository;
+
     @InjectMocks
     private OrderCompletedConsumer consumer;
 
@@ -126,10 +129,34 @@ class OrderCompletedConsumerTest {
         // A redelivery / concurrent replica: the ledger INSERT fails on the PK.
         doThrow(new DataIntegrityViolationException("duplicate key"))
                 .when(processor).process(anyString(), any(), any(), eq(EVENT_ID));
+        // Ledger confirms the eventId is already committed -> a genuine duplicate.
+        when(processedEventRepository.existsById(EVENT_ID)).thenReturn(true);
 
         // Must NOT rethrow: a benign duplicate is an idempotent success, so the
         // offset is committed and the container does not retry or route to DLT.
         assertThatCode(() -> consumer.handle("{}", header(EVENT_ID))).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("should_propagate_when_dataIntegrityViolationIsNotADuplicate")
+    void should_propagate_when_dataIntegrityViolationIsNotADuplicate() throws Exception {
+        OrderCompletedEvent event = OrderCompletedEvent.builder()
+                .orderId("order-1")
+                .userId("user-1")
+                .totalAmount(new BigDecimal("199.99"))
+                .build();
+        when(objectMapper.readValue(anyString(), eq(OrderCompletedEvent.class))).thenReturn(event);
+        // A DataIntegrityViolationException that is NOT a duplicate key (e.g. a
+        // data-truncation on another column). The insert-first ledger row rolls
+        // back with the spend, so the eventId is absent from the ledger.
+        doThrow(new DataIntegrityViolationException("value too long for column"))
+                .when(processor).process(anyString(), any(), any(), eq(EVENT_ID));
+        when(processedEventRepository.existsById(EVENT_ID)).thenReturn(false);
+
+        // Must propagate so the container error handler retries / routes to the
+        // DLT — swallowing it would silently drop this order's loyalty spend.
+        assertThatThrownBy(() -> consumer.handle("{}", header(EVENT_ID)))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
