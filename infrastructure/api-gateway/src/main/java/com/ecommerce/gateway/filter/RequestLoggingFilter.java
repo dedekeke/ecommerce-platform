@@ -1,5 +1,6 @@
 package com.ecommerce.gateway.filter;
 
+import com.ecommerce.gateway.config.ClientIpResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
@@ -64,6 +65,13 @@ public class RequestLoggingFilter implements WebFilter, Ordered {
     @Value("${logging.request.include-query-params:true}")
     private boolean includeQueryParams;
 
+    /** Shared, spoofing-resistant client-IP resolver (see {@link ClientIpResolver}). */
+    private final ClientIpResolver clientIpResolver;
+
+    public RequestLoggingFilter(ClientIpResolver clientIpResolver) {
+        this.clientIpResolver = clientIpResolver;
+    }
+
     @Override
     public int getOrder() {
         return Ordered.HIGHEST_PRECEDENCE + 2;
@@ -112,7 +120,7 @@ public class RequestLoggingFilter implements WebFilter, Ordered {
             logBuilder.append(" params=").append(sanitizeQueryParams(request));
         }
 
-        logBuilder.append(" client=").append(getClientIp(exchange));
+        logBuilder.append(" client=").append(clientIpResolver.resolve(exchange));
         logBuilder.append(" user=").append(principal);
 
         if (includeHeaders) {
@@ -185,18 +193,5 @@ public class RequestLoggingFilter implements WebFilter, Ordered {
         }
         sb.append("}");
         return sb.toString();
-    }
-
-    private String getClientIp(ServerWebExchange exchange) {
-        String xForwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        String xRealIp = exchange.getRequest().getHeaders().getFirst("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty()) {
-            return xRealIp;
-        }
-        var remoteAddress = exchange.getRequest().getRemoteAddress();
-        return remoteAddress != null ? remoteAddress.getAddress().getHostAddress() : "unknown";
     }
 }

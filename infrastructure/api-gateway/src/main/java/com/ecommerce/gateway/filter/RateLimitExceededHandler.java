@@ -1,5 +1,6 @@
 package com.ecommerce.gateway.filter;
 
+import com.ecommerce.gateway.config.ClientIpResolver;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ import java.util.Map;
 public class RateLimitExceededHandler implements WebFilter, Ordered {
 
     private final ObjectMapper objectMapper;
+    private final ClientIpResolver clientIpResolver;
 
     @Override
     public int getOrder() {
@@ -73,7 +75,7 @@ public class RateLimitExceededHandler implements WebFilter, Ordered {
             )
         );
 
-        String clientIp = getClientIp(exchange);
+        String clientIp = clientIpResolver.resolve(exchange);
         log.warn("Rate limit exceeded for client: {} on path: {}",
             clientIp, exchange.getRequest().getPath().value());
 
@@ -85,14 +87,5 @@ public class RateLimitExceededHandler implements WebFilter, Ordered {
             log.error("Failed to serialize rate limit response", e);
             return Mono.empty();
         }
-    }
-
-    private String getClientIp(ServerWebExchange exchange) {
-        String xForwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        var remoteAddress = exchange.getRequest().getRemoteAddress();
-        return remoteAddress != null ? remoteAddress.getAddress().getHostAddress() : "unknown";
     }
 }

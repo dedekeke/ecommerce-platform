@@ -121,4 +121,67 @@ class ClientIpResolverTest {
         assertThat(honored).isEqualTo("198.51.100.7");
         assertThat(ignored).isEqualTo("172.16.0.2");
     }
+
+    // --- IPv6 coverage -------------------------------------------------------
+
+    @Test
+    void should_honorIpv6Client_when_peerIsInTrustedIpv6Slash64() {
+        // Arrange: proxy peer inside a trusted IPv6 /64 forwards an IPv6 client.
+        ClientIpResolver resolver = resolverTrusting("2001:db8:abcd:1::/64");
+
+        // Act
+        String key = resolver.resolveClientIp("2001:db8:abcd:1::5", "2001:db8:ffff::9");
+
+        // Assert
+        assertThat(key).isEqualTo("2001:db8:ffff::9");
+    }
+
+    @Test
+    void should_ignoreSpoofedIpv6Xff_when_ipv6PeerOutsideTrustedSlash64() {
+        // Arrange: /64 differs in the 4th group -> peer is NOT a trusted proxy.
+        ClientIpResolver resolver = resolverTrusting("2001:db8:abcd:1::/64");
+
+        // Act: attacker forges a whitelisted-looking IPv6 XFF.
+        String key = resolver.resolveClientIp("2001:db8:abcd:2::1", "2001:db8:abcd:1::99");
+
+        // Assert: forged header ignored; the real IPv6 socket address is used.
+        assertThat(key).isEqualTo("2001:db8:abcd:2::1");
+    }
+
+    @Test
+    void should_honorIpv6Client_when_trustedIpv4ProxyForwardsIpv6() {
+        // Arrange: mixed stack — IPv4 trusted proxy fronting an IPv6 client.
+        ClientIpResolver resolver = resolverTrusting("10.0.0.0/8");
+
+        // Act
+        String key = resolver.resolveClientIp("10.0.0.5", "2001:db8::42");
+
+        // Assert
+        assertThat(key).isEqualTo("2001:db8::42");
+    }
+
+    @Test
+    void should_returnRightmostUntrustedIpv6Hop_when_chainMixesTrustedIpv6Proxies() {
+        // Arrange: client -> external IPv6 hop -> our trusted IPv6 /64 proxies.
+        ClientIpResolver resolver = resolverTrusting("2001:db8:abcd:1::/64");
+
+        // Act
+        String key = resolver.resolveClientIp(
+            "2001:db8:abcd:1::5", "2001:db8:ffff::7, 2001:db8:abcd:1::9");
+
+        // Assert: rightmost non-trusted hop is the attributable client.
+        assertThat(key).isEqualTo("2001:db8:ffff::7");
+    }
+
+    @Test
+    void should_notMatchIpv4CandidateAgainstIpv6Range_when_familiesDiffer() {
+        // Arrange: only an IPv6 range is trusted; an IPv4 peer must not match it.
+        ClientIpResolver resolver = resolverTrusting("2001:db8:abcd:1::/64");
+
+        // Act
+        String key = resolver.resolveClientIp("203.0.113.9", "2001:db8:abcd:1::99");
+
+        // Assert: family mismatch -> peer untrusted -> forged header ignored.
+        assertThat(key).isEqualTo("203.0.113.9");
+    }
 }
