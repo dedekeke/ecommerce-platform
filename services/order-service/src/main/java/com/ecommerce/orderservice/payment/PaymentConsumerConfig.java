@@ -1,15 +1,18 @@
 package com.ecommerce.orderservice.payment;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
-import org.springframework.kafka.core.KafkaOperations;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.ExponentialBackOff;
@@ -72,23 +75,47 @@ public class PaymentConsumerConfig {
 
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> paymentEventListenerContainerFactory(
-        KafkaOperations<?, ?> kafkaTemplate
+        ProducerFactory<Object, Object> producerFactory
     ) {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
             new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(paymentConsumerFactory());
-        factory.setCommonErrorHandler(paymentEventErrorHandler(deadLetterRecoverer(kafkaTemplate)));
+        factory.setCommonErrorHandler(
+            paymentEventErrorHandler(deadLetterRecoverer(dltKafkaTemplate(producerFactory))));
         factory.setAutoStartup(autoStartup);
         return factory;
+    }
+
+    /**
+     * Dedicated {@code String}→{@code String} template for the dead-letter
+     * recoverer. The app-wide default template value-serializes with
+     * {@code JsonSerializer}, which would JSON-quote/escape the raw String
+     * payment payload and stamp a spurious {@code __TypeId__} header — so the
+     * dead-lettered record would NOT be byte-identical to the original. We copy
+     * the tuned default producer config (acks=all, idempotence, compression) and
+     * override only the serializers to {@link StringSerializer}, mirroring the
+     * outbox relay's String template. Not a {@code @Bean}: exposing another
+     * {@code KafkaTemplate}/{@code ProducerFactory} bean would trip Boot's
+     * {@code @ConditionalOnMissingBean} and disable the auto-configured default.
+     */
+    KafkaTemplate<String, String> dltKafkaTemplate(ProducerFactory<Object, Object> defaultProducerFactory) {
+        Map<String, Object> serializerOverride = Map.of(
+            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        @SuppressWarnings("unchecked")
+        ProducerFactory<String, String> stringProducerFactory =
+            (ProducerFactory<String, String>) (ProducerFactory<?, ?>)
+                defaultProducerFactory.copyWithConfigurationOverride(serializerOverride);
+        return new KafkaTemplate<>(stringProducerFactory);
     }
 
     /**
      * Publishes exhausted/poison records to {@code <topic>.DLT}. Partition -1
      * lets Kafka choose, so it works regardless of the DLT topic's partitioning.
      */
-    DeadLetterPublishingRecoverer deadLetterRecoverer(KafkaOperations<?, ?> kafkaTemplate) {
+    DeadLetterPublishingRecoverer deadLetterRecoverer(KafkaTemplate<String, String> dltTemplate) {
         return new DeadLetterPublishingRecoverer(
-            kafkaTemplate,
+            dltTemplate,
             (record, exception) -> new TopicPartition(record.topic() + ".DLT", -1));
     }
 
