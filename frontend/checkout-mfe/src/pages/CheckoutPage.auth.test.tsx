@@ -7,9 +7,11 @@ import { useCheckoutStore } from '../stores/checkoutStore'
 import { useCartStore } from '../stores/cartStore'
 
 const createOrder = vi.fn()
+const createGuestOrder = vi.fn()
 
 vi.mock('../api/orderService', () => ({
   createOrder: (...args: unknown[]) => createOrder(...args),
+  createGuestOrder: (...args: unknown[]) => createGuestOrder(...args),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -40,21 +42,24 @@ afterEach(() => {
   act(() => useCheckoutStore.getState().reset())
   act(() => useCartStore.getState().clearCart())
   createOrder.mockReset()
+  createGuestOrder.mockReset()
 })
 
 describe('CheckoutPage — authentication gate', () => {
-  it('should block checkout with a sign-in prompt when unauthenticated', () => {
+  it('should offer continue-as-guest (not a hard block) when unauthenticated', () => {
     delete window.__getAuthUserId
     renderWithProviders(<CheckoutPage />)
-    expect(screen.getByRole('alert')).toHaveTextContent(/sign in/i)
+    // No longer a hard sign-in block: the guest gate is shown instead.
+    expect(screen.getByRole('button', { name: /continue as guest/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/email address/i)).toBeInTheDocument()
+    // The checkout form itself is still gated until an identity is chosen.
     expect(screen.queryByLabelText(/full name/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /next|continue to payment/i })).not.toBeInTheDocument()
   })
 
-  it('should block checkout when the shell reports a signed-out user', () => {
+  it('should offer continue-as-guest when the shell reports a signed-out user', () => {
     window.__getAuthUserId = () => null
     renderWithProviders(<CheckoutPage />)
-    expect(screen.getByRole('alert')).toHaveTextContent(/sign in/i)
+    expect(screen.getByRole('button', { name: /continue as guest/i })).toBeInTheDocument()
   })
 
   it('should render the checkout flow when authenticated', () => {
@@ -68,8 +73,10 @@ describe('CheckoutPage — authentication gate', () => {
     renderWithProviders(<CheckoutPage />)
     window.__getAuthUserId = () => null
     await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+    // No authenticated order is placed. With no session and no guest email, the
+    // page falls back to the guest gate rather than silently submitting.
     expect(createOrder).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent(/sign in/i)
+    expect(await screen.findByRole('button', { name: /continue as guest/i })).toBeInTheDocument()
   })
 
   it('should submit the order with the Auth0 sub as userId, never "guest"', async () => {

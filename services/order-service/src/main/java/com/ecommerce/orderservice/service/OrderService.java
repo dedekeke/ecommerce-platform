@@ -280,6 +280,43 @@ public class OrderService {
     }
 
     /**
+     * Mark an order as a guest order and persist the claim key (the normalized
+     * email the guest checked out under). Called by the guest-checkout path
+     * after the saga has created the order. Idempotent — safe to re-apply on an
+     * order already flagged.
+     */
+    @Transactional
+    public Order markAsGuestOrder(String orderId, String normalizedEmail) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new OrderNotFoundException("Order not found: " + orderId));
+        order.setGuestOrder(true);
+        order.setGuestEmail(normalizedEmail);
+        Order saved = orderRepository.save(order);
+        log.info("Marked order {} as guest order (claim key persisted)", order.getOrderNumber());
+        return saved;
+    }
+
+    /**
+     * Claim hook for account linking: relink every guest order placed under
+     * {@code normalizedEmail} to a now-registered user. Invoked by the
+     * account-linking flow once the email has been VERIFIED (the caller owns
+     * that gate — verification is what makes the claim safe; this method does not
+     * re-verify). The {@code guestEmail} marker is retained for audit so the
+     * order's provenance stays visible after the relink.
+     *
+     * <p>Returns the number of orders relinked. Idempotent: a second call finds
+     * no remaining guest orders under that email and relinks nothing.</p>
+     */
+    @Transactional
+    public int claimGuestOrders(String normalizedEmail, String newUserId) {
+        List<Order> guestOrders = orderRepository.findByGuestEmailAndGuestOrderTrue(normalizedEmail);
+        guestOrders.forEach(order -> order.setUserId(newUserId));
+        orderRepository.saveAll(guestOrders);
+        log.info("Claimed {} guest order(s) for user {}", guestOrders.size(), newUserId);
+        return guestOrders.size();
+    }
+
+    /**
      * Compensating cancel for the order-creation saga: transition the order to
      * CANCELLED AND record ORDER_CANCELLED in the SAME transaction. This commits
      * independently of the (non-transactional) saga orchestration, so a failed

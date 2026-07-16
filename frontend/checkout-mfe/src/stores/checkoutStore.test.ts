@@ -66,4 +66,21 @@ describe('useCheckoutStore', () => {
       expect(useCheckoutStore.getState().step).toBe(i)
     }
   })
+
+  it('should initialise with no guest email', () => {
+    expect(useCheckoutStore.getState().guestEmail).toBeNull()
+  })
+
+  it('should set and clear the guest email', () => {
+    useCheckoutStore.getState().setGuestEmail('guest@example.com')
+    expect(useCheckoutStore.getState().guestEmail).toBe('guest@example.com')
+    useCheckoutStore.getState().setGuestEmail(null)
+    expect(useCheckoutStore.getState().guestEmail).toBeNull()
+  })
+
+  it('should clear the guest email on reset', () => {
+    useCheckoutStore.getState().setGuestEmail('guest@example.com')
+    useCheckoutStore.getState().reset()
+    expect(useCheckoutStore.getState().guestEmail).toBeNull()
+  })
 })

@@ -142,6 +142,70 @@ class OrderControllerCheckoutTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // ---- guest checkout (POST /api/orders/guest) ----------------------------
+
+    private static final String GUEST_BODY = "{\"email\":\"guest@example.com\",\"shippingAddress\":{"
+            + "\"street\":\"1 Main St\",\"city\":\"SF\",\"state\":\"CA\","
+            + "\"postalCode\":\"94105\",\"country\":\"USA\"}}";
+
+    @Test
+    void should_return201WithClientSecret_when_freshGuestCheckout() throws Exception {
+        CheckoutResponse response = CheckoutResponse.from(
+            new CheckoutResult(order(), "pi_1", "pi_1_secret", "USD"));
+        when(checkoutService.guestCheckout(any(), any()))
+            .thenReturn(new CheckoutService.Outcome(response, false));
+
+        mockMvc.perform(post("/api/orders/guest")
+                        .header("Idempotency-Key", "guest-key-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(GUEST_BODY))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.orderId").value("order-1"))
+                .andExpect(jsonPath("$.clientSecret").value("pi_1_secret"));
+
+        verify(checkoutService).guestCheckout(eq("guest-key-1"), any());
+    }
+
+    @Test
+    void should_return200_when_guestIdempotentReplay() throws Exception {
+        CheckoutResponse response = CheckoutResponse.fromExistingOrder(order(), "USD");
+        when(checkoutService.guestCheckout(any(), any()))
+            .thenReturn(new CheckoutService.Outcome(response, true));
+
+        mockMvc.perform(post("/api/orders/guest")
+                        .header("Idempotency-Key", "guest-key-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(GUEST_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderId").value("order-1"));
+    }
+
+    @Test
+    void should_return400_when_guestEmailMissing() throws Exception {
+        mockMvc.perform(post("/api/orders/guest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"shippingAddress\":{\"street\":\"1 Main St\",\"city\":\"SF\","
+                            + "\"state\":\"CA\",\"postalCode\":\"94105\",\"country\":\"USA\"}}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void should_return400_when_guestEmailMalformed() throws Exception {
+        mockMvc.perform(post("/api/orders/guest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"not-an-email\",\"shippingAddress\":{\"street\":\"1 Main St\","
+                            + "\"city\":\"SF\",\"state\":\"CA\",\"postalCode\":\"94105\",\"country\":\"USA\"}}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void should_return400_when_guestShippingAddressMissing() throws Exception {
+        mockMvc.perform(post("/api/orders/guest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"guest@example.com\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
     @Test
     void should_notLeakClientSecret_when_gettingOrderDetail() throws Exception {
         // The raw Order entity is serialized by GET order-detail; the persisted

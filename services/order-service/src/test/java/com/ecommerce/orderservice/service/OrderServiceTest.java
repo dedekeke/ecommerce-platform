@@ -480,4 +480,63 @@ class OrderServiceTest {
         verify(promotionServiceClient, times(1)).validatePromotion(any(PromotionValidationRequest.class));
         verify(orderRepository, times(1)).save(any(Order.class));
     }
+
+    // ---- guest checkout: flag + claim --------------------------------------
+
+    @Test
+    void should_flagOrderAndPersistClaimKey_when_markAsGuestOrder() {
+        Order order = new Order();
+        order.setId("order-guest-1");
+        order.setOrderNumber("ORD-2026-0009");
+        when(orderRepository.findById("order-guest-1")).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Order result = orderService.markAsGuestOrder("order-guest-1", "guest@example.com");
+
+        assertTrue(result.isGuestOrder());
+        assertEquals("guest@example.com", result.getGuestEmail());
+    }
+
+    @Test
+    void should_throw_when_markAsGuestOrderMissingOrder() {
+        when(orderRepository.findById("nope")).thenReturn(Optional.empty());
+        assertThrows(OrderNotFoundException.class,
+            () -> orderService.markAsGuestOrder("nope", "guest@example.com"));
+    }
+
+    @Test
+    void should_relinkGuestOrdersToUser_when_claimGuestOrders() {
+        Order o1 = new Order();
+        o1.setId("g1");
+        o1.setUserId("guest:hash");
+        o1.setGuestOrder(true);
+        o1.setGuestEmail("guest@example.com");
+        Order o2 = new Order();
+        o2.setId("g2");
+        o2.setUserId("guest:hash");
+        o2.setGuestOrder(true);
+        o2.setGuestEmail("guest@example.com");
+        when(orderRepository.findByGuestEmailAndGuestOrderTrue("guest@example.com"))
+            .thenReturn(new ArrayList<>(List.of(o1, o2)));
+
+        int claimed = orderService.claimGuestOrders("guest@example.com", "auth0|real-user");
+
+        assertEquals(2, claimed);
+        assertEquals("auth0|real-user", o1.getUserId());
+        assertEquals("auth0|real-user", o2.getUserId());
+        // Provenance retained for audit.
+        assertTrue(o1.isGuestOrder());
+        assertEquals("guest@example.com", o1.getGuestEmail());
+        verify(orderRepository).saveAll(anyList());
+    }
+
+    @Test
+    void should_returnZeroAndSaveNothingMeaningful_when_noGuestOrdersToClaim() {
+        when(orderRepository.findByGuestEmailAndGuestOrderTrue("none@example.com"))
+            .thenReturn(new ArrayList<>());
+
+        int claimed = orderService.claimGuestOrders("none@example.com", "auth0|real-user");
+
+        assertEquals(0, claimed);
+    }
 }

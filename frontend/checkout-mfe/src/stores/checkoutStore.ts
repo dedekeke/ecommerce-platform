@@ -13,8 +13,16 @@ export interface CheckoutState {
    * next checkout attempt does not collide with a completed order.
    */
   idempotencyKey: string
+  /**
+   * Email captured when an unauthenticated shopper chooses "continue as guest".
+   * Non-null means the guest gate is satisfied and checkout submits to the guest
+   * endpoint (POST /api/orders/guest); null means authenticated (or not yet past
+   * the gate). Cleared on reset() so a later authenticated checkout is unaffected.
+   */
+  guestEmail: string | null
   setStep: (step: number) => void
   setAddress: (address: ShippingAddress) => void
+  setGuestEmail: (email: string | null) => void
   reset: () => void
 }
 
@@ -24,6 +32,7 @@ const initialState = {
   step: 0,
   address: null as ShippingAddress | null,
   idempotencyKey: createIdempotencyKey(),
+  guestEmail: null as string | null,
 }
 
 export const useCheckoutStore = create<CheckoutState>()(
@@ -36,6 +45,9 @@ export const useCheckoutStore = create<CheckoutState>()(
 
         setAddress: (address: ShippingAddress) => set({ address }, false, 'setAddress'),
 
+        setGuestEmail: (guestEmail: string | null) =>
+          set({ guestEmail }, false, 'setGuestEmail'),
+
         reset: () =>
           set({ ...initialState, idempotencyKey: createIdempotencyKey() }, false, 'reset'),
       }),
@@ -46,6 +58,7 @@ export const useCheckoutStore = create<CheckoutState>()(
           step: state.step,
           address: state.address,
           idempotencyKey: state.idempotencyKey,
+          guestEmail: state.guestEmail,
         }),
       }
     ),

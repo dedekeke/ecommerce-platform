@@ -4,6 +4,7 @@ import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
 import com.ecommerce.orderservice.dto.CheckoutRequest;
 import com.ecommerce.orderservice.dto.CheckoutResponse;
+import com.ecommerce.orderservice.dto.GuestCheckoutRequest;
 import com.ecommerce.orderservice.dto.PageResponse;
 import com.ecommerce.orderservice.security.UserIdentityResolver;
 import com.ecommerce.orderservice.service.CheckoutService;
@@ -49,6 +50,26 @@ public class OrderController {
             userId, idempotencyKey != null && !idempotencyKey.isBlank());
 
         CheckoutService.Outcome outcome = checkoutService.checkout(userId, idempotencyKey, request);
+        HttpStatus status = outcome.replay() ? HttpStatus.OK : HttpStatus.CREATED;
+        return ResponseEntity.status(status).body(outcome.response());
+    }
+
+    @PostMapping("/guest")
+    @Operation(summary = "Create an order as an unauthenticated guest",
+        description = "Guest checkout: no JWT required. The owning identity is derived server-side "
+            + "from the validated email — the client cannot assert who it is. Same Idempotency-Key "
+            + "and clientSecret contract as the authenticated create.")
+    public ResponseEntity<CheckoutResponse> createGuestOrder(
+        @Valid @RequestBody GuestCheckoutRequest request,
+        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        // No JWT and no client-supplied identity: the owner is derived from the
+        // email inside CheckoutService, so this endpoint cannot be used to place
+        // an order on behalf of an authenticated user.
+        log.info("REST: Guest create order (idempotencyKey present: {})",
+            idempotencyKey != null && !idempotencyKey.isBlank());
+
+        CheckoutService.Outcome outcome = checkoutService.guestCheckout(idempotencyKey, request);
         HttpStatus status = outcome.replay() ? HttpStatus.OK : HttpStatus.CREATED;
         return ResponseEntity.status(status).body(outcome.response());
     }

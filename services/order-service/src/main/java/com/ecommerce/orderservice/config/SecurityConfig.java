@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -42,6 +43,13 @@ public class SecurityConfig {
                             // Public endpoints
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                             .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
+                            // Guest checkout: the gateway forwards this POST without a JWT
+                            // (identity is derived server-side from the email), so it must be
+                            // permitted here too or the service would 401 what the gateway let
+                            // through. Scoped to the EXACT path + POST only — every other
+                            // /api/orders/** call stays authenticated below, so the hardened
+                            // authenticated create is not weakened.
+                            .requestMatchers(HttpMethod.POST, "/api/orders/guest").permitAll()
                             // Protected endpoints
                             .requestMatchers("/api/**").authenticated()
                             .anyRequest().authenticated()
