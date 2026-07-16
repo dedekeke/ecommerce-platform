@@ -2,7 +2,6 @@ package com.ecommerce.orderservice.domain.entity;
 
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -91,14 +90,17 @@ public class Order {
      * Stripe PaymentIntent client secret, persisted so an idempotent checkout
      * replay can re-serve it to the owning session for payment confirmation.
      *
-     * <p>{@code @JsonIgnore}: the raw Order entity is serialized directly by the
-     * order-detail/history/cancel/admin endpoints, so this must never leak
-     * there. It is exposed ONLY through {@link
-     * com.ecommerce.orderservice.dto.CheckoutResponse}, which reads it via the
-     * getter (not entity JSON) on the checkout create/replay path that
-     * legitimately needs it.</p>
+     * <p>No entity is serialized to JSON anymore: every controller path returns
+     * a dedicated DTO ({@link com.ecommerce.orderservice.dto.OrderResponse} for
+     * reads, {@link com.ecommerce.orderservice.dto.CheckoutResponse} for the
+     * checkout create/replay path), and outbox events serialize a separate
+     * {@code OrderEvent}. The secret is exposed ONLY through
+     * {@code CheckoutResponse}, which reads it via the getter — never as entity
+     * JSON. The former {@code @JsonIgnore} workaround is therefore removed;
+     * {@code OrderResponse} simply never maps this field. See
+     * {@code OrderResponseTest} / {@code OrderControllerResponseDtoTest} for the
+     * guarding assertions.</p>
      */
-    @JsonIgnore
     @Column(name = "payment_client_secret")
     private String paymentClientSecret;
 
