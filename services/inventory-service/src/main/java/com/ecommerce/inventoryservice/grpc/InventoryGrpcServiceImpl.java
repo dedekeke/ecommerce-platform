@@ -138,7 +138,14 @@ public class InventoryGrpcServiceImpl extends InventoryServiceGrpc.InventoryServ
                             Integer::sum
                     ));
 
-            int expirationMinutes = request.getExpirationMinutes() > 0 ? request.getExpirationMinutes() : null;
+            // proto3 defaults expiration_minutes to 0 when the client omits it, and a
+            // negative value is meaningless as a TTL. In both cases pass null so the
+            // service applies its configured default TTL
+            // (inventory.reservation.default-expiration-minutes). A boxed Integer is
+            // required: a primitive int would unbox the null branch and throw NPE.
+            Integer expirationMinutes = request.getExpirationMinutes() > 0
+                    ? request.getExpirationMinutes()
+                    : null;
 
             List<InventoryReservation> reservations = inventoryService.bulkReserveStock(
                     request.getOrderId(),
