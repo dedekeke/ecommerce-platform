@@ -724,6 +724,16 @@ gateway:
   programmatic-routes:
     enabled: ${GATEWAY_PROGRAMMATIC_ROUTES_ENABLED:false}
 
+  # Trusted reverse-proxy / load-balancer ranges. Only requests whose immediate
+  # peer falls in one of these CIDRs have their X-Forwarded-For header believed
+  # when deriving the client IP for rate limiting (see ClientIpResolver). Empty
+  # is the secure default: no proxy trusted -> XFF ignored -> direct socket
+  # address used. Set GATEWAY_TRUSTED_PROXIES to your ingress/LB range(s) in
+  # any deployment that terminates behind a proxy, or guest-endpoint rate
+  # limiting can be bypassed by spoofing XFF.
+  trusted-proxy:
+    cidrs: ${GATEWAY_TRUSTED_PROXIES:}
+
 # Security Configuration
 # Defaults to true (secure-by-default). Override with SECURITY_ENABLED=false for local development only.
 security:

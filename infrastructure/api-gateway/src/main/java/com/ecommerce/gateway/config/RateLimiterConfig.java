@@ -1,6 +1,8 @@
 package com.ecommerce.gateway.config;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,10 +18,18 @@ import java.security.Principal;
  * - User-based: Rate limit per authenticated user
  * - IP-based: Rate limit per client IP address
  * - Combined: Use user ID if authenticated, otherwise use IP
+ *
+ * <p>All IP-based keys are derived via {@link ClientIpResolver}, which only
+ * honors {@code X-Forwarded-For} from configured trusted proxies — so the
+ * unauthenticated guest endpoints cannot be spoofed into per-request buckets.</p>
  */
 @Slf4j
 @Configuration
+@RequiredArgsConstructor
+@EnableConfigurationProperties(TrustedProxyProperties.class)
 public class RateLimiterConfig {
+
+    private final ClientIpResolver clientIpResolver;
 
     /**
      * Primary key resolver that uses user ID for authenticated requests
@@ -74,20 +84,11 @@ public class RateLimiterConfig {
     }
 
     /**
-     * Extract client IP from request, considering proxy headers.
+     * Extract the client IP for rate limiting. Delegates to {@link ClientIpResolver}
+     * so {@code X-Forwarded-For} is only trusted from configured proxies and can
+     * never be spoofed by a direct caller to escape the limit.
      */
     private String getClientIp(org.springframework.web.server.ServerWebExchange exchange) {
-        String xForwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-
-        String xRealIp = exchange.getRequest().getHeaders().getFirst("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty()) {
-            return xRealIp;
-        }
-
-        var remoteAddress = exchange.getRequest().getRemoteAddress();
-        return remoteAddress != null ? remoteAddress.getAddress().getHostAddress() : "unknown";
+        return clientIpResolver.resolve(exchange);
     }
 }

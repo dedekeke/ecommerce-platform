@@ -329,6 +329,9 @@ services:
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
       SERVER_PORT: 8080
       SECURITY_ENABLED: "false"
+      # Trusted proxy CIDRs for X-Forwarded-For (see ClientIpResolver). Empty by
+      # default: the gateway is exposed directly here, so XFF is not trusted.
+      GATEWAY_TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-}
       # Auth0 vars from .env needed directly
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
     # env_file:
