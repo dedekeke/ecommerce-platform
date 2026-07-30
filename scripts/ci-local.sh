@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Local CI replacement — run the same checks GitHub Actions would.
+# Not mirrored: OWASP dependency-check (needs NVD_API_KEY; CI skips it without
+# the secret too). Installs deps only when node_modules is missing — run npm ci
+# yourself if your tree may have drifted from the lockfile.
 # Usage:
 #   scripts/ci-local.sh                 # everything: backend + frontend + infra lint
 #   scripts/ci-local.sh --backend       # backend only
@@ -64,24 +67,26 @@ REACT_APPS=(shell-app product-catalog-mfe cart-mfe checkout-mfe)
 ANGULAR_APPS=(user-dashboard-mfe admin-dashboard-mfe)
 
 react_app() {
-  local app=$1
+  local app=$1 rc=0
   pushd "frontend/$app" >/dev/null
-  if [[ ! -d node_modules ]]; then npm ci || npm install; fi
-  npm run lint --if-present
-  npm test --if-present -- --run
+  { [[ -d node_modules ]] || npm ci || npm install; } &&
+  npm audit --audit-level=critical &&
+  npm run lint --if-present &&
+  npm test --if-present -- --run || rc=$?
   popd >/dev/null
+  return $rc
 }
 
 angular_app() {
-  local app=$1
+  local app=$1 rc=0 coverage=--code-coverage
+  $QUICK && coverage=--code-coverage=false
   pushd "frontend/$app" >/dev/null
-  if [[ ! -d node_modules ]]; then npm ci || npm install; fi
-  if $QUICK; then
-    npx ng test --watch=false --browsers=ChromeHeadless --no-progress --code-coverage=false
-  else
-    npx ng test --watch=false --browsers=ChromeHeadless --no-progress --code-coverage
-  fi
+  { [[ -d node_modules ]] || npm ci || npm install; } &&
+  npm audit --audit-level=critical &&
+  npm run lint --if-present &&
+  npx ng test --watch=false --browsers=ChromeHeadless --no-progress "$coverage" || rc=$?
   popd >/dev/null
+  return $rc
 }
 
 frontend_all() {
@@ -92,8 +97,8 @@ frontend_all() {
 # ---- Infra lint ----
 kustomize_lint() {
   command -v kubectl >/dev/null || { echo "${YELLOW}skip — kubectl not installed${RESET}"; return 0; }
-  kubectl kustomize k8s/base       >/dev/null
-  kubectl kustomize k8s/overlays/staging    >/dev/null
+  kubectl kustomize k8s/base                >/dev/null &&
+  kubectl kustomize k8s/overlays/staging    >/dev/null &&
   kubectl kustomize k8s/overlays/production >/dev/null
 }
 helm_lint() {
@@ -104,8 +109,9 @@ helm_lint() {
 # ---- Run ----
 echo "${BLUE}Local CI — backend=$DO_BACKEND frontend=$DO_FRONTEND infra=$DO_INFRA quick=$QUICK${RESET}"
 
-# Config guard — fast, always runs (matches quality.yml / ci.yml prod-log-levels job).
+# Config guards — fast, always run (match quality.yml guard jobs).
 step "Prod log-level guard" bash scripts/check-prod-log-levels.sh
+step "Dockerfile reactor-pom guard" bash scripts/check-dockerfile-reactor-poms.sh
 
 if $DO_BACKEND;  then
   step "Backend build (skip tests)" backend_build
