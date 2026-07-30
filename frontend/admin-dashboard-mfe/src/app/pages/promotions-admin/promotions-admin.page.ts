@@ -8,7 +8,6 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatDialog } from '@angular/material/dialog';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
@@ -16,6 +15,7 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/componen
 import { LoyaltyLookupComponent } from '../../shared/components/loyalty-lookup/loyalty-lookup.component';
 import { CurrencyRatesComponent } from '../../shared/components/currency-rates/currency-rates.component';
 import { PromotionAdminService } from '../../core/services/promotion-admin.service';
+import { ToastService } from '../../core/services/toast.service';
 import { Promotion, PromotionPayload, PromotionType } from '../../core/models/promotion.model';
 
 type PromotionRow = Record<string, unknown> & Promotion;
@@ -34,7 +34,6 @@ const PROMOTION_TYPES: PromotionType[] = ['PERCENTAGE', 'FIXED_AMOUNT', 'BUY_X_G
     MatInputModule,
     MatSelectModule,
     MatCheckboxModule,
-    MatSnackBarModule,
     DataTableComponent,
     StatusBadgeComponent,
     FormDrawerComponent,
@@ -204,7 +203,7 @@ const PROMOTION_TYPES: PromotionType[] = ['PERCENTAGE', 'FIXED_AMOUNT', 'BUY_X_G
 export class PromotionsAdminPage implements OnInit {
   private readonly promotionService = inject(PromotionAdminService);
   private readonly dialog = inject(MatDialog);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
 
   readonly promotions = signal<PromotionRow[]>([]);
@@ -334,12 +333,11 @@ export class PromotionsAdminPage implements OnInit {
       next: () => {
         this.saving.set(false);
         this.closeDrawer();
-        this.snackBar.open(this.editingId ? 'Promotion updated' : 'Promotion created', 'Close', { duration: 3000 });
+        this.toast.success(this.editingId ? 'Promotion updated' : 'Promotion created');
         this.loadPromotions();
       },
       error: () => {
         this.saving.set(false);
-        this.snackBar.open('Save failed', 'Close', { duration: 3000 });
       },
     });
   }
@@ -357,10 +355,10 @@ export class PromotionsAdminPage implements OnInit {
       const payload = toPayload({ ...row, active: false });
       this.promotionService.updatePromotion(row.id, payload).subscribe({
         next: () => {
-          this.snackBar.open('Promotion expired', 'Close', { duration: 3000 });
+          this.toast.success('Promotion expired');
           this.loadPromotions();
         },
-        error: () => this.snackBar.open('Failed to expire promotion', 'Close', { duration: 3000 }),
+        error: () => {},
       });
     });
   }
@@ -377,10 +375,10 @@ export class PromotionsAdminPage implements OnInit {
       if (!confirmed) return;
       this.promotionService.deletePromotion(row.id).subscribe({
         next: () => {
-          this.snackBar.open('Promotion deleted', 'Close', { duration: 3000 });
+          this.toast.success('Promotion deleted');
           this.loadPromotions();
         },
-        error: () => this.snackBar.open('Failed to delete promotion', 'Close', { duration: 3000 }),
+        error: () => {},
       });
     });
   }

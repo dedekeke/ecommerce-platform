@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Box, Typography, TextField, Button, Alert } from '@mui/material'
 import { StarRating } from './StarRating'
 import { useSubmitReview } from '../../hooks/useSubmitReview'
+import { toast } from '../../lib/toast'
 import type { Review } from '../../types'
 
 interface ReviewFormProps {
@@ -54,6 +55,7 @@ export function ReviewForm({ productId, onSubmitted }: ReviewFormProps) {
       setBody('')
       setFieldErrors({})
       setShowSuccess(true)
+      toast.success('Review submitted successfully')
       onSubmitted?.(review)
     } catch {
       // error is surfaced via the hook's `error` state

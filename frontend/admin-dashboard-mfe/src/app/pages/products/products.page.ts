@@ -7,7 +7,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { Sort } from '@angular/material/sort';
 import { PageEvent } from '@angular/material/paginator';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
@@ -15,6 +14,7 @@ import { StatusBadgeComponent } from '../../shared/components/status-badge/statu
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { ProductAdminService } from '../../core/services/product-admin.service';
+import { ToastService } from '../../core/services/toast.service';
 import { Product, ProductFilterParams, ProductStatus } from '../../core/models/product.model';
 import { BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 
@@ -32,7 +32,6 @@ type ProductRow = Record<string, unknown> & Product;
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
-    MatSnackBarModule,
     DataTableComponent,
     StatusBadgeComponent,
     ConfirmDialogComponent,
@@ -148,7 +147,7 @@ type ProductRow = Record<string, unknown> & Product;
 export class ProductsPage implements OnInit {
   private readonly productService = inject(ProductAdminService);
   private readonly dialog = inject(MatDialog);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
   private readonly router = inject(Router);
 
@@ -242,10 +241,10 @@ export class ProductsPage implements OnInit {
       if (confirmed) {
         this.productService.deleteProduct(row['id'] as string).subscribe({
           next: () => {
-            this.snackBar.open('Product deleted', 'Close', { duration: 3000 });
+            this.toast.success('Product deleted');
             this.loadProducts();
           },
-          error: () => this.snackBar.open('Failed to delete product', 'Close', { duration: 3000 }),
+          error: () => {},
         });
       }
     });
@@ -272,12 +271,11 @@ export class ProductsPage implements OnInit {
       next: () => {
         this.saving.set(false);
         this.closeDrawer();
-        this.snackBar.open(this.editingId ? 'Product updated' : 'Product created', 'Close', { duration: 3000 });
+        this.toast.success(this.editingId ? 'Product updated' : 'Product created');
         this.loadProducts();
       },
       error: () => {
         this.saving.set(false);
-        this.snackBar.open('Save failed', 'Close', { duration: 3000 });
       },
     });
   }

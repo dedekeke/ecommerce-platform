@@ -73,6 +73,25 @@ describe('CheckoutPage — order-first payment hand-off', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('confirmation/order-123'))
   })
 
+  it('should toast an "Order placed successfully!" success message on Stripe confirmation', async () => {
+    window.__ecommerceToastHost = true
+    const listener = vi.fn()
+    window.addEventListener('ecommerce:toast', listener)
+
+    renderWithProviders(<CheckoutPage />)
+    await fillShippingAndReachReview()
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+
+    await userEvent.click(await screen.findByTestId('stripe-checkout'))
+    await waitFor(() => expect(listener).toHaveBeenCalledOnce())
+
+    const event = listener.mock.calls[0][0] as CustomEvent
+    expect(event.detail).toMatchObject({ type: 'success', message: 'Order placed successfully!' })
+
+    window.removeEventListener('ecommerce:toast', listener)
+    delete window.__ecommerceToastHost
+  })
+
   it('should advance to the Payment step on a 200 replay that still carries a clientSecret', async () => {
     server.use(
       http.post(`${API_BASE}/orders`, () =>

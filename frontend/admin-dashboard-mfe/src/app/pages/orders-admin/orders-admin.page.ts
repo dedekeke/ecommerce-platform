@@ -5,12 +5,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { PageEvent } from '@angular/material/paginator';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { OrderAdminService } from '../../core/services/order-admin.service';
+import { ToastService } from '../../core/services/toast.service';
 import { AdminOrder, OrderStatus, OrderFilterParams } from '../../core/models/order.model';
 
 type OrderRow = Record<string, unknown> & AdminOrder;
@@ -29,7 +29,6 @@ const ORDER_STATUSES: OrderStatus[] = [
     MatIconModule,
     MatSelectModule,
     MatFormFieldModule,
-    MatSnackBarModule,
     DataTableComponent,
     StatusBadgeComponent,
     FormDrawerComponent,
@@ -155,7 +154,7 @@ const ORDER_STATUSES: OrderStatus[] = [
 })
 export class OrdersAdminPage implements OnInit {
   private readonly orderService = inject(OrderAdminService);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly toast = inject(ToastService);
 
   readonly orders = signal<OrderRow[]>([]);
   readonly loading = signal(true);
@@ -248,12 +247,11 @@ export class OrdersAdminPage implements OnInit {
         // updateOrderStatus returns the customer-facing OrderResponse; reflect
         // only the new status onto the admin view we already hold.
         this.selectedOrder.set({ ...order, status: updated.status });
-        this.snackBar.open('Status updated', 'Close', { duration: 3000 });
+        this.toast.success('Status updated');
         this.loadOrders();
       },
       error: () => {
         this.updatingStatus.set(false);
-        this.snackBar.open('Failed to update status', 'Close', { duration: 3000 });
       },
     });
   }

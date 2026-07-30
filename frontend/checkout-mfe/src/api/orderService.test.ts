@@ -121,7 +121,7 @@ describe('createGuestOrder', () => {
     expect(seenKey).toBe('guest-idem-abc')
     expect(seenBody!.email).toBe('guest@example.com')
     // A guest request must never carry a userId — identity is server-derived.
-    expect((seenBody as Record<string, unknown>).userId).toBeUndefined()
+    expect((seenBody as unknown as Record<string, unknown>).userId).toBeUndefined()
   })
 
   it('should mark the outcome as a replay on a 200 response', async () => {

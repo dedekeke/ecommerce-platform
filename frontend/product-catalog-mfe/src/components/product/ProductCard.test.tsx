@@ -83,6 +83,37 @@ describe('ProductCard', () => {
       expect(onAddToCart).toHaveBeenCalledWith(mockProduct.id, 1)
     })
 
+    it('should toast "Added to cart" when add to cart succeeds', async () => {
+      window.__ecommerceToastHost = true
+      const listener = vi.fn()
+      window.addEventListener('ecommerce:toast', listener)
+
+      const user = userEvent.setup()
+      renderWithProviders(<ProductCard product={mockProduct} onAddToCart={vi.fn()} />)
+      await user.click(screen.getByRole('button', { name: /add to cart/i }))
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0] as CustomEvent
+      expect(event.detail).toMatchObject({ type: 'success', message: 'Added to cart' })
+
+      window.removeEventListener('ecommerce:toast', listener)
+      delete window.__ecommerceToastHost
+    })
+
+    it('should not toast when the out-of-stock button is clicked (no-op)', async () => {
+      window.__ecommerceToastHost = true
+      const listener = vi.fn()
+      window.addEventListener('ecommerce:toast', listener)
+
+      const outOfStockProduct = createMockProduct({ inStock: false })
+      renderWithProviders(<ProductCard product={outOfStockProduct} onAddToCart={vi.fn()} />)
+
+      expect(listener).not.toHaveBeenCalled()
+
+      window.removeEventListener('ecommerce:toast', listener)
+      delete window.__ecommerceToastHost
+    })
+
     it('should not allow clicking add to cart when button is disabled', () => {
       const onAddToCart = vi.fn()
       const outOfStockProduct = createMockProduct({ inStock: false })

@@ -11,6 +11,7 @@ import { useAuthUserId } from '../hooks/useAuthUserId'
 import { useCheckoutStore } from '../stores/checkoutStore'
 import { createOrder, createGuestOrder } from '../api/orderService'
 import { toAddressDto } from '../utils/toAddressDto'
+import { toast } from '../lib/toast'
 import AddressForm from '../components/AddressForm'
 import OrderReview from '../components/OrderReview'
 import CheckoutStepper from '../components/CheckoutStepper'
@@ -186,6 +187,7 @@ export default function CheckoutPage() {
                 clientSecret={checkoutResult.clientSecret}
                 userId={userId}
                 onConfirmed={() => {
+                  toast.success('Order placed successfully!')
                   reset()
                   navigate(`confirmation/${checkoutResult.orderId}`)
                 }}

@@ -12,6 +12,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { devtools } from 'zustand/middleware'
+import { toast } from '../lib/toast'
 import type { CartState, CartItem } from './types'
 
 const calculateTotal = (items: CartItem[]): number =>
@@ -32,7 +33,7 @@ export const useCartStore = create<CartState>()(
       (set) => ({
         ...initialState,
 
-        addItem: (item: Omit<CartItem, 'quantity'>) =>
+        addItem: (item: Omit<CartItem, 'quantity'>) => {
           set(
             (state) => {
               const existing = state.items.find((i) => i.productId === item.productId)
@@ -49,9 +50,11 @@ export const useCartStore = create<CartState>()(
             },
             false,
             'addItem'
-          ),
+          )
+          toast.success('Added to cart')
+        },
 
-        removeItem: (productId: string) =>
+        removeItem: (productId: string) => {
           set(
             (state) => {
               const newItems = state.items.filter((i) => i.productId !== productId)
@@ -63,9 +66,11 @@ export const useCartStore = create<CartState>()(
             },
             false,
             'removeItem'
-          ),
+          )
+          toast.success('Item removed from cart')
+        },
 
-        updateQuantity: (productId: string, quantity: number) =>
+        updateQuantity: (productId: string, quantity: number) => {
           set(
             (state) => {
               if (quantity <= 0) {
@@ -87,9 +92,14 @@ export const useCartStore = create<CartState>()(
             },
             false,
             'updateQuantity'
-          ),
+          )
+          toast.success(quantity <= 0 ? 'Item removed from cart' : 'Quantity updated')
+        },
 
-        clearCart: () => set({ ...initialState }, false, 'clearCart'),
+        clearCart: () => {
+          set({ ...initialState }, false, 'clearCart')
+          toast.success('Cart cleared')
+        },
       }),
       {
         name: 'cart-storage',

@@ -150,7 +150,7 @@ describe('PromotionsAdminPage', () => {
     expect(promotionServiceSpy.updatePromotion).toHaveBeenCalledWith(1, jasmine.objectContaining({ name: 'Updated Name' }));
   });
 
-  it('should show an error snackbar when save fails', () => {
+  it('should reset the saving flag when save fails', () => {
     promotionServiceSpy.createPromotion.and.returnValue(throwError(() => new Error('409')));
     fixture.componentInstance.openCreateDrawer();
     fixture.componentInstance.promotionForm.patchValue({

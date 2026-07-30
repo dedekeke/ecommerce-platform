@@ -87,6 +87,73 @@ describe('ReviewForm', () => {
     expect(screen.getByLabelText('Title', { exact: false })).toHaveValue('')
   })
 
+  it('should toast a success message once the review is submitted', async () => {
+    window.__ecommerceToastHost = true
+    const listener = vi.fn()
+    window.addEventListener('ecommerce:toast', listener)
+
+    const user = userEvent.setup()
+    server.use(
+      http.post(`${API_BASE}/v1/reviews`, () =>
+        HttpResponse.json(
+          {
+            id: 'rev-2',
+            productId: 'p1',
+            userId: 'auth0|abc',
+            rating: 4,
+            title: 'Solid',
+            body: 'Does the job.',
+            verified: false,
+            helpful: 0,
+            createdAt: '2026-01-01T00:00:00Z',
+          },
+          { status: 201 },
+        ),
+      ),
+    )
+
+    renderWithProviders(<ReviewForm productId="p1" />)
+    fireEvent.click(screen.getByRole('radio', { name: '4 Stars' }))
+    await user.type(screen.getByLabelText('Title', { exact: false }), 'Solid')
+    await user.type(screen.getByLabelText('Your review', { exact: false }), 'Does the job.')
+    await user.click(screen.getByRole('button', { name: /submit review/i }))
+
+    await waitFor(() => expect(listener).toHaveBeenCalledOnce())
+    const event = listener.mock.calls[0][0] as CustomEvent
+    expect(event.detail).toMatchObject({ type: 'success', message: 'Review submitted successfully' })
+
+    window.removeEventListener('ecommerce:toast', listener)
+    delete window.__ecommerceToastHost
+  })
+
+  it('should NOT toast a success message when submission fails', async () => {
+    window.__ecommerceToastHost = true
+    const listener = vi.fn()
+    window.addEventListener('ecommerce:toast', listener)
+
+    const user = userEvent.setup()
+    server.use(
+      http.post(`${API_BASE}/v1/reviews`, () =>
+        HttpResponse.json({ message: 'You have already reviewed this product.' }, { status: 409 }),
+      ),
+    )
+
+    renderWithProviders(<ReviewForm productId="p1" />)
+    fireEvent.click(screen.getByRole('radio', { name: '3 Stars' }))
+    await user.type(screen.getByLabelText('Title', { exact: false }), 'Meh')
+    await user.type(screen.getByLabelText('Your review', { exact: false }), 'It was okay.')
+    await user.click(screen.getByRole('button', { name: /submit review/i }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    const successToasts = listener.mock.calls.filter(
+      ([e]) => (e as CustomEvent).detail.type === 'success',
+    )
+    expect(successToasts).toHaveLength(0)
+
+    window.removeEventListener('ecommerce:toast', listener)
+    delete window.__ecommerceToastHost
+  })
+
   it('should show the server error message and keep the entered values on failure', async () => {
     const user = userEvent.setup()
     server.use(

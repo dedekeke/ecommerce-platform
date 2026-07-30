@@ -7,13 +7,13 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatDialog } from '@angular/material/dialog';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { PageEvent } from '@angular/material/paginator';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ReturnAdminService } from '../../core/services/return-admin.service';
+import { ToastService } from '../../core/services/toast.service';
 import { ReturnFilterParams, ReturnRequest, ReturnStatus, ReturnSummary } from '../../core/models/return.model';
 
 type ReturnRow = Record<string, unknown> & ReturnSummary;
@@ -42,7 +42,6 @@ const RETURN_STATUSES: ReturnStatus[] = [
     MatSelectModule,
     MatFormFieldModule,
     MatInputModule,
-    MatSnackBarModule,
     DataTableComponent,
     StatusBadgeComponent,
     FormDrawerComponent,
@@ -259,7 +258,7 @@ const RETURN_STATUSES: ReturnStatus[] = [
 export class ReturnsAdminPage implements OnInit {
   private readonly returnService = inject(ReturnAdminService);
   private readonly dialog = inject(MatDialog);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
 
   readonly returns = signal<ReturnRow[]>([]);
@@ -382,9 +381,7 @@ export class ReturnsAdminPage implements OnInit {
   onRowClick(row: ReturnRow): void {
     this.returnService.getReturnById(row.id).subscribe({
       next: (full) => this.openDetail(full),
-      error: () => {
-        this.snackBar.open('Failed to load return details', 'Close', { duration: 3000 });
-      },
+      error: () => {},
     });
   }
 
@@ -410,12 +407,11 @@ export class ReturnsAdminPage implements OnInit {
         next: (updated) => {
           this.processing.set(false);
           this.selectedReturn.set(updated);
-          this.snackBar.open('Return marked received', 'Close', { duration: 3000 });
+          this.toast.success('Return marked received');
           this.loadReturns();
         },
         error: () => {
           this.processing.set(false);
-          this.snackBar.open('Failed to mark return received', 'Close', { duration: 3000 });
         },
       });
     });
@@ -446,12 +442,11 @@ export class ReturnsAdminPage implements OnInit {
           next: (updated) => {
             this.processing.set(false);
             this.selectedReturn.set(updated);
-            this.snackBar.open(`Return ${outcome.toLowerCase()}`, 'Close', { duration: 3000 });
+            this.toast.success(`Return ${outcome.toLowerCase()}`);
             this.loadReturns();
           },
           error: () => {
             this.processing.set(false);
-            this.snackBar.open('Failed to process inspection', 'Close', { duration: 3000 });
           },
         });
     });

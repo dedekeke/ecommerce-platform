@@ -6,6 +6,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 
 import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { httpErrorInterceptor } from './core/interceptors/http-error.interceptor';
 
 /**
  * APP_BASE_HREF is resolved via useFactory (not useValue) so it is read at
@@ -27,6 +28,6 @@ export const appConfig: ApplicationConfig = {
         (globalThis as Record<string, unknown>)['__MFE_BASE_HREF'] as string ?? '/profile',
     },
     provideAnimationsAsync(),
-    provideHttpClient(withInterceptors([authInterceptor])),
+    provideHttpClient(withInterceptors([authInterceptor, httpErrorInterceptor])),
   ],
 };
