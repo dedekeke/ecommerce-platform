@@ -66,3 +66,18 @@ export interface PaginatedResponse<T> {
 
 export type Product = ProductResponse
 export type Category = CategoryResponse
+
+export interface SearchProductsParams {
+  q?: string
+  categories?: string[]
+  minPrice?: number
+  maxPrice?: number
+  page?: number
+  size?: number
+}
+
+export interface SearchProductsResult {
+  products: Product[]
+  totalElements: number
+  totalPages: number
+}

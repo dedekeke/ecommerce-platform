@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link as RouterLink } from 'react-router-dom'
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -37,7 +37,7 @@ interface HeaderProps {
   onMenuClick: () => void
 }
 
-const Search = styled('div')(({ theme }) => ({
+const Search = styled('form')(({ theme }) => ({
   position: 'relative',
   borderRadius: theme.shape.borderRadius,
   backgroundColor: alpha(theme.palette.text.primary, 0.06),
@@ -101,10 +101,30 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
   const { isAuthenticated, isLoading, user, loginWithRedirect, logout } = useAuth0()
   const { resolvedMode, toggle } = useColorMode()
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [scrolled, setScrolled] = useState(false)
   const isMenuOpen = Boolean(anchorEl)
+
+  const urlQuery = searchParams.get('q') ?? ''
+  const [searchValue, setSearchValue] = useState(urlQuery)
+  // Keep the box in sync when q changes externally (e.g. cleared inside the MFE, or a Home
+  // category link). Adjusted during render per React's guidance, not in an effect.
+  const [lastUrlQuery, setLastUrlQuery] = useState(urlQuery)
+  if (urlQuery !== lastUrlQuery) {
+    setLastUrlQuery(urlQuery)
+    setSearchValue(urlQuery)
+  }
+
+  const handleSearchSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    const query = searchValue.trim()
+    if (query) {
+      navigate(`/products?q=${encodeURIComponent(query)}`)
+    }
+  }
 
   const handleScroll = useCallback(() => {
     setScrolled(window.scrollY > 80)
@@ -188,13 +208,15 @@ export const Header = ({ cartItemCount, onMenuClick }: HeaderProps) => {
         )}
 
         <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, justifyContent: 'center' }}>
-          <Search>
+          <Search role="search" onSubmit={handleSearchSubmit}>
             <SearchIconWrapper>
               <SearchIcon sx={{ color: 'text.secondary' }} />
             </SearchIconWrapper>
             <StyledInputBase
               placeholder={t('header.search')}
-              inputProps={{ 'aria-label': 'search' }}
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+              inputProps={{ 'aria-label': 'search', type: 'search' }}
             />
           </Search>
         </Box>

@@ -191,6 +191,39 @@ describe('CheckoutPage — order submission (order-first checkout, PR#122)', () 
     expect(seenKeys[0]).toBe(seenKeys[1])
   })
 
+  it('should include promotionCode in the order payload when a promotion is applied', async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    server.use(
+      http.post(`${API_BASE}/orders`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json(freshOrderResponse(), { status: 201 })
+      })
+    )
+    renderAtReviewStep()
+    act(() => {
+      useCartStore.setState({ promotionCode: 'SAVE10', discountAmount: 5, promotionName: '10% off' })
+    })
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+
+    await waitFor(() => expect(screen.getByTestId('stripe-checkout')).toBeInTheDocument())
+    expect(capturedBody?.promotionCode).toBe('SAVE10')
+  })
+
+  it('should omit promotionCode from the order payload when no promotion is applied', async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    server.use(
+      http.post(`${API_BASE}/orders`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json(freshOrderResponse(), { status: 201 })
+      })
+    )
+    renderAtReviewStep()
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+
+    await waitFor(() => expect(screen.getByTestId('stripe-checkout')).toBeInTheDocument())
+    expect(capturedBody?.promotionCode).toBeUndefined()
+  })
+
   it('should disable the Continue-to-payment button while submitting', async () => {
     let resolve!: () => void
     const slow = new Promise<void>((res) => {

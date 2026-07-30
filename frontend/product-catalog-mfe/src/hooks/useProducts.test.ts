@@ -83,4 +83,29 @@ describe('useProducts', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.products).toEqual(PAGE_2.content)
   })
+
+  it('should not fetch when enabled is false', () => {
+    const { result } = renderHook(() => useProducts({}, { enabled: false }))
+
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.products).toEqual([])
+    expect(mockGetProducts).not.toHaveBeenCalled()
+  })
+
+  it('should start fetching once re-enabled', async () => {
+    mockGetProducts.mockResolvedValueOnce(PAGE_1 as never)
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useProducts({}, { enabled }),
+      { initialProps: { enabled: false } },
+    )
+
+    expect(mockGetProducts).not.toHaveBeenCalled()
+
+    rerender({ enabled: true })
+    expect(result.current.isLoading).toBe(true)
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.products).toEqual(PAGE_1.content)
+  })
 })

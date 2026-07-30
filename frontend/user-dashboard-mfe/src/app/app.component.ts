@@ -88,6 +88,15 @@ import { MatListModule } from '@angular/material/list';
             <mat-icon matListItemIcon>credit_card</mat-icon>
             <span matListItemTitle>Payment Methods</span>
           </a>
+          <a
+            mat-list-item
+            routerLink="/preferences"
+            routerLinkActive="active-link"
+            aria-label="Preferences"
+          >
+            <mat-icon matListItemIcon>tune</mat-icon>
+            <span matListItemTitle>Preferences</span>
+          </a>
         </mat-nav-list>
       </mat-sidenav>
 

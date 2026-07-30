@@ -9,6 +9,7 @@ import Skeleton from '@mui/material/Skeleton'
 import { useCheckout } from '../hooks/useCheckout'
 import { useAuthUserId } from '../hooks/useAuthUserId'
 import { useCheckoutStore } from '../stores/checkoutStore'
+import { useCartStore, selectPromotionCode } from '../stores/cartStore'
 import { createOrder, createGuestOrder } from '../api/orderService'
 import { toAddressDto } from '../utils/toAddressDto'
 import { toast } from '../lib/toast'
@@ -51,6 +52,7 @@ export default function CheckoutPage() {
   const userId = useAuthUserId()
   const guestEmail = useCheckoutStore((s) => s.guestEmail)
   const setGuestEmail = useCheckoutStore((s) => s.setGuestEmail)
+  const promotionCode = useCartStore(selectPromotionCode)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -98,11 +100,19 @@ export default function CheckoutPage() {
       // return the same clientSecret contract, so the rest of the flow is shared.
       const { response, isReplay } = liveUserId
         ? await createOrder(
-            { userId: liveUserId, shippingAddress: toAddressDto(address) },
+            {
+              userId: liveUserId,
+              shippingAddress: toAddressDto(address),
+              ...(promotionCode ? { promotionCode } : {}),
+            },
             idempotencyKey
           )
         : await createGuestOrder(
-            { email: guestEmail as string, shippingAddress: toAddressDto(address) },
+            {
+              email: guestEmail as string,
+              shippingAddress: toAddressDto(address),
+              ...(promotionCode ? { promotionCode } : {}),
+            },
             idempotencyKey
           )
 

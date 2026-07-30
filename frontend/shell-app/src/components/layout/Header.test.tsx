@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
+import { BrowserRouter, MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
 import { Header } from './Header'
 import { lightTheme } from '../../theme'
@@ -147,5 +148,112 @@ describe('Header', () => {
   it('should render the app header element', () => {
     renderHeader()
     expect(screen.getByTestId('app-header')).toBeInTheDocument()
+  })
+})
+
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location">{`${location.pathname}${location.search}`}</div>
+}
+
+function renderHeaderWithRouter(initialEntries: string[] = ['/']) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <ThemeProvider theme={lightTheme}>
+        <Header cartItemCount={0} onMenuClick={vi.fn()} />
+      </ThemeProvider>
+      <LocationProbe />
+    </MemoryRouter>
+  )
+}
+
+describe('Header — search', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedUseAuth0.mockReturnValue(mockAuth0())
+    useUserPreferencesStore.getState().resetPreferences()
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: mockMatchMedia(false),
+    })
+  })
+
+  it('should render the search box inside a search landmark form', () => {
+    renderHeaderWithRouter()
+    expect(screen.getByRole('search')).toBeInTheDocument()
+    expect(screen.getByRole('searchbox', { name: /search/i })).toBeInTheDocument()
+  })
+
+  it('should navigate to /products?q=<value> when the search is submitted', async () => {
+    const user = userEvent.setup()
+    renderHeaderWithRouter(['/'])
+
+    await user.type(screen.getByRole('searchbox'), 'sneakers')
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/products?q=sneakers')
+  })
+
+  it('should trim whitespace from the search query before navigating', async () => {
+    const user = userEvent.setup()
+    renderHeaderWithRouter(['/'])
+
+    await user.type(screen.getByRole('searchbox'), '  hats  ')
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/products?q=hats')
+  })
+
+  it('should not navigate when the search query is empty or whitespace-only', async () => {
+    const user = userEvent.setup()
+    renderHeaderWithRouter(['/'])
+
+    await user.type(screen.getByRole('searchbox'), '   ')
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/')
+  })
+
+  it('should URL-encode special characters in the search query', async () => {
+    const user = userEvent.setup()
+    renderHeaderWithRouter(['/'])
+
+    await user.type(screen.getByRole('searchbox'), 'shoes & socks')
+    await user.keyboard('{Enter}')
+
+    const location = screen.getByTestId('location').textContent ?? ''
+    expect(new URLSearchParams(location.split('?')[1]).get('q')).toBe('shoes & socks')
+  })
+
+  it('should pre-fill the search box from the current q param on the products page', () => {
+    renderHeaderWithRouter(['/products?q=sneakers'])
+    expect(screen.getByRole('searchbox')).toHaveValue('sneakers')
+  })
+
+  it('should update the search box when the URL q param changes externally', async () => {
+    const user = userEvent.setup()
+
+    function NavigateToHats() {
+      const navigate = useNavigate()
+      return (
+        <button type="button" onClick={() => navigate('/products?q=hats')}>
+          go-to-hats
+        </button>
+      )
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/products?q=sneakers']}>
+        <ThemeProvider theme={lightTheme}>
+          <Header cartItemCount={0} onMenuClick={vi.fn()} />
+        </ThemeProvider>
+        <NavigateToHats />
+      </MemoryRouter>
+    )
+    expect(screen.getByRole('searchbox')).toHaveValue('sneakers')
+
+    await user.click(screen.getByRole('button', { name: 'go-to-hats' }))
+
+    expect(screen.getByRole('searchbox')).toHaveValue('hats')
   })
 })

@@ -1,3 +1,4 @@
 export { productService, categoryService, default } from './productService'
 export { recommendationService } from './recommendationService'
 export { reviewService } from './reviewService'
+export { searchService, mapSearchDocumentToProduct } from './searchService'

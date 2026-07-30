@@ -12,7 +12,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { devtools } from 'zustand/middleware'
-import type { CartState, CartItem } from './types'
+import type { AppliedPromotion, CartState, CartItem } from './types'
 
 const calculateTotal = (items: CartItem[]): number =>
   items.reduce((sum, item) => sum + item.price * item.quantity, 0)
@@ -24,6 +24,9 @@ const initialState = {
   items: [] as CartItem[],
   total: 0,
   itemCount: 0,
+  promotionCode: null as string | null,
+  discountAmount: null as number | null,
+  promotionName: null as string | null,
 }
 
 export const useCartStore = create<CartState>()(
@@ -95,6 +98,30 @@ export const useCartStore = create<CartState>()(
         clearCart: () => {
           set({ ...initialState }, false, 'clearCart')
         },
+
+        // The applied promotion is persisted alongside items/total (see `partialize`) under the
+        // same `cart-storage` key checkout-mfe reads, so the code survives the cart -> checkout
+        // navigation. See docs/handoff note in PromoCodeInput/usePromotion for the checkout-mfe
+        // follow-up needed to actually consume it.
+        applyPromotion: (promotion: AppliedPromotion) => {
+          set(
+            {
+              promotionCode: promotion.code,
+              discountAmount: promotion.discountAmount,
+              promotionName: promotion.promotionName,
+            },
+            false,
+            'applyPromotion'
+          )
+        },
+
+        removePromotion: () => {
+          set(
+            { promotionCode: null, discountAmount: null, promotionName: null },
+            false,
+            'removePromotion'
+          )
+        },
       }),
       {
         name: 'cart-storage',
@@ -103,6 +130,9 @@ export const useCartStore = create<CartState>()(
           items: state.items,
           total: state.total,
           itemCount: state.itemCount,
+          promotionCode: state.promotionCode,
+          discountAmount: state.discountAmount,
+          promotionName: state.promotionName,
         }),
       }
     ),
@@ -113,6 +143,9 @@ export const useCartStore = create<CartState>()(
 export const selectCartItems = (state: CartState) => state.items
 export const selectCartTotal = (state: CartState) => state.total
 export const selectCartItemCount = (state: CartState) => state.itemCount
+export const selectPromotionCode = (state: CartState) => state.promotionCode
+export const selectDiscountAmount = (state: CartState) => state.discountAmount
+export const selectPromotionName = (state: CartState) => state.promotionName
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {

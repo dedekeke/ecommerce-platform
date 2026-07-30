@@ -5,6 +5,8 @@ import Divider from '@mui/material/Divider'
 import Stack from '@mui/material/Stack'
 import Chip from '@mui/material/Chip'
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
+import { usePromotion } from '../hooks/usePromotion'
+import PromoCodeInput from './PromoCodeInput'
 
 const TAX_RATE = 0.1
 const SHIPPING_FLAT = 5
@@ -16,11 +18,16 @@ interface CartSummaryProps {
 }
 
 export default function CartSummary({ subtotal, onCheckout }: CartSummaryProps) {
-  const tax = subtotal * TAX_RATE
-  const isFreeShipping = subtotal >= FREE_SHIPPING_THRESHOLD
+  const { promotionCode, discountAmount, isApplying, error, applyPromotion, removePromotion } =
+    usePromotion(subtotal)
+
+  const discount = Math.min(discountAmount, subtotal)
+  const discountedSubtotal = subtotal - discount
+  const tax = discountedSubtotal * TAX_RATE
+  const isFreeShipping = discountedSubtotal >= FREE_SHIPPING_THRESHOLD
   const shipping = isFreeShipping ? 0 : SHIPPING_FLAT
-  const total = subtotal + tax + shipping
-  const amountToFreeShipping = FREE_SHIPPING_THRESHOLD - subtotal
+  const total = discountedSubtotal + tax + shipping
+  const amountToFreeShipping = FREE_SHIPPING_THRESHOLD - discountedSubtotal
 
   return (
     <Box
@@ -46,6 +53,22 @@ export default function CartSummary({ subtotal, onCheckout }: CartSummaryProps) 
             ${subtotal.toFixed(2)}
           </Typography>
         </Stack>
+
+        {promotionCode && (
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="body2" color="success.main">
+              Discount ({promotionCode})
+            </Typography>
+            <Typography
+              variant="body2"
+              fontWeight={500}
+              color="success.main"
+              data-testid="cart-discount"
+            >
+              -${discount.toFixed(2)}
+            </Typography>
+          </Stack>
+        )}
 
         <Stack direction="row" justifyContent="space-between">
           <Typography variant="body2" color="text.secondary">
@@ -76,7 +99,7 @@ export default function CartSummary({ subtotal, onCheckout }: CartSummaryProps) 
         </Stack>
       </Stack>
 
-      {!isFreeShipping && subtotal > 0 && (
+      {!isFreeShipping && discountedSubtotal > 0 && (
         <Box
           sx={{
             mt: 2,
@@ -96,6 +119,14 @@ export default function CartSummary({ subtotal, onCheckout }: CartSummaryProps) 
       )}
 
       <Divider sx={{ my: 2 }} />
+
+      <PromoCodeInput
+        appliedCode={promotionCode}
+        isApplying={isApplying}
+        error={error}
+        onApply={applyPromotion}
+        onRemove={removePromotion}
+      />
 
       <Stack direction="row" justifyContent="space-between" sx={{ mb: 3 }}>
         <Typography variant="body1" fontWeight={700}>

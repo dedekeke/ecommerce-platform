@@ -1,10 +1,22 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/renderWithProviders'
+import { useCartStore } from '../stores/cartStore'
 import CartSummary from './CartSummary'
 
 describe('CartSummary', () => {
+  beforeEach(() => {
+    useCartStore.setState({
+      items: [],
+      total: 0,
+      itemCount: 0,
+      promotionCode: null,
+      discountAmount: null,
+      promotionName: null,
+    })
+  })
+
   it('should render subtotal correctly', () => {
     renderWithProviders(<CartSummary subtotal={100} onCheckout={vi.fn()} />)
     expect(screen.getByText('$100.00')).toBeInTheDocument()
@@ -65,5 +77,47 @@ describe('CartSummary', () => {
   it('should display a shipping threshold message when subtotal is below $50', () => {
     renderWithProviders(<CartSummary subtotal={30} onCheckout={vi.fn()} />)
     expect(screen.getByText(/add \$20\.00 more for free shipping/i)).toBeInTheDocument()
+  })
+
+  it('should render the promo code input', () => {
+    renderWithProviders(<CartSummary subtotal={100} onCheckout={vi.fn()} />)
+    expect(screen.getByRole('textbox', { name: /promo code/i })).toBeInTheDocument()
+  })
+
+  describe('with an applied promotion', () => {
+    beforeEach(() => {
+      useCartStore
+        .getState()
+        .applyPromotion({ code: 'SAVE10', discountAmount: 10, promotionName: '10 Off Sale' })
+    })
+
+    it('should show the discount line, ordered after subtotal and before tax', () => {
+      renderWithProviders(<CartSummary subtotal={100} onCheckout={vi.fn()} />)
+      const labels = screen
+        .getAllByText(/subtotal|discount|est\. tax|shipping/i)
+        .map((el) => el.textContent)
+      expect(labels[0]).toMatch(/subtotal/i)
+      expect(labels[1]).toMatch(/discount/i)
+      expect(labels[2]).toMatch(/est\. tax/i)
+      expect(labels[3]).toMatch(/shipping/i)
+      expect(screen.getByTestId('cart-discount')).toHaveTextContent('-$10.00')
+    })
+
+    it('should compute tax, shipping and total off the discounted subtotal', () => {
+      // subtotal 100 - discount 10 = 90 -> tax 9.00, free shipping (>= 50), total 99.00
+      renderWithProviders(<CartSummary subtotal={100} onCheckout={vi.fn()} />)
+      expect(screen.getByText('$9.00')).toBeInTheDocument()
+      expect(screen.getByTestId('cart-total')).toHaveTextContent('$99.00')
+    })
+
+    it('should render the applied code and allow removing it', async () => {
+      renderWithProviders(<CartSummary subtotal={100} onCheckout={vi.fn()} />)
+      expect(screen.getByText(/"SAVE10" applied/)).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: /remove/i }))
+
+      expect(screen.queryByTestId('cart-discount')).not.toBeInTheDocument()
+      expect(useCartStore.getState().promotionCode).toBeNull()
+    })
   })
 })

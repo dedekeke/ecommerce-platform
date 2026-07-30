@@ -82,4 +82,48 @@ describe('useCartStore', () => {
     useCartStore.getState().addItem({ productId: 'p2', name: 'Gadget', price: 25 })
     expect(useCartStore.getState().itemCount).toBe(3)
   })
+
+  it('should default promotion fields to null', () => {
+    const { promotionCode, discountAmount, promotionName } = useCartStore.getState()
+    expect(promotionCode).toBeNull()
+    expect(discountAmount).toBeNull()
+    expect(promotionName).toBeNull()
+  })
+
+  // cart-mfe writes promotionCode/discountAmount/promotionName into the shared `cart-storage`
+  // key when a promo is applied (see frontend/cart-mfe cartStore.applyPromotion). checkout-mfe
+  // must rehydrate the same shape from that key without cart-mfe's actions ever running here.
+  it('should rehydrate promotion fields persisted by cart-mfe under the shared cart-storage key', async () => {
+    localStorage.setItem(
+      'cart-storage',
+      JSON.stringify({
+        state: {
+          items: [{ productId: 'p1', name: 'Widget', price: 10, quantity: 1 }],
+          total: 10,
+          itemCount: 1,
+          promotionCode: 'SAVE10',
+          discountAmount: 2.5,
+          promotionName: '10% off',
+        },
+        version: 0,
+      })
+    )
+
+    await useCartStore.persist.rehydrate()
+
+    const { promotionCode, discountAmount, promotionName } = useCartStore.getState()
+    expect(promotionCode).toBe('SAVE10')
+    expect(discountAmount).toBe(2.5)
+    expect(promotionName).toBe('10% off')
+
+    localStorage.removeItem('cart-storage')
+  })
+
+  it('should persist promotion fields in the partialized cart-storage snapshot', () => {
+    useCartStore.setState({ promotionCode: 'SAVE10', discountAmount: 2.5, promotionName: '10% off' })
+    const persisted = JSON.parse(localStorage.getItem('cart-storage') ?? '{}')
+    expect(persisted.state.promotionCode).toBe('SAVE10')
+    expect(persisted.state.discountAmount).toBe(2.5)
+    expect(persisted.state.promotionName).toBe('10% off')
+  })
 })

@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { WishlistService } from '../../core/services/wishlist.service';
+import { CartService } from '../../core/services/cart.service';
+import { ToastService } from '../../core/services/toast.service';
 import { WishlistItem } from '../../core/models/wishlist.model';
 import { WishlistItemComponent } from '../../shared/components/wishlist-item/wishlist-item.component';
 
@@ -42,6 +44,8 @@ import { WishlistItemComponent } from '../../shared/components/wishlist-item/wis
 })
 export class WishlistPage implements OnInit {
   private readonly wishlistService = inject(WishlistService);
+  private readonly cartService = inject(CartService);
+  private readonly toast = inject(ToastService);
 
   readonly items = signal<WishlistItem[]>([]);
 
@@ -54,12 +58,10 @@ export class WishlistPage implements OnInit {
   }
 
   onAddToCart(item: WishlistItem): void {
-    // Dispatch to shell's cart event bus when integrated
-    window.dispatchEvent(
-      new CustomEvent('mfe:addToCart', {
-        detail: { productId: item.productId, quantity: 1 },
-        bubbles: true,
-      })
-    );
+    this.cartService.addItem({ productId: item.productId, quantity: 1 }).subscribe({
+      next: () => this.toast.success('Added to cart'),
+      // httpErrorInterceptor already surfaces an error toast for failed requests
+      error: () => undefined,
+    });
   }
 }

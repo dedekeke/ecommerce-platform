@@ -2,6 +2,10 @@ import { useReducer, useEffect, useCallback } from 'react'
 import { productService } from '../api'
 import type { Product, ProductSearchParams } from '../types'
 
+interface UseProductsOptions {
+  enabled?: boolean
+}
+
 interface UseProductsResult {
   products: Product[]
   totalElements: number
@@ -26,6 +30,7 @@ type ProductsAction =
   | { type: 'FETCH_START' }
   | { type: 'FETCH_SUCCESS'; payload: { content: Product[]; totalElements: number; totalPages: number } }
   | { type: 'FETCH_ERROR'; payload: Error }
+  | { type: 'DISABLED' }
   | { type: 'REFETCH' }
 
 function reducer(state: ProductsState, action: ProductsAction): ProductsState {
@@ -44,15 +49,21 @@ function reducer(state: ProductsState, action: ProductsAction): ProductsState {
       }
     case 'FETCH_ERROR':
       return { ...state, products: [], isLoading: false, isError: true, error: action.payload }
+    case 'DISABLED':
+      return { ...state, isLoading: false, isError: false, error: null }
   }
 }
 
-export function useProducts(params: ProductSearchParams = {}): UseProductsResult {
+export function useProducts(
+  params: ProductSearchParams = {},
+  options: UseProductsOptions = {},
+): UseProductsResult {
+  const { enabled = true } = options
   const [state, dispatch] = useReducer(reducer, {
     products: [],
     totalElements: 0,
     totalPages: 0,
-    isLoading: true,
+    isLoading: enabled,
     isError: false,
     error: null,
     fetchId: 0,
@@ -62,6 +73,11 @@ export function useProducts(params: ProductSearchParams = {}): UseProductsResult
   const paramsKey = JSON.stringify(params)
 
   useEffect(() => {
+    if (!enabled) {
+      dispatch({ type: 'DISABLED' })
+      return
+    }
+
     let cancelled = false
     dispatch({ type: 'FETCH_START' })
     const currentParams: ProductSearchParams = JSON.parse(paramsKey) as ProductSearchParams
@@ -87,7 +103,7 @@ export function useProducts(params: ProductSearchParams = {}): UseProductsResult
     }
     void run()
     return () => { cancelled = true }
-  }, [paramsKey, state.fetchId])
+  }, [paramsKey, state.fetchId, enabled])
 
   const refetch = useCallback(() => dispatch({ type: 'REFETCH' }), [])
 

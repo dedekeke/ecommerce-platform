@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Auth0ProviderWithNavigate } from './Auth0ProviderWithNavigate'
-import type { Auth0ProviderWithConfigOptions } from '@auth0/auth0-react'
+import type { Auth0ProviderOptions } from '@auth0/auth0-react'
 
 vi.mock('@auth0/auth0-react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@auth0/auth0-react')>()),
@@ -47,7 +47,7 @@ describe('Auth0ProviderWithNavigate', () => {
       </MemoryRouter>
     )
 
-    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderWithConfigOptions
+    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderOptions
     expect(callArgs.domain).toBe('test.auth0.com')
     expect(callArgs.clientId).toBe('test-client-id')
   })
@@ -61,7 +61,7 @@ describe('Auth0ProviderWithNavigate', () => {
       </MemoryRouter>
     )
 
-    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderWithConfigOptions
+    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderOptions
     expect(callArgs.authorizationParams).toBeDefined()
     expect(callArgs.authorizationParams?.audience).toBe('https://test-api.example.com')
     expect(callArgs.authorizationParams?.redirect_uri).toBeDefined()
@@ -76,7 +76,7 @@ describe('Auth0ProviderWithNavigate', () => {
       </MemoryRouter>
     )
 
-    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderWithConfigOptions
+    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderOptions
     expect(callArgs.cacheLocation).toBe('memory')
   })
 
@@ -89,7 +89,7 @@ describe('Auth0ProviderWithNavigate', () => {
       </MemoryRouter>
     )
 
-    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderWithConfigOptions
+    const callArgs = mockedAuth0Provider.mock.calls[0][0] as Auth0ProviderOptions
     expect(callArgs.useRefreshTokens).toBe(true)
   })
 
