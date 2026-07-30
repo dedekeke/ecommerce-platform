@@ -8,8 +8,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ProductAdminService } from '../../core/services/product-admin.service';
+import { ToastService } from '../../core/services/toast.service';
 import { Product, ProductStatus } from '../../core/models/product.model';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 
@@ -26,7 +26,6 @@ import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/stat
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
-    MatSnackBarModule,
     StatusBadgeComponent,
   ],
   template: `
@@ -128,7 +127,7 @@ export class ProductDetailPage implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly productService = inject(ProductAdminService);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
 
   readonly product = signal<Product | null>(null);
@@ -193,11 +192,10 @@ export class ProductDetailPage implements OnInit {
         this.product.set(updated);
         this.form.markAsPristine();
         this.saving.set(false);
-        this.snackBar.open('Product updated', 'Close', { duration: 3000 });
+        this.toast.success('Product updated');
       },
       error: () => {
         this.saving.set(false);
-        this.snackBar.open('Update failed', 'Close', { duration: 3000 });
       },
     });
   }

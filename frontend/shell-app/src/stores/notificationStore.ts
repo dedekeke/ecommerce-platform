@@ -10,6 +10,11 @@ const initialState = {
   notifications: [] as Notification[],
 }
 
+// Guards against duplicate/flooding toasts (e.g. a retried request or a chatty MFE):
+// identical type+message within this window is deduped, and the list never exceeds this size.
+const DEDUPE_WINDOW_MS = 2000
+const MAX_NOTIFICATIONS = 20
+
 export const useNotificationStore = create<NotificationState>()(
   devtools(
     (set) => ({
@@ -17,15 +22,30 @@ export const useNotificationStore = create<NotificationState>()(
 
       addNotification: (notification: Omit<Notification, 'id'>) =>
         set(
-          (state) => ({
-            notifications: [
+          (state) => {
+            const now = Date.now()
+            const isDuplicate = state.notifications.some(
+              (n) =>
+                n.type === notification.type &&
+                n.message === notification.message &&
+                n.addedAt !== undefined &&
+                now - n.addedAt < DEDUPE_WINDOW_MS
+            )
+            if (isDuplicate) return state
+
+            const nextNotifications = [
               ...state.notifications,
               {
-                id: generateId(),
                 ...notification,
+                id: generateId(),
+                addedAt: now,
               },
-            ],
-          }),
+            ]
+
+            return {
+              notifications: nextNotifications.slice(-MAX_NOTIFICATIONS),
+            }
+          },
           false,
           'addNotification'
         ),

@@ -30,7 +30,8 @@ export const reviewService = {
   },
 
   async createReview(payload: CreateReviewPayload): Promise<Review> {
-    const response = await apiClient.post<Review>('/v1/reviews', payload)
+    // ReviewForm (via useSubmitReview) renders a failure via its own inline error Alert.
+    const response = await apiClient.post<Review>('/v1/reviews', payload, { skipErrorToast: true })
     return response.data
   },
 }

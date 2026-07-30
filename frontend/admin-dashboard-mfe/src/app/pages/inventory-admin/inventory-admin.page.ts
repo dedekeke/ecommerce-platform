@@ -6,11 +6,11 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { InventoryAdminService } from '../../core/services/inventory-admin.service';
+import { ToastService } from '../../core/services/toast.service';
 import { InventoryItem, InventoryStatus } from '../../core/models/inventory.model';
 
 type InventoryRow = Record<string, unknown> & InventoryItem;
@@ -28,7 +28,6 @@ const UPDATE_TYPES = ['RESTOCK', 'ADJUSTMENT', 'DAMAGE', 'CORRECTION'];
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
-    MatSnackBarModule,
     DataTableComponent,
     StatusBadgeComponent,
     FormDrawerComponent,
@@ -199,7 +198,7 @@ const UPDATE_TYPES = ['RESTOCK', 'ADJUSTMENT', 'DAMAGE', 'CORRECTION'];
 })
 export class InventoryAdminPage implements OnInit {
   private readonly inventoryService = inject(InventoryAdminService);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
 
   readonly lowStockItems = signal<InventoryRow[]>([]);
@@ -323,12 +322,11 @@ export class InventoryAdminPage implements OnInit {
       next: () => {
         this.creating.set(false);
         this.closeCreateDrawer();
-        this.snackBar.open('Inventory created', 'Close', { duration: 3000 });
+        this.toast.success('Inventory created');
         this.refreshLists();
       },
       error: () => {
         this.creating.set(false);
-        this.snackBar.open('Failed to create inventory', 'Close', { duration: 3000 });
       },
     });
   }
@@ -362,12 +360,11 @@ export class InventoryAdminPage implements OnInit {
           if (this.lookupResult()?.productId === updated.productId) {
             this.lookupResult.set(updated);
           }
-          this.snackBar.open('Stock adjusted', 'Close', { duration: 3000 });
+          this.toast.success('Stock adjusted');
           this.refreshLists();
         },
         error: () => {
           this.adjusting.set(false);
-          this.snackBar.open('Failed to adjust stock', 'Close', { duration: 3000 });
         },
       });
   }

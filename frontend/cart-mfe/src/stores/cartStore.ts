@@ -32,7 +32,7 @@ export const useCartStore = create<CartState>()(
       (set) => ({
         ...initialState,
 
-        addItem: (item: Omit<CartItem, 'quantity'>) =>
+        addItem: (item: Omit<CartItem, 'quantity'>) => {
           set(
             (state) => {
               const existing = state.items.find((i) => i.productId === item.productId)
@@ -49,9 +49,10 @@ export const useCartStore = create<CartState>()(
             },
             false,
             'addItem'
-          ),
+          )
+        },
 
-        removeItem: (productId: string) =>
+        removeItem: (productId: string) => {
           set(
             (state) => {
               const newItems = state.items.filter((i) => i.productId !== productId)
@@ -63,9 +64,10 @@ export const useCartStore = create<CartState>()(
             },
             false,
             'removeItem'
-          ),
+          )
+        },
 
-        updateQuantity: (productId: string, quantity: number) =>
+        updateQuantity: (productId: string, quantity: number) => {
           set(
             (state) => {
               if (quantity <= 0) {
@@ -87,9 +89,12 @@ export const useCartStore = create<CartState>()(
             },
             false,
             'updateQuantity'
-          ),
+          )
+        },
 
-        clearCart: () => set({ ...initialState }, false, 'clearCart'),
+        clearCart: () => {
+          set({ ...initialState }, false, 'clearCart')
+        },
       }),
       {
         name: 'cart-storage',

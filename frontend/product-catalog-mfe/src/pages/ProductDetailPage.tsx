@@ -24,6 +24,7 @@ import { useProduct } from '../hooks'
 import { useFeatureFlag } from '../featureFlags'
 import { recommendationService } from '../api'
 import { ProductReviewsSection } from '../components/reviews'
+import { toast } from '../lib/toast'
 import type { Product } from '../types'
 
 interface ProductDetailPageProps {
@@ -82,6 +83,7 @@ export default function ProductDetailPage({
   const handleAddToCart = () => {
     if (product && onAddToCart) {
       onAddToCart(product.id, quantity)
+      toast.success('Added to cart')
     }
   }
 

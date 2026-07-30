@@ -157,7 +157,7 @@ describe('ReturnsAdminPage', () => {
     expect(fixture.componentInstance.selectedReturn()?.lines.length).toBe(1);
   });
 
-  it('should show a snackbar-triggering error path when the row-click detail fetch fails', () => {
+  it('should keep the drawer closed when the row-click detail fetch fails', () => {
     returnServiceSpy.getReturnById.and.returnValue(throwError(() => new Error('404')));
 
     fixture.componentInstance.onRowClick(mockSummary as unknown as Record<string, unknown> & ReturnSummary);

@@ -17,6 +17,7 @@ import type { Product } from '../../types'
 import { useInventoryStore, selectInventoryFor } from '../../stores/inventoryStore'
 import { useUserPreferencesStore, selectCurrency } from '../../stores/userPreferencesStore'
 import { useCurrencyRates } from '../../hooks/useCurrencyRates'
+import { toast } from '../../lib/toast'
 
 interface ProductCardProps {
   product: Product
@@ -144,6 +145,7 @@ export function ProductCard({ product, onAddToCart, currency }: ProductCardProps
     e.stopPropagation()
     if (onAddToCart && liveInStock) {
       onAddToCart(id, 1)
+      toast.success('Added to cart')
     }
   }
 

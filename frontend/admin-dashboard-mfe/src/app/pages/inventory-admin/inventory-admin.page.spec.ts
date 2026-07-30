@@ -106,7 +106,7 @@ describe('InventoryAdminPage', () => {
     expect(fixture.componentInstance.createDrawerOpen()).toBeFalse();
   });
 
-  it('should show an error snackbar when create fails', () => {
+  it('should reset the creating flag when create fails', () => {
     serviceSpy.createInventory.and.returnValue(throwError(() => new Error('409')));
     fixture.componentInstance.openCreateDrawer();
     fixture.componentInstance.createForm.setValue({
@@ -144,7 +144,7 @@ describe('InventoryAdminPage', () => {
     expect(serviceSpy.updateStock).toHaveBeenCalledWith('prod-3', { quantityChange: 50, updateType: 'RESTOCK', notes: undefined });
   });
 
-  it('should show an error snackbar when the stock adjustment fails', () => {
+  it('should reset the adjusting flag when the stock adjustment fails', () => {
     serviceSpy.updateStock.and.returnValue(throwError(() => new Error('400')));
     fixture.componentInstance.openAdjustDrawer(mockItem);
     fixture.componentInstance.adjustForm.setValue({ quantityChange: -1000, updateType: 'ADJUSTMENT', notes: '' });

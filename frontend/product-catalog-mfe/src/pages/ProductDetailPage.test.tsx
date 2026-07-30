@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/renderWithProviders'
 import ProductDetailPage from './ProductDetailPage'
 import { useProduct } from '../hooks'
@@ -77,5 +78,59 @@ describe('ProductDetailPage — reviews wiring', () => {
     renderWithProviders(<ProductDetailPage />, { initialEntries: [`/${PRODUCT.id}`] })
 
     expect(screen.queryByTestId('product-reviews-section')).not.toBeInTheDocument()
+  })
+})
+
+describe('ProductDetailPage — add to cart', () => {
+  afterEach(() => {
+    delete window.__ecommerceToastHost
+  })
+
+  it('should call onAddToCart with the selected quantity and toast a success message', async () => {
+    mockUseProduct.mockReturnValue({
+      product: PRODUCT,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    window.__ecommerceToastHost = true
+    const listener = vi.fn()
+    window.addEventListener('ecommerce:toast', listener)
+
+    const onAddToCart = vi.fn()
+    const user = userEvent.setup()
+    renderWithProviders(<ProductDetailPage onAddToCart={onAddToCart} />, {
+      initialEntries: [`/${PRODUCT.id}`],
+    })
+
+    await user.click(screen.getByRole('button', { name: /add to cart/i }))
+
+    expect(onAddToCart).toHaveBeenCalledWith(PRODUCT.id, 1)
+    expect(listener).toHaveBeenCalledOnce()
+    const event = listener.mock.calls[0][0] as CustomEvent
+    expect(event.detail).toMatchObject({ type: 'success', message: 'Added to cart' })
+
+    window.removeEventListener('ecommerce:toast', listener)
+  })
+
+  it('should not toast when there is no onAddToCart handler wired', async () => {
+    mockUseProduct.mockReturnValue({
+      product: PRODUCT,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    window.__ecommerceToastHost = true
+    const listener = vi.fn()
+    window.addEventListener('ecommerce:toast', listener)
+
+    const user = userEvent.setup()
+    renderWithProviders(<ProductDetailPage />, { initialEntries: [`/${PRODUCT.id}`] })
+    await user.click(screen.getByRole('button', { name: /add to cart/i }))
+
+    expect(listener).not.toHaveBeenCalled()
+    window.removeEventListener('ecommerce:toast', listener)
   })
 })

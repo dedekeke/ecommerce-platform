@@ -9,7 +9,10 @@ import type { SavedMethodPaymentResult, SavedPaymentMethod } from './types'
  * available" and fall back to the new-card flow rather than blocking checkout.
  */
 export const listSavedMethods = async (userId: string): Promise<SavedPaymentMethod[]> => {
-  const { data } = await apiClient.get<SavedPaymentMethod[]>(`/payments/methods/user/${userId}`)
+  // SavedMethodPicker renders a load failure via its own inline error Alert.
+  const { data } = await apiClient.get<SavedPaymentMethod[]>(`/payments/methods/user/${userId}`, {
+    skipErrorToast: true,
+  })
   return data
 }
 
@@ -25,9 +28,11 @@ export const confirmSavedMethodPayment = async (
   paymentIntentId: string,
   paymentMethodId: string
 ): Promise<SavedMethodPaymentResult> => {
+  // SavedMethodConfirmButton renders a failure via its own inline error Alert.
   const { data } = await apiClient.post<SavedMethodPaymentResult>(
     '/payments/intents/confirm-saved',
-    { paymentIntentId, paymentMethodId }
+    { paymentIntentId, paymentMethodId },
+    { skipErrorToast: true }
   )
   return data
 }

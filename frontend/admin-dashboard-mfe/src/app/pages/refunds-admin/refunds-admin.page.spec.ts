@@ -142,7 +142,7 @@ describe('RefundsAdminPage', () => {
     expect(fixture.componentInstance.refundSagas()[0].id).toBe('saga-1');
   });
 
-  it('should show an error snackbar-triggering path when initiate refund fails', () => {
+  it('should reset the initiating flag without adding a saga when initiate refund fails', () => {
     orderServiceSpy.getOrderById.and.returnValue(of(mockOrder));
     refundServiceSpy.startRefund.and.returnValue(throwError(() => new Error('500')));
 
@@ -165,7 +165,7 @@ describe('RefundsAdminPage', () => {
     expect(fixture.componentInstance.selectedSaga()?.id).toBe('saga-1');
   });
 
-  it('should show an error snackbar path when the saga lookup fails', () => {
+  it('should reset the lookup flag without opening the drawer when the saga lookup fails', () => {
     refundServiceSpy.getRefundSaga.and.returnValue(throwError(() => new Error('404')));
     fixture.componentInstance.sagaLookupForm.setValue({ sagaId: 'missing' });
     fixture.componentInstance.onLookupSaga();

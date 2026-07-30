@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -23,6 +24,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import static org.hamcrest.Matchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -53,6 +55,8 @@ class PromotionIntegrationTest {
         registry.add("spring.flyway.enabled", () -> "false");
     }
 
+    private static final SimpleGrantedAuthority ADMIN = new SimpleGrantedAuthority("SCOPE_admin");
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -75,7 +79,7 @@ class PromotionIntegrationTest {
                 .active(true)
                 .build();
 
-        mockMvc.perform(post("/api/promotions")
+        mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -99,12 +103,12 @@ class PromotionIntegrationTest {
                 .active(true)
                 .build();
 
-        mockMvc.perform(post("/api/promotions")
+        mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(post("/api/promotions")
+        mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict())
@@ -125,7 +129,7 @@ class PromotionIntegrationTest {
                 .active(true)
                 .build();
 
-        mockMvc.perform(post("/api/promotions")
+        mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isCreated());
@@ -159,7 +163,7 @@ class PromotionIntegrationTest {
                 .active(true)
                 .build();
 
-        mockMvc.perform(post("/api/promotions")
+        mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isCreated());
@@ -191,7 +195,7 @@ class PromotionIntegrationTest {
                 .active(true)
                 .build();
 
-        String createResponse = mockMvc.perform(post("/api/promotions")
+        String createResponse = mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isCreated())
@@ -232,7 +236,7 @@ class PromotionIntegrationTest {
                 .active(true)
                 .build();
 
-        String createResponse = mockMvc.perform(post("/api/promotions")
+        String createResponse = mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isCreated())
@@ -254,7 +258,7 @@ class PromotionIntegrationTest {
                 .active(true)
                 .build();
 
-        mockMvc.perform(put("/api/promotions/" + promotionId)
+        mockMvc.perform(put("/api/promotions/" + promotionId).with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateRequest)))
                 .andExpect(status().isOk())
@@ -277,7 +281,7 @@ class PromotionIntegrationTest {
                 .active(true)
                 .build();
 
-        String createResponse = mockMvc.perform(post("/api/promotions")
+        String createResponse = mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isCreated())
@@ -287,7 +291,7 @@ class PromotionIntegrationTest {
 
         Long promotionId = objectMapper.readTree(createResponse).get("id").asLong();
 
-        mockMvc.perform(delete("/api/promotions/" + promotionId))
+        mockMvc.perform(delete("/api/promotions/" + promotionId).with(jwt().authorities(ADMIN)))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/promotions/" + promotionId))
@@ -317,12 +321,12 @@ class PromotionIntegrationTest {
                 .active(false)
                 .build();
 
-        mockMvc.perform(post("/api/promotions")
+        mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(activeRequest)))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(post("/api/promotions")
+        mockMvc.perform(post("/api/promotions").with(jwt().authorities(ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(inactiveRequest)))
                 .andExpect(status().isCreated());

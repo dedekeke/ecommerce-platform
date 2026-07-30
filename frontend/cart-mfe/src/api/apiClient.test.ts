@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import apiClient from './apiClient'
@@ -114,6 +114,166 @@ describe('apiClient', () => {
 
       expect(callCount).toBe(2)
       expect(data).toEqual({ ok: true, attempt: 2 })
+    }, 15000)
+  })
+
+  describe('error toasting', () => {
+    beforeEach(() => {
+      window.__ecommerceToastHost = true
+    })
+    afterEach(() => {
+      delete window.__ecommerceToastHost
+    })
+
+    function captureToasts() {
+      const events: CustomEvent[] = []
+      const listener = (e: Event) => events.push(e as CustomEvent)
+      window.addEventListener('ecommerce:toast', listener)
+      return {
+        events,
+        cleanup: () => window.removeEventListener('ecommerce:toast', listener),
+      }
+    }
+
+    it('should toast the server-provided message on a 5xx response', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.post('http://localhost:8080/api/widgets', () =>
+          HttpResponse.json({ message: 'Inventory service is down' }, { status: 500 })
+        )
+      )
+
+      await expect(apiClient.post('/widgets', {})).rejects.toThrow()
+
+      expect(events).toHaveLength(1)
+      expect(events[0]?.detail).toEqual({
+        type: 'error',
+        message: 'Inventory service is down',
+        duration: undefined,
+      })
+      cleanup()
+    })
+
+    it('should fall back to a generic per-status message when the server sends no message/error field', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.post('http://localhost:8080/api/widgets', () => HttpResponse.json({}, { status: 500 }))
+      )
+
+      await expect(apiClient.post('/widgets', {})).rejects.toThrow()
+
+      expect(events[0]?.detail).toMatchObject({ type: 'error' })
+      expect((events[0]?.detail as { message: string }).message).toMatch(/try again/i)
+      cleanup()
+    })
+
+    it('should prefer the `error` field when `message` is absent', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.post('http://localhost:8080/api/widgets', () =>
+          HttpResponse.json({ error: 'Duplicate SKU' }, { status: 400 })
+        )
+      )
+
+      await expect(apiClient.post('/widgets', {})).rejects.toThrow()
+
+      expect(events[0]?.detail).toMatchObject({ type: 'error', message: 'Duplicate SKU' })
+      cleanup()
+    })
+
+    it('should NOT toast on a 401 (session-expiry is handled by the shell)', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.get('http://localhost:8080/api/test', () =>
+          HttpResponse.json({ message: 'Unauthorized' }, { status: 401 })
+        )
+      )
+
+      await expect(apiClient.get('/test')).rejects.toThrow()
+
+      expect(events).toHaveLength(0)
+      cleanup()
+    })
+
+    it('should NOT toast on a 403 (permission errors are handled by the shell)', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.get('http://localhost:8080/api/test', () =>
+          HttpResponse.json({ message: 'Forbidden' }, { status: 403 })
+        )
+      )
+
+      await expect(apiClient.get('/test')).rejects.toThrow()
+
+      expect(events).toHaveLength(0)
+      cleanup()
+    })
+
+    it('should NOT toast when the request was cancelled', async () => {
+      const { events, cleanup } = captureToasts()
+      const controller = new AbortController()
+
+      const promise = apiClient.get('/test', { signal: controller.signal })
+      controller.abort()
+
+      await expect(promise).rejects.toThrow()
+      expect(events).toHaveLength(0)
+      cleanup()
+    })
+
+    it('should NOT toast when the request config sets skipErrorToast', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.post('http://localhost:8080/api/widgets', () =>
+          HttpResponse.json({ message: 'boom' }, { status: 500 })
+        )
+      )
+
+      await expect(apiClient.post('/widgets', {}, { skipErrorToast: true })).rejects.toThrow()
+
+      expect(events).toHaveLength(0)
+      cleanup()
+    })
+
+    it('should toast when the request config does not set skipErrorToast', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.post('http://localhost:8080/api/widgets', () =>
+          HttpResponse.json({ message: 'boom' }, { status: 500 })
+        )
+      )
+
+      await expect(apiClient.post('/widgets', {})).rejects.toThrow()
+
+      expect(events).toHaveLength(1)
+      cleanup()
+    })
+
+    it('should still reject the promise so callers keep their existing error paths', async () => {
+      server.use(
+        http.post('http://localhost:8080/api/widgets', () =>
+          HttpResponse.json({ message: 'boom' }, { status: 500 })
+        )
+      )
+
+      await expect(apiClient.post('/widgets', {})).rejects.toMatchObject({
+        response: { status: 500 },
+      })
+    })
+
+    it('should toast only once when a retried idempotent request exhausts retries and still fails', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.get('http://localhost:8080/api/retry', () =>
+          HttpResponse.json({ message: 'still failing' }, { status: 503 })
+        )
+      )
+
+      await expect(apiClient.get('/retry')).rejects.toThrow()
+
+      expect(events).toHaveLength(1)
+      expect(events[0]?.detail).toMatchObject({ type: 'error', message: 'still failing' })
+      cleanup()
     }, 15000)
   })
 })

@@ -130,3 +130,43 @@ describe('confirmSavedMethodPayment', () => {
     })
   })
 })
+
+describe('error toast opt-out (callers render their own inline error UI)', () => {
+  function captureToasts() {
+    const events: CustomEvent[] = []
+    const listener = (e: Event) => events.push(e as CustomEvent)
+    window.addEventListener('ecommerce:toast', listener)
+    return { events, cleanup: () => window.removeEventListener('ecommerce:toast', listener) }
+  }
+
+  beforeAll(() => {
+    window.__ecommerceToastHost = true
+  })
+  afterAll(() => {
+    delete window.__ecommerceToastHost
+  })
+
+  it('should NOT toast when listSavedMethods fails (SavedMethodPicker renders its own error Alert)', async () => {
+    const { events, cleanup } = captureToasts()
+    server.use(
+      http.get(`${API_BASE}/payments/methods/user/:userId`, () =>
+        HttpResponse.json({ message: 'Internal error' }, { status: 500 })
+      )
+    )
+    await expect(listSavedMethods('auth0|test-user')).rejects.toThrow()
+    expect(events).toHaveLength(0)
+    cleanup()
+  })
+
+  it('should NOT toast when confirmSavedMethodPayment fails (SavedMethodConfirmButton renders its own error Alert)', async () => {
+    const { events, cleanup } = captureToasts()
+    server.use(
+      http.post(`${API_BASE}/payments/intents/confirm-saved`, () =>
+        HttpResponse.json({ message: 'boom' }, { status: 500 })
+      )
+    )
+    await expect(confirmSavedMethodPayment('pi_test_123', 'pm_not_mine')).rejects.toThrow()
+    expect(events).toHaveLength(0)
+    cleanup()
+  })
+})

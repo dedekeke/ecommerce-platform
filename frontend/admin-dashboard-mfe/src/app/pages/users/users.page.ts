@@ -4,12 +4,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { PageEvent } from '@angular/material/paginator';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { UserAdminService } from '../../core/services/user-admin.service';
+import { ToastService } from '../../core/services/toast.service';
 import { AdminUser, UserRole, UserStatus, UserFilterParams } from '../../core/models/user-admin.model';
 
 type UserRow = Record<string, unknown> & AdminUser;
@@ -25,7 +25,6 @@ const USER_ROLES: UserRole[] = ['CUSTOMER', 'MODERATOR', 'ADMIN'];
     MatIconModule,
     MatSelectModule,
     MatFormFieldModule,
-    MatSnackBarModule,
     DataTableComponent,
     StatusBadgeComponent,
     FormDrawerComponent,
@@ -119,7 +118,7 @@ const USER_ROLES: UserRole[] = ['CUSTOMER', 'MODERATOR', 'ADMIN'];
 })
 export class UsersPage implements OnInit {
   private readonly userService = inject(UserAdminService);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly toast = inject(ToastService);
 
   readonly users = signal<UserRow[]>([]);
   readonly loading = signal(true);
@@ -185,12 +184,11 @@ export class UsersPage implements OnInit {
       next: (updated) => {
         this.updatingRole.set(false);
         this.selectedUser.set(updated);
-        this.snackBar.open('Role updated', 'Close', { duration: 3000 });
+        this.toast.success('Role updated');
         this.loadUsers();
       },
       error: () => {
         this.updatingRole.set(false);
-        this.snackBar.open('Failed to update role', 'Close', { duration: 3000 });
       },
     });
   }

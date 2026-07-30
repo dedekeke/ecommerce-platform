@@ -6,13 +6,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { PageEvent } from '@angular/material/paginator';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { RefundAdminService } from '../../core/services/refund-admin.service';
 import { OrderAdminService } from '../../core/services/order-admin.service';
+import { ToastService } from '../../core/services/toast.service';
 import { RefundFilterParams, RefundSagaState, RefundSagaStatus } from '../../core/models/refund.model';
 import { Order, OrderStatus } from '../../core/models/order.model';
 
@@ -35,7 +35,6 @@ const REFUND_SAGA_STATUSES: RefundSagaStatus[] = [
     MatSelectModule,
     MatFormFieldModule,
     MatInputModule,
-    MatSnackBarModule,
     DataTableComponent,
     StatusBadgeComponent,
     FormDrawerComponent,
@@ -220,7 +219,7 @@ const REFUND_SAGA_STATUSES: RefundSagaStatus[] = [
 export class RefundsAdminPage implements OnInit {
   private readonly refundService = inject(RefundAdminService);
   private readonly orderService = inject(OrderAdminService);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
 
   readonly refundSagas = signal<RefundSagaRow[]>([]);
@@ -323,12 +322,11 @@ export class RefundsAdminPage implements OnInit {
       next: () => {
         this.initiatingRefund.set(false);
         this.refundForm.reset({ reason: '' });
-        this.snackBar.open('Refund saga started', 'Close', { duration: 3000 });
+        this.toast.success('Refund saga started');
         this.loadRefunds();
       },
       error: () => {
         this.initiatingRefund.set(false);
-        this.snackBar.open('Failed to start refund', 'Close', { duration: 3000 });
       },
     });
   }
@@ -345,7 +343,6 @@ export class RefundsAdminPage implements OnInit {
       },
       error: () => {
         this.sagaLookupLoading.set(false);
-        this.snackBar.open(`Refund saga not found: ${sagaId}`, 'Close', { duration: 3000 });
       },
     });
   }
@@ -359,7 +356,6 @@ export class RefundsAdminPage implements OnInit {
       },
       error: () => {
         this.sagaLookupLoading.set(false);
-        this.snackBar.open('Failed to refresh refund status', 'Close', { duration: 3000 });
       },
     });
   }
