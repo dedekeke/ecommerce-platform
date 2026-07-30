@@ -67,6 +67,7 @@ react_app() {
   local app=$1
   pushd "frontend/$app" >/dev/null
   if [[ ! -d node_modules ]]; then npm ci || npm install; fi
+  npm audit --audit-level=critical
   npm run lint --if-present
   npm test --if-present -- --run
   popd >/dev/null
@@ -76,6 +77,8 @@ angular_app() {
   local app=$1
   pushd "frontend/$app" >/dev/null
   if [[ ! -d node_modules ]]; then npm ci || npm install; fi
+  npm audit --audit-level=critical
+  npm run lint --if-present
   if $QUICK; then
     npx ng test --watch=false --browsers=ChromeHeadless --no-progress --code-coverage=false
   else
@@ -104,8 +107,9 @@ helm_lint() {
 # ---- Run ----
 echo "${BLUE}Local CI — backend=$DO_BACKEND frontend=$DO_FRONTEND infra=$DO_INFRA quick=$QUICK${RESET}"
 
-# Config guard — fast, always runs (matches quality.yml / ci.yml prod-log-levels job).
+# Config guards — fast, always run (match quality.yml guard jobs).
 step "Prod log-level guard" bash scripts/check-prod-log-levels.sh
+step "Dockerfile reactor-pom guard" bash scripts/check-dockerfile-reactor-poms.sh
 
 if $DO_BACKEND;  then
   step "Backend build (skip tests)" backend_build

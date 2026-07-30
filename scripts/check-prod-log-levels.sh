@@ -54,7 +54,7 @@ PROD_FILES=()
 while IFS= read -r prod_file; do
   PROD_FILES+=("$prod_file")
 done < <(find "$REPO_ROOT" \
-  \( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/build/*' \) -prune -o \
+  \( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/build/*' -o -path '*/.claude/*' \) -prune -o \
   -type f \( \
     -name 'application-prod.yml' -o \
     -name 'application-prod.yaml' -o \
@@ -140,7 +140,7 @@ while IFS= read -r base_file; do
     echo -e "${GREEN}PASS${NC} $rel"
   fi
 done < <(find "$REPO_ROOT" \
-  \( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/build/*' -o -path '*/test/*' \) -prune -o \
+  \( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/build/*' -o -path '*/test/*' -o -path '*/.claude/*' \) -prune -o \
   -type f -path '*/src/main/resources/*' \
   \( -name 'application.yml' -o -name 'application.yaml' -o -name 'application.properties' \) \
   -print | sort)
@@ -210,7 +210,7 @@ while IFS= read -r base_file; do
     violations=$((violations + 1))
   fi
 done < <(find "$REPO_ROOT" \
-  \( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/build/*' -o -path '*/test/*' \) -prune -o \
+  \( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/build/*' -o -path '*/test/*' -o -path '*/.claude/*' \) -prune -o \
   -type f -path '*/src/main/resources/*' \
   \( -name 'application.yml' -o -name 'application.yaml' -o -name 'application.properties' \) \
   -print | sort)
