@@ -230,6 +230,21 @@ describe('Header — search', () => {
     expect(screen.getByRole('searchbox')).toHaveValue('sneakers')
   })
 
+  // Intentional: the header search always starts a fresh, global search — any
+  // category/price/inStock filters from the current page are dropped, not merged.
+  it('should start a fresh global search and drop existing category/price filters when submitted from the header', async () => {
+    const user = userEvent.setup()
+    renderHeaderWithRouter(['/products?category=electronics&minPrice=10&maxPrice=100&inStock=true'])
+
+    await user.type(screen.getByRole('searchbox'), 'sneakers')
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/products?q=sneakers')
+    const location = screen.getByTestId('location').textContent ?? ''
+    const params = new URLSearchParams(location.split('?')[1])
+    expect(Array.from(params.keys())).toEqual(['q'])
+  })
+
   it('should update the search box when the URL q param changes externally', async () => {
     const user = userEvent.setup()
 

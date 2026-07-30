@@ -81,9 +81,16 @@ export default function ProductListPage({
   const searchResult = useSearchResults(searchApiParams, { enabled: isSearchMode })
   const active = isSearchMode ? searchResult : browseResult
 
-  // search-service has no inStockOnly param — applied client-side as a documented limitation.
-  const products =
-    isSearchMode && filters.inStockOnly ? active.products.filter((product) => product.inStock) : active.products
+  // search-service applies neither an `active` nor `inStockOnly` filter — both are
+  // applied client-side as a documented limitation.
+  const products = isSearchMode
+    ? active.products.filter((product) => product.active !== false && (!filters.inStockOnly || product.inStock))
+    : active.products
+
+  // Once client-side filtering drops items, active.totalElements no longer reflects
+  // what's actually shown — label the count as scoped rather than a page-length total.
+  const isClientFiltered = isSearchMode && products.length !== active.products.length
+  const displayedCount = isClientFiltered ? products.length : active.totalElements
 
   const handleClearFilters = () => {
     setCategory(null)
@@ -143,7 +150,9 @@ export default function ProductListPage({
               </Typography>
               {!active.isLoading && (
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  {products.length} {products.length === 1 ? 'product' : 'products'} found
+                  {isClientFiltered
+                    ? `${displayedCount} ${displayedCount === 1 ? 'product' : 'products'} shown`
+                    : `${displayedCount} ${displayedCount === 1 ? 'product' : 'products'} found`}
                 </Typography>
               )}
             </Box>

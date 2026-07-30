@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { HttpErrorResponse } from '@angular/common/http';
 import { WishlistPage } from './wishlist.page';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { WishlistService } from '../../core/services/wishlist.service';
@@ -88,8 +89,47 @@ describe('WishlistPage', () => {
   });
 
   it('should not throw and should not toast success when the add-to-cart request fails', () => {
-    cartServiceSpy.addItem.and.returnValue(throwError(() => new Error('conflict')));
+    cartServiceSpy.addItem.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
     expect(() => fixture.componentInstance.onAddToCart(mockItems[0])).not.toThrow();
     expect(toastServiceSpy.success).not.toHaveBeenCalled();
+  });
+
+  it('should not show an explicit error toast for a non-auth failure (interceptor already toasted)', () => {
+    cartServiceSpy.addItem.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+    fixture.componentInstance.onAddToCart(mockItems[0]);
+    expect(toastServiceSpy.error).not.toHaveBeenCalled();
+  });
+
+  it('should show a sign-in error toast on a 401 response (interceptor skips this status)', () => {
+    cartServiceSpy.addItem.and.returnValue(throwError(() => new HttpErrorResponse({ status: 401 })));
+    fixture.componentInstance.onAddToCart(mockItems[0]);
+    expect(toastServiceSpy.error).toHaveBeenCalledWith('Please sign in again to add items to your cart');
+  });
+
+  it('should show a sign-in error toast on a 403 response (interceptor skips this status)', () => {
+    cartServiceSpy.addItem.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+    fixture.componentInstance.onAddToCart(mockItems[0]);
+    expect(toastServiceSpy.error).toHaveBeenCalledWith('Please sign in again to add items to your cart');
+  });
+
+  it('should write the added item into the shell cart bridge so the header/cart/checkout reflect it', () => {
+    const addItemSpy = jasmine.createSpy('addItem');
+    window.__cartBridge = { addItem: addItemSpy };
+
+    fixture.componentInstance.onAddToCart(mockItems[0]);
+
+    expect(addItemSpy).toHaveBeenCalledWith({
+      productId: 'prod-1',
+      name: 'Blue Sneakers',
+      price: 99.99,
+      image: undefined,
+    });
+
+    delete window.__cartBridge;
+  });
+
+  it('should not throw when the shell cart bridge is not installed (standalone ng serve)', () => {
+    delete window.__cartBridge;
+    expect(() => fixture.componentInstance.onAddToCart(mockItems[0])).not.toThrow();
   });
 });

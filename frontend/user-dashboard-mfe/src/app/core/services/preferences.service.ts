@@ -2,7 +2,21 @@ import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { DEFAULT_PREFERENCES, UserPreferences } from '../models/preferences.model';
 
-const STORAGE_KEY = 'user-preferences-storage';
+const STORAGE_KEY_PREFIX = 'user-preferences-storage';
+const ANONYMOUS_KEY = 'anonymous';
+
+declare global {
+  interface Window {
+    __getAuthUserId?: () => string | null;
+  }
+}
+
+/** Namespaces the storage key by the authenticated user's sub so one device's localStorage
+ * can't leak one user's preferences into another user's session. */
+function resolveStorageKey(): string {
+  const userId = window.__getAuthUserId?.() ?? null;
+  return `${STORAGE_KEY_PREFIX}:${userId ?? ANONYMOUS_KEY}`;
+}
 
 /**
  * user-service currently exposes no preferences/notification-settings endpoint
@@ -13,6 +27,7 @@ const STORAGE_KEY = 'user-preferences-storage';
  */
 @Injectable({ providedIn: 'root' })
 export class PreferencesService {
+  private readonly storageKey = resolveStorageKey();
   private readonly preferences$ = new BehaviorSubject<UserPreferences>(this.loadFromStorage());
 
   getPreferences(): Observable<UserPreferences> {
@@ -34,7 +49,7 @@ export class PreferencesService {
 
   private loadFromStorage(): UserPreferences {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(this.storageKey);
       if (!raw) {
         return DEFAULT_PREFERENCES;
       }
@@ -51,7 +66,7 @@ export class PreferencesService {
 
   private persist(preferences: UserPreferences): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+      localStorage.setItem(this.storageKey, JSON.stringify(preferences));
     } catch {
       // Silently fail if storage is unavailable
     }

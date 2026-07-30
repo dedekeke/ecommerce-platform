@@ -18,8 +18,15 @@ interface CartSummaryProps {
 }
 
 export default function CartSummary({ subtotal, onCheckout }: CartSummaryProps) {
-  const { promotionCode, discountAmount, isApplying, error, applyPromotion, removePromotion } =
-    usePromotion(subtotal)
+  const {
+    promotionCode,
+    discountAmount,
+    isApplying,
+    error,
+    revalidationNotice,
+    applyPromotion,
+    removePromotion,
+  } = usePromotion(subtotal)
 
   const discount = Math.min(discountAmount, subtotal)
   const discountedSubtotal = subtotal - discount
@@ -119,6 +126,18 @@ export default function CartSummary({ subtotal, onCheckout }: CartSummaryProps) 
       )}
 
       <Divider sx={{ my: 2 }} />
+
+      {revalidationNotice && (
+        <Typography
+          variant="body2"
+          color="warning.main"
+          role="alert"
+          data-testid="promo-revalidation-notice"
+          sx={{ mb: 1.5 }}
+        >
+          {revalidationNotice}
+        </Typography>
+      )}
 
       <PromoCodeInput
         appliedCode={promotionCode}

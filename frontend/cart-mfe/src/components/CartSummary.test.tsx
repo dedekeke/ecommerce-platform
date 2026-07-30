@@ -1,9 +1,20 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterEach, afterAll } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { setupServer } from 'msw/node'
+import { http, HttpResponse } from 'msw'
+import { handlers } from '../test/mocks'
+import { mockInvalidDiscount } from '../test/mocks/promotion'
 import { renderWithProviders } from '../test/renderWithProviders'
 import { useCartStore } from '../stores/cartStore'
 import CartSummary from './CartSummary'
+
+const API_BASE = 'http://localhost:8080/api'
+const server = setupServer(...handlers)
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
 
 describe('CartSummary', () => {
   beforeEach(() => {
@@ -118,6 +129,22 @@ describe('CartSummary', () => {
 
       expect(screen.queryByTestId('cart-discount')).not.toBeInTheDocument()
       expect(useCartStore.getState().promotionCode).toBeNull()
+    })
+
+    it('should show an inline notice and drop the discount when the subtotal falls below the promo minimum', async () => {
+      server.use(
+        http.post(`${API_BASE}/promotions/validate`, () => HttpResponse.json(mockInvalidDiscount)),
+      )
+      const { rerender } = renderWithProviders(<CartSummary subtotal={100} onCheckout={vi.fn()} />)
+      expect(screen.getByTestId('cart-discount')).toBeInTheDocument()
+
+      rerender(<CartSummary subtotal={5} onCheckout={vi.fn()} />)
+
+      await waitFor(
+        () => expect(screen.getByTestId('promo-revalidation-notice')).toHaveTextContent(/no longer applies/i),
+        { timeout: 2000 },
+      )
+      expect(screen.queryByTestId('cart-discount')).not.toBeInTheDocument()
     })
   })
 })

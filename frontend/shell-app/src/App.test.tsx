@@ -9,8 +9,25 @@ vi.mock('@auth0/auth0-react', () => ({
 }))
 
 vi.mock('./mfe', () => ({
-  MicroFrontendLoader: ({ mfeName }: { mfeName: string }) => (
-    <div data-testid={`mfe-${mfeName}`}>MFE: {mfeName}</div>
+  MicroFrontendLoader: ({
+    mfeName,
+    componentProps,
+  }: {
+    mfeName: string
+    componentProps?: Record<string, unknown>
+  }) => (
+    <div data-testid={`mfe-${mfeName}`}>
+      MFE: {mfeName}
+      {typeof componentProps?.onAddToCart === 'function' && (
+        <button
+          type="button"
+          data-testid="mfe-invoke-add-to-cart"
+          onClick={() => (componentProps.onAddToCart as (id: string, qty: number) => void)('prod-1', 2)}
+        >
+          invoke-add-to-cart
+        </button>
+      )}
+    </div>
   ),
   MFEErrorBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useMFEPreload: () => ({
@@ -49,21 +66,34 @@ vi.mock('./components/auth/RoleGuard', () => ({
   ),
 }))
 
+const mockAddItem = vi.fn()
+
 vi.mock('./stores', () => ({
-  useCartStore: vi.fn(() => 0),
+  useCartStore: vi.fn((selector: (s: { itemCount: number; addItem: typeof mockAddItem }) => unknown) =>
+    selector({ itemCount: 0, addItem: mockAddItem })
+  ),
   selectCartItemCount: (s: { itemCount: number }) => s.itemCount,
 }))
 
 vi.mock('./hooks', () => ({
   useExposeAuthToken: vi.fn(),
+  useCartBridge: vi.fn(),
   useInventoryStream: vi.fn(),
+}))
+
+vi.mock('./api/services', () => ({
+  productService: {
+    getProductById: vi.fn(),
+  },
 }))
 
 import { useAuth0 } from '@auth0/auth0-react'
 import { useCartStore } from './stores'
+import { productService } from './api/services'
 
 const mockUseAuth0 = vi.mocked(useAuth0)
 const mockUseCartStore = vi.mocked(useCartStore)
+const mockGetProductById = vi.mocked(productService.getProductById)
 
 function renderAppAtRoute(route: string) {
   return render(
@@ -86,7 +116,10 @@ beforeEach(() => {
     getIdTokenClaims: vi.fn(),
     handleRedirectCallback: vi.fn(),
   } as unknown as ReturnType<typeof useAuth0>)
-  mockUseCartStore.mockReturnValue(0 as unknown as never)
+  mockUseCartStore.mockImplementation(((selector: (s: { itemCount: number; addItem: typeof mockAddItem }) => unknown) =>
+    selector({ itemCount: 0, addItem: mockAddItem })) as typeof useCartStore)
+  mockAddItem.mockClear()
+  mockGetProductById.mockReset()
 })
 
 describe('App routing', () => {
@@ -163,5 +196,34 @@ describe('App routing', () => {
   it('renders NotFound for unknown routes', () => {
     renderAppAtRoute('/this-route-does-not-exist')
     expect(screen.getByTestId('not-found')).toBeInTheDocument()
+  })
+
+  it('wires onAddToCart through to the catalog MFE so it adds the fetched product to the shell cart store', async () => {
+    mockGetProductById.mockResolvedValue({
+      id: 'prod-1',
+      sku: 'SKU-1',
+      name: 'Wireless Mouse',
+      description: '',
+      price: 29.99,
+      currency: 'USD',
+      category: { id: 'c1', name: 'Electronics', slug: 'electronics' },
+      images: ['https://example.com/mouse.jpg'],
+      stockQuantity: 5,
+      active: true,
+      createdAt: '',
+      updatedAt: '',
+    })
+    renderAppAtRoute('/products')
+
+    screen.getByTestId('mfe-invoke-add-to-cart').click()
+
+    await vi.waitFor(() => expect(mockGetProductById).toHaveBeenCalledWith('prod-1'))
+    await vi.waitFor(() => expect(mockAddItem).toHaveBeenCalledTimes(2))
+    expect(mockAddItem).toHaveBeenCalledWith({
+      productId: 'prod-1',
+      name: 'Wireless Mouse',
+      price: 29.99,
+      image: 'https://example.com/mouse.jpg',
+    })
   })
 })

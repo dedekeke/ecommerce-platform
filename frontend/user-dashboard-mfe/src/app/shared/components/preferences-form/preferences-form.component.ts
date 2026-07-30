@@ -94,6 +94,10 @@ import {
         </div>
       </section>
 
+      <p class="preferences-form__device-hint" data-testid="preferences-device-hint">
+        Saved on this device
+      </p>
+
       <div class="preferences-form__actions">
         <button
           mat-flat-button

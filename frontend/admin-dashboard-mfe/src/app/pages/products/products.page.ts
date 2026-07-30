@@ -7,7 +7,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Sort } from '@angular/material/sort';
 import { PageEvent } from '@angular/material/paginator';
 import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
@@ -15,10 +14,8 @@ import { StatusBadgeComponent } from '../../shared/components/status-badge/statu
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
 import { ProductAdminService } from '../../core/services/product-admin.service';
-import { MediaService } from '../../core/services/media.service';
 import { ToastService } from '../../core/services/toast.service';
 import { Product, ProductFilterParams, ProductStatus } from '../../core/models/product.model';
-import { ALLOWED_IMAGE_MIME_TYPES, MAX_IMAGE_FILE_SIZE_BYTES } from '../../core/models/media.model';
 import { BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 
 type ProductRow = Record<string, unknown> & Product;
@@ -35,7 +32,6 @@ type ProductRow = Record<string, unknown> & Product;
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
-    MatProgressBarModule,
     DataTableComponent,
     StatusBadgeComponent,
     ConfirmDialogComponent,
@@ -130,47 +126,6 @@ type ProductRow = Record<string, unknown> & Product;
             <input matInput type="number" formControlName="stock" data-testid="product-stock-input" />
           </mat-form-field>
 
-          <div class="product-form__images">
-            <label class="product-form__images-label" for="product-image-input">Product Images</label>
-
-            @if (imageUrls().length > 0) {
-              <div class="product-form__thumbnails">
-                @for (url of imageUrls(); track url) {
-                  <div class="product-form__thumbnail" data-testid="image-thumbnail">
-                    <img [src]="url" alt="Product image preview" />
-                    <button
-                      type="button"
-                      mat-icon-button
-                      aria-label="Remove image"
-                      (click)="removeImage(url)"
-                      data-testid="remove-image-btn"
-                    >
-                      <mat-icon>close</mat-icon>
-                    </button>
-                  </div>
-                }
-              </div>
-            }
-
-            <input
-              type="file"
-              id="product-image-input"
-              class="product-form__file-input"
-              accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
-              [disabled]="uploading()"
-              (change)="onFileSelected($event)"
-              data-testid="product-image-input"
-            />
-
-            @if (uploading()) {
-              <mat-progress-bar mode="determinate" [value]="uploadProgress()" data-testid="upload-progress" />
-            }
-
-            @if (uploadError()) {
-              <p class="product-form__upload-error" data-testid="upload-error">{{ uploadError() }}</p>
-            }
-          </div>
-
           <div class="product-form__actions">
             <button mat-stroked-button type="button" (click)="closeDrawer()">Cancel</button>
             <button
@@ -191,7 +146,6 @@ type ProductRow = Record<string, unknown> & Product;
 })
 export class ProductsPage implements OnInit {
   private readonly productService = inject(ProductAdminService);
-  private readonly mediaService = inject(MediaService);
   private readonly dialog = inject(MatDialog);
   private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
@@ -205,10 +159,6 @@ export class ProductsPage implements OnInit {
   readonly drawerOpen = signal(false);
   readonly drawerTitle = signal('Add Product');
   readonly saving = signal(false);
-  readonly imageUrls = signal<string[]>([]);
-  readonly uploading = signal(false);
-  readonly uploadProgress = signal(0);
-  readonly uploadError = signal<string | null>(null);
 
   private editingId: string | null = null;
 
@@ -266,7 +216,6 @@ export class ProductsPage implements OnInit {
     this.editingId = null;
     this.drawerTitle.set('Add Product');
     this.productForm.reset({ name: '', price: 0, stock: 0 });
-    this.resetImageUploadState([]);
     this.drawerOpen.set(true);
   }
 
@@ -278,64 +227,7 @@ export class ProductsPage implements OnInit {
       price: row['price'] as number,
       stock: row['stock'] as number,
     });
-    this.resetImageUploadState((row['imageUrls'] as string[]) ?? []);
     this.drawerOpen.set(true);
-  }
-
-  private resetImageUploadState(imageUrls: string[]): void {
-    this.imageUrls.set(imageUrls);
-    this.uploading.set(false);
-    this.uploadProgress.set(0);
-    this.uploadError.set(null);
-  }
-
-  onFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] ?? null;
-    input.value = '';
-    if (!file) return;
-
-    const validationError = this.validateImageFile(file);
-    if (validationError) {
-      this.uploadError.set(validationError);
-      this.toast.error(validationError);
-      return;
-    }
-
-    this.uploadError.set(null);
-    this.uploading.set(true);
-    this.uploadProgress.set(0);
-
-    this.mediaService.upload(file).subscribe({
-      next: (event) => {
-        if (event.type === 'progress') {
-          this.uploadProgress.set(event.progress);
-          return;
-        }
-        this.imageUrls.update((urls) => [...urls, event.media.downloadUrl]);
-        this.uploading.set(false);
-        this.uploadProgress.set(0);
-        this.toast.success('Image uploaded');
-      },
-      error: () => {
-        this.uploading.set(false);
-        this.uploadProgress.set(0);
-      },
-    });
-  }
-
-  removeImage(url: string): void {
-    this.imageUrls.update((urls) => urls.filter((u) => u !== url));
-  }
-
-  private validateImageFile(file: File): string | null {
-    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_MIME_TYPES)[number])) {
-      return 'Unsupported file type. Please upload a JPEG, PNG, GIF, WEBP, or SVG image.';
-    }
-    if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
-      return `File is too large. Maximum size is ${MAX_IMAGE_FILE_SIZE_BYTES / (1024 * 1024)}MB.`;
-    }
-    return null;
   }
 
   onDelete(row: ProductRow): void {
@@ -369,11 +261,11 @@ export class ProductsPage implements OnInit {
     }
     this.saving.set(true);
     const value = this.productForm.getRawValue();
-    const payload = { name: value.name!, price: value.price!, stock: value.stock!, imageUrls: this.imageUrls() };
+    const payload = { name: value.name!, price: value.price!, stock: value.stock! };
 
     const request$ = this.editingId
       ? this.productService.updateProduct(this.editingId, payload)
-      : this.productService.createProduct({ ...payload, description: '', categoryId: '', sku: '' });
+      : this.productService.createProduct({ ...payload, description: '', categoryId: '', imageUrls: [], sku: '' });
 
     request$.subscribe({
       next: () => {

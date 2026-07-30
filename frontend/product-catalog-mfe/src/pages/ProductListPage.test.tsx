@@ -160,4 +160,76 @@ describe('ProductListPage', () => {
     renderWithProviders(<ProductListPage />, { initialEntries: ['/products'] })
     expect(screen.queryByTestId('pagination')).not.toBeInTheDocument()
   })
+
+  it('should show the server totalElements (not the page length) as the header count in browse mode', () => {
+    mockUseProducts.mockReturnValue({
+      ...BROWSE_RESULT,
+      products: mockProducts.slice(0, 4),
+      totalElements: 247,
+      totalPages: 21,
+    })
+    renderWithProviders(<ProductListPage />, { initialEntries: ['/products'] })
+
+    expect(screen.getByText('247 products found')).toBeInTheDocument()
+  })
+
+  it('should show the server totalElements as the header count in plain search mode', () => {
+    mockUseSearchResults.mockReturnValue({
+      ...EMPTY_SEARCH_RESULT,
+      products: mockProducts.slice(0, 4).map((p) => ({ ...p, active: true, inStock: true })),
+      totalElements: 247,
+      totalPages: 21,
+    })
+    renderWithProviders(<ProductListPage />, { initialEntries: ['/products?q=sneakers'] })
+
+    expect(screen.getByText('247 products found')).toBeInTheDocument()
+  })
+
+  it('should filter out inactive products in search mode', async () => {
+    mockUseSearchResults.mockReturnValue({
+      ...EMPTY_SEARCH_RESULT,
+      products: [
+        createMockProduct({ id: 'active-1', name: 'Active Product', active: true }),
+        createMockProduct({ id: 'inactive-1', name: 'Inactive Product', active: false }),
+      ],
+      totalElements: 2,
+      totalPages: 1,
+    })
+    renderWithProviders(<ProductListPage />, { initialEntries: ['/products?q=sneakers'] })
+
+    await waitFor(() => expect(screen.getByText('Active Product')).toBeInTheDocument())
+    expect(screen.queryByText('Inactive Product')).not.toBeInTheDocument()
+  })
+
+  it('should label the count as scoped when client-side filtering (active/inStock) hides search results', async () => {
+    mockUseSearchResults.mockReturnValue({
+      ...EMPTY_SEARCH_RESULT,
+      products: [
+        createMockProduct({ id: 'active-1', name: 'Active Product', active: true }),
+        createMockProduct({ id: 'inactive-1', name: 'Inactive Product', active: false }),
+      ],
+      totalElements: 2,
+      totalPages: 1,
+    })
+    renderWithProviders(<ProductListPage />, { initialEntries: ['/products?q=sneakers'] })
+
+    await waitFor(() => expect(screen.getByText('1 product shown')).toBeInTheDocument())
+  })
+
+  it('should filter out-of-stock products client-side in search mode when inStockOnly is set', async () => {
+    useProductFilterStore.getState().setInStockOnly(true)
+    mockUseSearchResults.mockReturnValue({
+      ...EMPTY_SEARCH_RESULT,
+      products: [
+        createMockProduct({ id: 'in-stock-1', name: 'In Stock Product', active: true, inStock: true }),
+        createMockProduct({ id: 'oos-1', name: 'Out Of Stock Product', active: true, inStock: false }),
+      ],
+      totalElements: 2,
+      totalPages: 1,
+    })
+    renderWithProviders(<ProductListPage />, { initialEntries: ['/products?q=sneakers&inStock=true'] })
+
+    await waitFor(() => expect(screen.getByText('In Stock Product')).toBeInTheDocument())
+    expect(screen.queryByText('Out Of Stock Product')).not.toBeInTheDocument()
+  })
 })

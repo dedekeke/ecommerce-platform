@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { useCartStore } from './cartStore'
 
 describe('cartStore', () => {
@@ -147,6 +147,55 @@ describe('cartStore', () => {
         .applyPromotion({ code: 'SAVE10', discountAmount: 10, promotionName: '10 Off Sale' })
       useCartStore.getState().removePromotion()
       expect(useCartStore.getState().items).toHaveLength(1)
+    })
+  })
+
+  describe('legacy rehydration (version migration)', () => {
+    afterEach(() => {
+      localStorage.removeItem('cart-storage')
+    })
+
+    it('should rehydrate a legacy version-less payload without crashing, defaulting the new promo fields', async () => {
+      localStorage.setItem(
+        'cart-storage',
+        JSON.stringify({
+          state: {
+            items: [{ productId: 'p1', name: 'Widget', price: 10, quantity: 2 }],
+            total: 20,
+            itemCount: 2,
+          },
+        })
+      )
+
+      await expect(useCartStore.persist.rehydrate()).resolves.not.toThrow()
+
+      const state = useCartStore.getState()
+      expect(state.items).toEqual([{ productId: 'p1', name: 'Widget', price: 10, quantity: 2 }])
+      expect(state.promotionCode).toBeNull()
+      expect(state.discountAmount).toBeNull()
+      expect(state.promotionName).toBeNull()
+    })
+
+    it('should rehydrate a v0 payload without crashing, defaulting the new promo fields', async () => {
+      localStorage.setItem(
+        'cart-storage',
+        JSON.stringify({
+          state: {
+            items: [{ productId: 'p1', name: 'Widget', price: 10, quantity: 1 }],
+            total: 10,
+            itemCount: 1,
+          },
+          version: 0,
+        })
+      )
+
+      await expect(useCartStore.persist.rehydrate()).resolves.not.toThrow()
+
+      const state = useCartStore.getState()
+      expect(state.items).toEqual([{ productId: 'p1', name: 'Widget', price: 10, quantity: 1 }])
+      expect(state.promotionCode).toBeNull()
+      expect(state.discountAmount).toBeNull()
+      expect(state.promotionName).toBeNull()
     })
   })
 

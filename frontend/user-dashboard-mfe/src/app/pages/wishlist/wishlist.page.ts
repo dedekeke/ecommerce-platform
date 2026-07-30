@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { WishlistService } from '../../core/services/wishlist.service';
@@ -7,6 +8,20 @@ import { CartService } from '../../core/services/cart.service';
 import { ToastService } from '../../core/services/toast.service';
 import { WishlistItem } from '../../core/models/wishlist.model';
 import { WishlistItemComponent } from '../../shared/components/wishlist-item/wishlist-item.component';
+
+declare global {
+  interface Window {
+    __cartBridge?: {
+      addItem: (item: {
+        productId: string;
+        name: string;
+        price: number;
+        image?: string;
+        quantity?: number;
+      }) => void;
+    };
+  }
+}
 
 @Component({
   selector: 'app-wishlist-page',
@@ -59,9 +74,24 @@ export class WishlistPage implements OnInit {
 
   onAddToCart(item: WishlistItem): void {
     this.cartService.addItem({ productId: item.productId, quantity: 1 }).subscribe({
-      next: () => this.toast.success('Added to cart'),
-      // httpErrorInterceptor already surfaces an error toast for failed requests
-      error: () => undefined,
+      next: () => {
+        this.toast.success('Added to cart');
+        // Server cart updated; also write into the shell's local cart store so the
+        // header badge / cart page / checkout (which all read cart-storage) reflect it.
+        window.__cartBridge?.addItem({
+          productId: item.productId,
+          name: item.productName,
+          price: item.price,
+          image: item.imageUrl,
+        });
+      },
+      // httpErrorInterceptor skips toasting 401/403 (MFE-level auth handling), so handle
+      // those explicitly here; other statuses are already toasted by the interceptor.
+      error: (err: HttpErrorResponse) => {
+        if (err.status === 401 || err.status === 403) {
+          this.toast.error('Please sign in again to add items to your cart');
+        }
+      },
     });
   }
 }

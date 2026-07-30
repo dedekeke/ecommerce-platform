@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { handlers } from '../test/mocks'
+import { mockValidDiscount, mockInvalidDiscount } from '../test/mocks/promotion'
 import { useCartStore } from '../stores/cartStore'
 import { usePromotion } from './usePromotion'
 
@@ -179,6 +180,97 @@ describe('usePromotion', () => {
     await waitFor(() => {
       expect(result.current.promotionCode).toBe('SAVE10')
       expect(result.current.discountAmount).toBe(10)
+    })
+  })
+
+  describe('revalidation on subtotal change', () => {
+    it('should re-validate with the new subtotal when the cart quantity changes and update the discount', async () => {
+      server.use(
+        http.post(`${API_BASE}/promotions/validate`, async ({ request }) => {
+          const body = (await request.json()) as { purchaseAmount: number }
+          return HttpResponse.json({
+            valid: true,
+            message: 'Promotion is valid',
+            discountAmount: body.purchaseAmount >= 200 ? 20 : 10,
+            finalAmount: null,
+            promotionCode: 'SAVE10',
+            promotionName: '10 Off Sale',
+          })
+        })
+      )
+      const { result, rerender } = renderHook(({ subtotal }) => usePromotion(subtotal), {
+        initialProps: { subtotal: 100 },
+      })
+
+      await act(async () => {
+        await result.current.applyPromotion('SAVE10')
+      })
+      expect(result.current.discountAmount).toBe(10)
+
+      rerender({ subtotal: 200 })
+
+      await waitFor(() => expect(result.current.discountAmount).toBe(20), { timeout: 2000 })
+      expect(result.current.promotionCode).toBe('SAVE10')
+      expect(result.current.revalidationNotice).toBeNull()
+    })
+
+    it('should clear the promotion and show a notice when the new subtotal drops below the minimum purchase', async () => {
+      server.use(
+        http.post(`${API_BASE}/promotions/validate`, () => HttpResponse.json(mockValidDiscount)),
+      )
+      const { result, rerender } = renderHook(({ subtotal }) => usePromotion(subtotal), {
+        initialProps: { subtotal: 100 },
+      })
+
+      await act(async () => {
+        await result.current.applyPromotion('SAVE10')
+      })
+      expect(result.current.promotionCode).toBe('SAVE10')
+
+      server.use(
+        http.post(`${API_BASE}/promotions/validate`, () => HttpResponse.json(mockInvalidDiscount)),
+      )
+      rerender({ subtotal: 5 })
+
+      await waitFor(() => expect(result.current.promotionCode).toBeNull(), { timeout: 2000 })
+      expect(result.current.discountAmount).toBe(0)
+      expect(result.current.revalidationNotice).toBe('Promo code no longer applies')
+      expect(useCartStore.getState().promotionCode).toBeNull()
+    })
+
+    it('should not re-validate when the subtotal changes and no promotion is applied', async () => {
+      const { result, rerender } = renderHook(({ subtotal }) => usePromotion(subtotal), {
+        initialProps: { subtotal: 100 },
+      })
+
+      rerender({ subtotal: 200 })
+      await new Promise((resolve) => setTimeout(resolve, 600))
+
+      expect(result.current.promotionCode).toBeNull()
+    })
+
+    it('should debounce repeated subtotal changes into a single revalidation call', async () => {
+      let callCount = 0
+      server.use(
+        http.post(`${API_BASE}/promotions/validate`, () => {
+          callCount += 1
+          return HttpResponse.json(mockValidDiscount)
+        })
+      )
+      const { result, rerender } = renderHook(({ subtotal }) => usePromotion(subtotal), {
+        initialProps: { subtotal: 100 },
+      })
+
+      await act(async () => {
+        await result.current.applyPromotion('SAVE10')
+      })
+      callCount = 0
+
+      rerender({ subtotal: 110 })
+      rerender({ subtotal: 120 })
+      rerender({ subtotal: 130 })
+
+      await waitFor(() => expect(callCount).toBe(1), { timeout: 2000 })
     })
   })
 })

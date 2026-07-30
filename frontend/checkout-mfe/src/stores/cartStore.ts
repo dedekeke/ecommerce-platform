@@ -114,6 +114,11 @@ export const useCartStore = create<CartState>()(
       {
         name: 'cart-storage',
         storage: createJSONStorage(() => localStorage),
+        version: 1,
+        // v0 payloads (pre-promotion fields) lack promotionCode/discountAmount/promotionName —
+        // pass them through as-is; zustand's default merge fills the missing keys from
+        // initialState so existing carts survive instead of being wiped.
+        migrate: (persistedState) => persistedState as CartState,
         partialize: (state) => ({
           items: state.items,
           total: state.total,

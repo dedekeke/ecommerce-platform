@@ -2,19 +2,21 @@ import { TestBed } from '@angular/core/testing';
 import { PreferencesService } from './preferences.service';
 import { DEFAULT_PREFERENCES, UserPreferences } from '../models/preferences.model';
 
-const STORAGE_KEY = 'user-preferences-storage';
+const STORAGE_KEY = 'user-preferences-storage:anonymous';
 
 describe('PreferencesService', () => {
   let service: PreferencesService;
 
   beforeEach(() => {
     localStorage.clear();
+    delete window.__getAuthUserId;
     TestBed.configureTestingModule({ providers: [PreferencesService] });
     service = TestBed.inject(PreferencesService);
   });
 
   afterEach(() => {
     localStorage.clear();
+    delete window.__getAuthUserId;
   });
 
   it('should emit the default preferences when nothing is stored', (done) => {
@@ -72,5 +74,45 @@ describe('PreferencesService', () => {
     service.resetToDefaults();
 
     expect(service.getSnapshot()).toEqual(DEFAULT_PREFERENCES);
+  });
+
+  describe('per-user namespacing', () => {
+    it('should namespace the storage key with the authenticated user id', () => {
+      window.__getAuthUserId = () => 'user-42';
+      const scopedService = new PreferencesService();
+
+      scopedService.save({ ...DEFAULT_PREFERENCES, display: { theme: 'dark', language: 'fr', currency: 'EUR' } });
+
+      expect(localStorage.getItem('user-preferences-storage:user-42')).toBeTruthy();
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    });
+
+    it('should not leak preferences saved by one user into another user session', () => {
+      window.__getAuthUserId = () => 'user-1';
+      const userOneService = new PreferencesService();
+      userOneService.save({ ...DEFAULT_PREFERENCES, display: { theme: 'dark', language: 'fr', currency: 'EUR' } });
+
+      window.__getAuthUserId = () => 'user-2';
+      const userTwoService = new PreferencesService();
+
+      expect(userTwoService.getSnapshot()).toEqual(DEFAULT_PREFERENCES);
+    });
+
+    it('should fall back to an anonymous key when unauthenticated', () => {
+      window.__getAuthUserId = () => null;
+      const anonymousService = new PreferencesService();
+
+      anonymousService.save({ ...DEFAULT_PREFERENCES, display: { theme: 'dark', language: 'de', currency: 'GBP' } });
+
+      expect(localStorage.getItem(STORAGE_KEY)).toBeTruthy();
+    });
+
+    it('should fall back to an anonymous key when __getAuthUserId is not installed', () => {
+      const anonymousService = new PreferencesService();
+
+      anonymousService.save({ ...DEFAULT_PREFERENCES, display: { theme: 'light', language: 'vi', currency: 'VND' } });
+
+      expect(localStorage.getItem(STORAGE_KEY)).toBeTruthy();
+    });
   });
 });

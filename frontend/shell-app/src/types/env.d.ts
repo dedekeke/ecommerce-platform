@@ -44,10 +44,25 @@ declare module 'adminDashboard/AdminDashboard' {
   export default Component
 }
 
+/** Payload accepted by `window.__cartBridge.addItem` — mirrors the shell cart store's `CartItem`. */
+interface CartBridgeItem {
+  productId: string
+  name: string
+  price: number
+  image?: string
+  /** Number of units to add; defaults to 1. */
+  quantity?: number
+}
+
+interface CartBridge {
+  addItem: (item: CartBridgeItem) => void
+}
+
 interface Window {
   __getAuthToken?: () => Promise<string | null>
   __getAuthUserId?: () => string | null
   __ecommerceToastHost?: boolean
+  __cartBridge?: CartBridge
 }
 
 /** Minimal process declaration for Vitest's `vi.stubEnv` compatibility (no @types/node needed). */

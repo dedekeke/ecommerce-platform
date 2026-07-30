@@ -54,6 +54,11 @@ describe('PreferencesFormComponent', () => {
     expect(emitted?.display.theme).toBe('dark');
   });
 
+  it('should show a "Saved on this device" hint', () => {
+    const hint = fixture.nativeElement.querySelector('[data-testid="preferences-device-hint"]');
+    expect(hint?.textContent).toContain('Saved on this device');
+  });
+
   it('should reflect a toggle flip in the underlying form control', () => {
     const control = fixture.componentInstance.form.get(['notifications', 'security', 'sms']);
     expect(control?.value).toBeTrue();

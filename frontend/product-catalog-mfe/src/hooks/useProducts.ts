@@ -50,7 +50,7 @@ function reducer(state: ProductsState, action: ProductsAction): ProductsState {
     case 'FETCH_ERROR':
       return { ...state, products: [], isLoading: false, isError: true, error: action.payload }
     case 'DISABLED':
-      return { ...state, isLoading: false, isError: false, error: null }
+      return { ...state, products: [], totalElements: 0, isLoading: false, isError: false, error: null }
   }
 }
 

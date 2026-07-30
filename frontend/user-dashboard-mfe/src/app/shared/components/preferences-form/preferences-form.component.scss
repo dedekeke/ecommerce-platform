@@ -44,6 +44,12 @@
     }
   }
 
+  &__device-hint {
+    margin: -16px 0 0;
+    font-size: 0.8125rem;
+    color: #71717a;
+  }
+
   &__actions {
     display: flex;
     justify-content: flex-end;

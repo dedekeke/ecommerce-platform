@@ -92,6 +92,23 @@ describe('useProducts', () => {
     expect(mockGetProducts).not.toHaveBeenCalled()
   })
 
+  it('should reset products and totalElements to empty when disabled (no stale-content flash)', async () => {
+    mockGetProducts.mockResolvedValueOnce(PAGE_1 as never)
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useProducts({}, { enabled }),
+      { initialProps: { enabled: true } },
+    )
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.products).toEqual(PAGE_1.content)
+
+    rerender({ enabled: false })
+
+    expect(result.current.products).toEqual([])
+    expect(result.current.totalElements).toBe(0)
+  })
+
   it('should start fetching once re-enabled', async () => {
     mockGetProducts.mockResolvedValueOnce(PAGE_1 as never)
 
