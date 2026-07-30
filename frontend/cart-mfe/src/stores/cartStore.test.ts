@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useCartStore } from './cartStore'
 
 describe('cartStore', () => {
@@ -86,14 +86,10 @@ describe('cartStore', () => {
     })
   })
 
-  describe('toast notifications', () => {
-    beforeEach(() => {
-      window.__ecommerceToastHost = true
-    })
-    afterEach(() => {
-      delete window.__ecommerceToastHost
-    })
-
+  describe('side effects', () => {
+    // Regression: the store must stay a pure state container. Toasts are wired at the
+    // interaction layer (useCart) so they only fire on actual user actions, never on
+    // no-op/internal store mutations.
     function captureToasts() {
       const events: CustomEvent[] = []
       const listener = (e: Event) => events.push(e as CustomEvent)
@@ -104,68 +100,20 @@ describe('cartStore', () => {
       }
     }
 
-    it('should toast "Added to cart" when a new item is added', () => {
-      const { events, cleanup } = captureToasts()
-      useCartStore.getState().addItem({ productId: 'p1', name: 'Widget', price: 10.0 })
-
-      expect(events).toHaveLength(1)
-      expect(events[0]?.detail).toMatchObject({ type: 'success', message: 'Added to cart' })
-      cleanup()
-    })
-
-    it('should toast "Added to cart" again when an existing item is incremented', () => {
-      useCartStore.getState().addItem({ productId: 'p1', name: 'Widget', price: 10.0 })
+    it('should not dispatch any toast events for addItem/removeItem/updateQuantity/clearCart', () => {
+      window.__ecommerceToastHost = true
       const { events, cleanup } = captureToasts()
 
       useCartStore.getState().addItem({ productId: 'p1', name: 'Widget', price: 10.0 })
-
-      expect(events).toHaveLength(1)
-      expect(events[0]?.detail).toMatchObject({ type: 'success', message: 'Added to cart' })
-      cleanup()
-    })
-
-    it('should toast when an item is removed', () => {
-      useCartStore.getState().addItem({ productId: 'p1', name: 'Widget', price: 10.0 })
-      const { events, cleanup } = captureToasts()
-
-      useCartStore.getState().removeItem('p1')
-
-      expect(events).toHaveLength(1)
-      expect(events[0]?.detail).toMatchObject({ type: 'success', message: 'Item removed from cart' })
-      cleanup()
-    })
-
-    it('should toast "Quantity updated" when the quantity changes to a positive number', () => {
-      useCartStore.getState().addItem({ productId: 'p1', name: 'Widget', price: 10.0 })
-      const { events, cleanup } = captureToasts()
-
       useCartStore.getState().updateQuantity('p1', 3)
-
-      expect(events).toHaveLength(1)
-      expect(events[0]?.detail).toMatchObject({ type: 'success', message: 'Quantity updated' })
-      cleanup()
-    })
-
-    it('should toast "Item removed from cart" when the quantity drops to 0', () => {
-      useCartStore.getState().addItem({ productId: 'p1', name: 'Widget', price: 10.0 })
-      const { events, cleanup } = captureToasts()
-
       useCartStore.getState().updateQuantity('p1', 0)
-
-      expect(events).toHaveLength(1)
-      expect(events[0]?.detail).toMatchObject({ type: 'success', message: 'Item removed from cart' })
-      cleanup()
-    })
-
-    it('should toast when the cart is cleared', () => {
-      useCartStore.getState().addItem({ productId: 'p1', name: 'Widget', price: 10.0 })
-      const { events, cleanup } = captureToasts()
-
+      useCartStore.getState().addItem({ productId: 'p2', name: 'Gadget', price: 25.0 })
+      useCartStore.getState().removeItem('p2')
       useCartStore.getState().clearCart()
 
-      expect(events).toHaveLength(1)
-      expect(events[0]?.detail).toMatchObject({ type: 'success', message: 'Cart cleared' })
+      expect(events).toHaveLength(0)
       cleanup()
+      delete window.__ecommerceToastHost
     })
   })
 })

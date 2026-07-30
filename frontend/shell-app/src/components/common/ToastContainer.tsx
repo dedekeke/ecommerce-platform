@@ -9,10 +9,18 @@ import { designTokens } from '../../theme'
 const MAX_VISIBLE_TOASTS = 5
 const DEFAULT_DURATION = 5000
 const ERROR_DURATION = 7000
+const MESSAGE_MAX_LENGTH = 200
 
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined') return false
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+// Defense-in-depth: truncate regardless of what an MFE sends, so a runaway/malicious payload
+// can never blow up the fixed-width toast UI.
+function truncateMessage(message: string): string {
+  if (message.length <= MESSAGE_MAX_LENGTH) return message
+  return `${message.slice(0, MESSAGE_MAX_LENGTH)}…`
 }
 
 function getDuration(notification: Notification): number {
@@ -104,7 +112,7 @@ function Toast({ notification, onClose }: ToastProps) {
           </IconButton>
         }
       >
-        {notification.message}
+        {truncateMessage(notification.message)}
       </Alert>
     </motion.div>
   )
@@ -119,8 +127,6 @@ export function ToastContainer() {
 
   return (
     <Box
-      role="status"
-      aria-live="polite"
       sx={{
         position: 'fixed',
         top: { xs: 72, sm: 88 },

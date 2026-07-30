@@ -16,7 +16,7 @@ const STATUS_MESSAGES: Record<number, string> = {
 
 const DEFAULT_MESSAGE = 'An unexpected error occurred. Please try again.';
 
-// 401/403 are intentionally skipped: the shell handles auth-related toasts.
+// 401/403 are excluded here; MFE-level auth-failure handling is a tracked follow-up — shell session handling only covers the shell's own client.
 const SKIPPED_STATUSES = [401, 403];
 
 function extractMessage(error: HttpErrorResponse): string {

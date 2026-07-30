@@ -159,3 +159,58 @@ describe('getOrder', () => {
     await expect(getOrder('does-not-exist')).rejects.toThrow()
   })
 })
+
+describe('error toast opt-out (callers render their own inline error UI)', () => {
+  function captureToasts() {
+    const events: CustomEvent[] = []
+    const listener = (e: Event) => events.push(e as CustomEvent)
+    window.addEventListener('ecommerce:toast', listener)
+    return { events, cleanup: () => window.removeEventListener('ecommerce:toast', listener) }
+  }
+
+  beforeAll(() => {
+    window.__ecommerceToastHost = true
+  })
+  afterAll(() => {
+    delete window.__ecommerceToastHost
+  })
+
+  it('should NOT toast when createOrder fails (CheckoutPage renders submitError inline)', async () => {
+    const { http, HttpResponse } = await import('msw')
+    const { events, cleanup } = captureToasts()
+    server.use(
+      http.post('http://localhost:8080/api/orders', () =>
+        HttpResponse.json({ message: 'boom' }, { status: 400 })
+      )
+    )
+    await expect(createOrder(validPayload, 'idem-key-1')).rejects.toThrow()
+    expect(events).toHaveLength(0)
+    cleanup()
+  })
+
+  it('should NOT toast when createGuestOrder fails (CheckoutPage renders submitError inline)', async () => {
+    const { http, HttpResponse } = await import('msw')
+    const { events, cleanup } = captureToasts()
+    server.use(
+      http.post('http://localhost:8080/api/orders/guest', () =>
+        HttpResponse.json({ message: 'boom' }, { status: 400 })
+      )
+    )
+    await expect(createGuestOrder(guestPayload, 'guest-idem-1')).rejects.toThrow()
+    expect(events).toHaveLength(0)
+    cleanup()
+  })
+
+  it('should NOT toast when getOrder fails (ConfirmationPage renders its own error Alert)', async () => {
+    const { http, HttpResponse } = await import('msw')
+    const { events, cleanup } = captureToasts()
+    server.use(
+      http.get('http://localhost:8080/api/orders/:orderId', () =>
+        HttpResponse.json({ message: 'Not found' }, { status: 404 })
+      )
+    )
+    await expect(getOrder('does-not-exist')).rejects.toThrow()
+    expect(events).toHaveLength(0)
+    cleanup()
+  })
+})

@@ -41,6 +41,8 @@ export interface Notification {
   type: NotificationType
   message: string
   duration?: number
+  /** Set internally by the store; used to dedupe repeated notifications within a short window. */
+  addedAt?: number
 }
 
 export interface NotificationState {

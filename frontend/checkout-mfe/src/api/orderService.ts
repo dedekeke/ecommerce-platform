@@ -35,6 +35,8 @@ export const createOrder = async (
 ): Promise<CheckoutOutcome> => {
   const res = await apiClient.post<CheckoutResponse>('/orders', payload, {
     headers: { 'Idempotency-Key': idempotencyKey },
+    // CheckoutPage.submitOrder renders failures via its own inline submitError Alert.
+    skipErrorToast: true,
   })
   return { response: res.data, isReplay: res.status === 200 }
 }
@@ -53,11 +55,14 @@ export const createGuestOrder = async (
 ): Promise<CheckoutOutcome> => {
   const res = await apiClient.post<CheckoutResponse>('/orders/guest', payload, {
     headers: { 'Idempotency-Key': idempotencyKey },
+    // CheckoutPage.submitOrder renders failures via its own inline submitError Alert.
+    skipErrorToast: true,
   })
   return { response: res.data, isReplay: res.status === 200 }
 }
 
 export const getOrder = async (orderId: string): Promise<Order> => {
-  const { data } = await apiClient.get<Order>(`/orders/${orderId}`)
+  // ConfirmationPage renders a load failure via its own inline error Alert.
+  const { data } = await apiClient.get<Order>(`/orders/${orderId}`, { skipErrorToast: true })
   return data
 }

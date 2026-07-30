@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useToastBridge, TOAST_EVENT } from './useToastBridge'
 import { useNotificationStore } from '../stores'
@@ -83,5 +83,35 @@ describe('useToastBridge', () => {
 
   it('should export the event name constant', () => {
     expect(TOAST_EVENT).toBe('ecommerce:toast')
+  })
+
+  describe('dev-mode observability', () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+    afterEach(() => {
+      warnSpy.mockRestore()
+    })
+
+    it('should console.warn a malformed payload in dev mode', () => {
+      renderHook(() => useToastBridge())
+      dispatchToast({ type: 'critical', message: 'Something happened' })
+
+      if (import.meta.env.DEV) {
+        expect(warnSpy).toHaveBeenCalledWith('[toast] ignored malformed payload', {
+          type: 'critical',
+          message: 'Something happened',
+        })
+      }
+    })
+
+    it('should not warn for a valid payload', () => {
+      renderHook(() => useToastBridge())
+      dispatchToast({ type: 'success', message: 'All good' })
+
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
   })
 })

@@ -124,5 +124,26 @@ describe('reviewService', () => {
         reviewService.createReview({ productId: 'prod-1', rating: 1, title: 't', body: 'b' }),
       ).rejects.toThrow()
     })
+
+    it('should NOT toast on failure (ReviewForm renders its own error Alert via useSubmitReview)', async () => {
+      const events: CustomEvent[] = []
+      const listener = (e: Event) => events.push(e as CustomEvent)
+      window.__ecommerceToastHost = true
+      window.addEventListener('ecommerce:toast', listener)
+
+      server.use(
+        http.post(`${API_BASE}/v1/reviews`, () =>
+          HttpResponse.json({ message: 'boom' }, { status: 500 }),
+        ),
+      )
+
+      await expect(
+        reviewService.createReview({ productId: 'prod-1', rating: 1, title: 't', body: 'b' }),
+      ).rejects.toThrow()
+
+      expect(events).toHaveLength(0)
+      window.removeEventListener('ecommerce:toast', listener)
+      delete window.__ecommerceToastHost
+    })
   })
 })

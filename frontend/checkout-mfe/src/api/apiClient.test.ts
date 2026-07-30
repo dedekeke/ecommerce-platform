@@ -278,6 +278,34 @@ describe('apiClient', () => {
       cleanup()
     })
 
+    it('should NOT toast when the request config sets skipErrorToast', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.post('http://localhost:8080/api/widgets', () =>
+          HttpResponse.json({ message: 'boom' }, { status: 500 })
+        )
+      )
+
+      await expect(apiClient.post('/widgets', {}, { skipErrorToast: true })).rejects.toThrow()
+
+      expect(events).toHaveLength(0)
+      cleanup()
+    })
+
+    it('should toast when the request config does not set skipErrorToast', async () => {
+      const { events, cleanup } = captureToasts()
+      server.use(
+        http.post('http://localhost:8080/api/widgets', () =>
+          HttpResponse.json({ message: 'boom' }, { status: 500 })
+        )
+      )
+
+      await expect(apiClient.post('/widgets', {})).rejects.toThrow()
+
+      expect(events).toHaveLength(1)
+      cleanup()
+    })
+
     it('should toast only once after checkout exhausts its 502 retries and still fails', async () => {
       const { events, cleanup } = captureToasts()
       server.use(

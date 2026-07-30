@@ -12,7 +12,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { devtools } from 'zustand/middleware'
-import { toast } from '../lib/toast'
 import type { CartState, CartItem } from './types'
 
 const calculateTotal = (items: CartItem[]): number =>
@@ -51,7 +50,6 @@ export const useCartStore = create<CartState>()(
             false,
             'addItem'
           )
-          toast.success('Added to cart')
         },
 
         removeItem: (productId: string) => {
@@ -67,7 +65,6 @@ export const useCartStore = create<CartState>()(
             false,
             'removeItem'
           )
-          toast.success('Item removed from cart')
         },
 
         updateQuantity: (productId: string, quantity: number) => {
@@ -93,12 +90,10 @@ export const useCartStore = create<CartState>()(
             false,
             'updateQuantity'
           )
-          toast.success(quantity <= 0 ? 'Item removed from cart' : 'Quantity updated')
         },
 
         clearCart: () => {
           set({ ...initialState }, false, 'clearCart')
-          toast.success('Cart cleared')
         },
       }),
       {

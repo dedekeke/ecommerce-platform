@@ -37,7 +37,12 @@ export function useToastBridge(): void {
 
     const handleToastEvent = (event: Event) => {
       const detail = (event as CustomEvent<unknown>).detail
-      if (!isValidToastDetail(detail)) return
+      if (!isValidToastDetail(detail)) {
+        if (import.meta.env.DEV) {
+          console.warn('[toast] ignored malformed payload', detail)
+        }
+        return
+      }
       addNotification({ type: detail.type, message: detail.message, duration: detail.duration })
     }
 

@@ -12,6 +12,13 @@ declare global {
   }
 }
 
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    /** Opt out of the interceptor's auto-toast — set when the caller renders its own inline error UI. */
+    skipErrorToast?: boolean
+  }
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
 
 export const apiClient: AxiosInstance = axios.create({
@@ -83,8 +90,8 @@ apiClient.interceptors.request.use(
   }
 )
 
-// Statuses the shell already surfaces its own toast for (session expiry / permissions) — never
-// double-toast those here.
+// 401/403 are excluded here; MFE-level auth-failure handling is a tracked follow-up — shell
+// session handling only covers the shell's own client.
 const SILENT_STATUSES = new Set([401, 403])
 
 const STATUS_ERROR_MESSAGES: Record<number, string> = {
@@ -127,6 +134,7 @@ apiClient.interceptors.response.use(
     if (
       !toastedErrors.has(error) &&
       !axios.isCancel(error) &&
+      !error.config?.skipErrorToast &&
       (status === undefined || !SILENT_STATUSES.has(status))
     ) {
       toast.error(resolveErrorMessage(error))

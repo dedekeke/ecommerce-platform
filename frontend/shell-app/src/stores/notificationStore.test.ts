@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useNotificationStore } from './notificationStore'
 
 describe('notificationStore', () => {
@@ -61,6 +61,59 @@ describe('notificationStore', () => {
 
       const { notifications } = useNotificationStore.getState()
       expect(notifications[0].duration).toBe(10000)
+    })
+  })
+
+  describe('deduplication', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('should not add a duplicate notification with the same type+message within 2000ms', () => {
+      useNotificationStore.getState().addNotification({ type: 'error', message: 'Network error' })
+      useNotificationStore.getState().addNotification({ type: 'error', message: 'Network error' })
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(1)
+    })
+
+    it('should allow a repeat notification once the dedupe window has elapsed', () => {
+      useNotificationStore.getState().addNotification({ type: 'error', message: 'Network error' })
+
+      vi.advanceTimersByTime(2001)
+
+      useNotificationStore.getState().addNotification({ type: 'error', message: 'Network error' })
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(2)
+    })
+
+    it('should treat different types with the same message as distinct notifications', () => {
+      useNotificationStore.getState().addNotification({ type: 'error', message: 'Saved' })
+      useNotificationStore.getState().addNotification({ type: 'success', message: 'Saved' })
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(2)
+    })
+
+    it('should treat the same type with a different message as distinct notifications', () => {
+      useNotificationStore.getState().addNotification({ type: 'error', message: 'First error' })
+      useNotificationStore.getState().addNotification({ type: 'error', message: 'Second error' })
+
+      expect(useNotificationStore.getState().notifications).toHaveLength(2)
+    })
+  })
+
+  describe('capacity', () => {
+    it('should cap the notifications array at 20, dropping the oldest', () => {
+      for (let i = 1; i <= 25; i += 1) {
+        useNotificationStore.getState().addNotification({ type: 'info', message: `Notification ${i}` })
+      }
+
+      const { notifications } = useNotificationStore.getState()
+      expect(notifications).toHaveLength(20)
+      expect(notifications[0].message).toBe('Notification 6')
+      expect(notifications[19].message).toBe('Notification 25')
     })
   })
 

@@ -50,9 +50,11 @@ describe('ToastContainer', () => {
     vi.useRealTimers()
   })
 
-  it('should render an aria-live polite status region', () => {
-    renderToastContainer()
-    expect(screen.getByRole('status', { name: '' })).toBeInTheDocument()
+  it('should not give the outer container its own live-region role (nested live regions are unreliable)', () => {
+    const { container } = renderToastContainer()
+    const outer = container.firstChild as HTMLElement
+    expect(outer.getAttribute('role')).toBeNull()
+    expect(outer.getAttribute('aria-live')).toBeNull()
   })
 
   it('should render nothing visible when there are no notifications', () => {
@@ -179,5 +181,22 @@ describe('ToastContainer', () => {
     const { unmount } = renderToastContainer()
     addNotification({ type: 'success', message: 'Saved' })
     expect(() => unmount()).not.toThrow()
+  })
+
+  it('should truncate a message longer than 200 characters with an ellipsis', () => {
+    renderToastContainer()
+    const longMessage = 'a'.repeat(250)
+    addNotification({ type: 'info', message: longMessage })
+
+    expect(screen.queryByText(longMessage)).not.toBeInTheDocument()
+    expect(screen.getByText(`${'a'.repeat(200)}…`)).toBeInTheDocument()
+  })
+
+  it('should render a message of exactly 200 characters without truncation', () => {
+    renderToastContainer()
+    const exactMessage = 'b'.repeat(200)
+    addNotification({ type: 'info', message: exactMessage })
+
+    expect(screen.getByText(exactMessage)).toBeInTheDocument()
   })
 })
