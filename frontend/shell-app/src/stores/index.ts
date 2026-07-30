@@ -19,6 +19,9 @@ export {
   selectCartItemCount,
   selectCartItem,
   selectIsInCart,
+  selectPromotionCode,
+  selectDiscountAmount,
+  selectPromotionName,
 } from './cartStore'
 
 export {
@@ -41,6 +44,7 @@ export type {
   AuthState,
   CartItem,
   CartState,
+  AppliedPromotion,
   Notification,
   NotificationType,
   NotificationState,

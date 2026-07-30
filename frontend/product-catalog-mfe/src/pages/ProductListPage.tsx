@@ -1,14 +1,16 @@
-import { useEffect, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { Box, Typography, Breadcrumbs, Link, Container } from '@mui/material'
 import { Home as HomeIcon } from '@mui/icons-material'
 import { ProductGrid } from '../components/product'
 import { Pagination } from '../components/common'
-import { SortDropdown } from '../components/filters'
-import { useProducts } from '../hooks'
+import { SortDropdown, FilterPanel } from '../components/filters'
+import { ProductSearch } from '../components/search'
+import { useProducts, useSearchResults, useCategories } from '../hooks'
+import { useFilterUrlSync } from '../hooks/useFilterUrlSync'
 import { useProductFilterStore } from '../stores'
-import type { ProductSearchParams } from '../types'
+import { resolveCategoryName } from '../utils/resolveCategoryName'
+import type { ProductSearchParams, SearchProductsParams } from '../types'
 
 interface ProductListPageProps {
   onAddToCart?: (productId: string, quantity: number) => void
@@ -19,9 +21,8 @@ export default function ProductListPage({
   onAddToCart,
   currency = 'USD',
 }: ProductListPageProps) {
-  const [searchParams] = useSearchParams()
+  useFilterUrlSync()
 
-  // Use shallow comparison to prevent unnecessary re-renders
   const filters = useProductFilterStore(
     useShallow((state) => ({
       categoryId: state.categoryId,
@@ -36,17 +37,14 @@ export default function ProductListPage({
     }))
   )
 
-  const { setPage, setSize, setSort, setSearchQuery, setCategory } = useProductFilterStore()
+  const { setPage, setSize, setSort, setSearchQuery, setCategory, setPriceRange, setInStockOnly } =
+    useProductFilterStore()
 
-  useEffect(() => {
-    const search = searchParams.get('q')
-    const category = searchParams.get('category')
-    if (search) setSearchQuery(search)
-    if (category) setCategory(category)
-  }, [searchParams, setSearchQuery, setCategory])
+  const { categories, isLoading: categoriesLoading } = useCategories(true)
 
-  // Memoize search params to prevent infinite re-renders
-  const apiParams = useMemo<ProductSearchParams>(() => {
+  const isSearchMode = Boolean(filters.searchQuery)
+
+  const browseParams = useMemo<ProductSearchParams>(() => {
     const params: ProductSearchParams = {
       page: filters.page,
       size: filters.size,
@@ -54,16 +52,51 @@ export default function ProductListPage({
       sortDirection: filters.sortDirection,
       activeOnly: true,
     }
-    if (filters.searchQuery) params.search = filters.searchQuery
-    // todo : categoryId has to be long. currently using string causing 500
     if (filters.categoryId) params.categoryId = filters.categoryId
     if (filters.minPrice !== null) params.minPrice = filters.minPrice
     if (filters.maxPrice !== null) params.maxPrice = filters.maxPrice
     if (filters.inStockOnly) params.inStockOnly = true
     return params
-  }, [filters])
+  }, [filters.page, filters.size, filters.sortBy, filters.sortDirection, filters.categoryId, filters.minPrice, filters.maxPrice, filters.inStockOnly])
 
-  const { products, totalElements, totalPages, isLoading, isError } = useProducts(apiParams)
+  // search-service filters by category *name*, not by the slug/id productFilterStore holds.
+  const categoryName = useMemo(
+    () => resolveCategoryName(categories, filters.categoryId),
+    [categories, filters.categoryId]
+  )
+
+  const searchApiParams = useMemo<SearchProductsParams>(() => {
+    const params: SearchProductsParams = {
+      q: filters.searchQuery,
+      page: filters.page,
+      size: filters.size,
+    }
+    if (categoryName) params.categories = [categoryName]
+    if (filters.minPrice !== null) params.minPrice = filters.minPrice
+    if (filters.maxPrice !== null) params.maxPrice = filters.maxPrice
+    return params
+  }, [filters.searchQuery, categoryName, filters.minPrice, filters.maxPrice, filters.page, filters.size])
+
+  const browseResult = useProducts(browseParams, { enabled: !isSearchMode })
+  const searchResult = useSearchResults(searchApiParams, { enabled: isSearchMode })
+  const active = isSearchMode ? searchResult : browseResult
+
+  // search-service applies neither an `active` nor `inStockOnly` filter — both are
+  // applied client-side as a documented limitation.
+  const products = isSearchMode
+    ? active.products.filter((product) => product.active !== false && (!filters.inStockOnly || product.inStock))
+    : active.products
+
+  // Once client-side filtering drops items, active.totalElements no longer reflects
+  // what's actually shown — label the count as scoped rather than a page-length total.
+  const isClientFiltered = isSearchMode && products.length !== active.products.length
+  const displayedCount = isClientFiltered ? products.length : active.totalElements
+
+  const handleClearFilters = () => {
+    setCategory(null)
+    setPriceRange(null, null)
+    setInStockOnly(false)
+  }
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -80,69 +113,93 @@ export default function ProductListPage({
         <Typography color="text.primary">Products</Typography>
       </Breadcrumbs>
 
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          justifyContent: 'space-between',
-          alignItems: { xs: 'flex-start', sm: 'center' },
-          gap: 2,
-          mb: 3,
-        }}
-      >
-        <Box>
-          <Typography variant="h4" fontWeight={700}>
-            {filters.searchQuery ? `Search: "${filters.searchQuery}"` : 'All Products'}
-          </Typography>
-          {!isLoading && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              {totalElements} {totalElements === 1 ? 'product' : 'products'} found
-            </Typography>
-          )}
-        </Box>
-
-        <SortDropdown
-          sortBy={filters.sortBy}
-          sortDirection={filters.sortDirection}
-          onSortChange={setSort}
-        />
+      <Box sx={{ mb: 3 }}>
+        <ProductSearch initialQuery={filters.searchQuery} onSearch={setSearchQuery} />
       </Box>
 
-      {isError ? (
-        <Box sx={{ textAlign: 'center', py: 8 }}>
-          <Typography variant="h6" color="error" gutterBottom>
-            Failed to load products
-          </Typography>
-          <Typography color="text.secondary">
-            Please try again later
-          </Typography>
-        </Box>
-      ) : (
-        <>
-          <ProductGrid
-            products={products}
-            isLoading={isLoading}
-            onAddToCart={onAddToCart}
-            currency={currency}
-            emptyMessage={
-              filters.searchQuery
-                ? `No products found for "${filters.searchQuery}"`
-                : 'No products found'
-            }
+      <Box sx={{ display: 'flex', gap: 4, alignItems: 'flex-start', flexDirection: { xs: 'column', md: 'row' } }}>
+        <Box sx={{ width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
+          <FilterPanel
+            categories={categories}
+            categoriesLoading={categoriesLoading}
+            categoryId={filters.categoryId}
+            minPrice={filters.minPrice}
+            maxPrice={filters.maxPrice}
+            inStockOnly={filters.inStockOnly}
+            onCategoryChange={setCategory}
+            onPriceChange={setPriceRange}
+            onInStockChange={setInStockOnly}
+            onClear={handleClearFilters}
           />
+        </Box>
 
-          {!isLoading && totalPages > 1 && (
-            <Pagination
-              page={filters.page}
-              totalPages={totalPages}
-              totalElements={totalElements}
-              pageSize={filters.size}
-              onPageChange={setPage}
-              onPageSizeChange={setSize}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: 'space-between',
+              alignItems: { xs: 'flex-start', sm: 'center' },
+              gap: 2,
+              mb: 3,
+            }}
+          >
+            <Box>
+              <Typography variant="h4" fontWeight={700}>
+                {isSearchMode ? `Search: "${filters.searchQuery}"` : 'All Products'}
+              </Typography>
+              {!active.isLoading && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  {isClientFiltered
+                    ? `${displayedCount} ${displayedCount === 1 ? 'product' : 'products'} shown`
+                    : `${displayedCount} ${displayedCount === 1 ? 'product' : 'products'} found`}
+                </Typography>
+              )}
+            </Box>
+
+            <SortDropdown
+              sortBy={filters.sortBy}
+              sortDirection={filters.sortDirection}
+              onSortChange={setSort}
+              disabled={isSearchMode}
             />
+          </Box>
+
+          {active.isError ? (
+            <Box sx={{ textAlign: 'center', py: 8 }}>
+              <Typography variant="h6" color="error" gutterBottom>
+                Failed to load products
+              </Typography>
+              <Typography color="text.secondary">Please try again later</Typography>
+            </Box>
+          ) : (
+            <>
+              <ProductGrid
+                products={products}
+                isLoading={active.isLoading}
+                onAddToCart={onAddToCart}
+                currency={currency}
+                emptyMessage={
+                  isSearchMode
+                    ? `No products found for "${filters.searchQuery}"`
+                    : 'No products found'
+                }
+              />
+
+              {!active.isLoading && active.totalPages > 1 && (
+                <Pagination
+                  page={filters.page}
+                  totalPages={active.totalPages}
+                  totalElements={active.totalElements}
+                  pageSize={filters.size}
+                  onPageChange={setPage}
+                  onPageSizeChange={setSize}
+                />
+              )}
+            </>
           )}
-        </>
-      )}
+        </Box>
+      </Box>
     </Container>
   )
 }

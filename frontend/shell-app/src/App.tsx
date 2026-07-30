@@ -7,19 +7,21 @@ import { ProtectedRoute, MFERouteGuard } from './components/auth'
 import { PageSkeleton, NotFound, RouteProgressBar, PageTransition } from './components/common'
 import { useCartStore, selectCartItemCount } from './stores'
 import { MicroFrontendLoader, MFEErrorBoundary, useMFEPreload, type MFEName } from './mfe'
-import { useExposeAuthToken, useInventoryStream } from './hooks'
+import { useExposeAuthToken, useCartBridge, useInventoryStream } from './hooks'
+import { productService } from './api/services'
 import { designTokens } from './theme'
 
 interface MFERouteProps {
   mfeName: MFEName
   protected?: boolean
+  componentProps?: Record<string, unknown>
 }
 
-function MFERoute({ mfeName, protected: isProtected = false }: MFERouteProps) {
+function MFERoute({ mfeName, protected: isProtected = false, componentProps }: MFERouteProps) {
   const content = (
     <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
       <MFEErrorBoundary mfeName={mfeName}>
-        <MicroFrontendLoader mfeName={mfeName} />
+        <MicroFrontendLoader mfeName={mfeName} componentProps={componentProps} />
       </MFEErrorBoundary>
     </Box>
   )
@@ -123,8 +125,25 @@ function Home() {
 function App() {
   const { isLoading } = useAuth0()
   const cartItemCount = useCartStore(selectCartItemCount)
+  const addItem = useCartStore((state) => state.addItem)
   useExposeAuthToken()
+  useCartBridge()
   useInventoryStream()
+
+  // The catalog MFE's `onAddToCart` only carries productId/quantity, so the shell fetches the
+  // product details it needs to build a cart line item. Store-only (no cart-service POST), same
+  // as cart-mfe's own addItem — cart-service sync isn't wired up anywhere yet (see useCartSync
+  // stub in cart-mfe).
+  const handleAddToCart = async (productId: string, quantity: number) => {
+    try {
+      const product = await productService.getProductById(productId)
+      for (let i = 0; i < quantity; i += 1) {
+        addItem({ productId: product.id, name: product.name, price: product.price, image: product.images[0] })
+      }
+    } catch {
+      // Product lookup failed — nothing is added to the cart.
+    }
+  }
 
   return (
     <MainLayout cartItemCount={cartItemCount}>
@@ -139,11 +158,11 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route
               path="/products/*"
-              element={<MFERoute mfeName="productCatalog" />}
+              element={<MFERoute mfeName="productCatalog" componentProps={{ onAddToCart: handleAddToCart }} />}
             />
             <Route
               path="/categories/*"
-              element={<MFERoute mfeName="productCatalog" />}
+              element={<MFERoute mfeName="productCatalog" componentProps={{ onAddToCart: handleAddToCart }} />}
             />
             <Route path="/cart" element={<MFERoute mfeName="cart" />} />
             <Route

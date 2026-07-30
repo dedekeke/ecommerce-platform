@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { useCartStore } from './cartStore'
 
 describe('cartStore', () => {
   beforeEach(() => {
-    useCartStore.setState({ items: [], total: 0, itemCount: 0 })
+    useCartStore.setState({
+      items: [],
+      total: 0,
+      itemCount: 0,
+      promotionCode: null,
+      discountAmount: null,
+      promotionName: null,
+    })
   })
 
   describe('addItem', () => {
@@ -84,6 +91,112 @@ describe('cartStore', () => {
       expect(total).toBe(0)
       expect(itemCount).toBe(0)
     })
+
+    it('should also clear any applied promotion', () => {
+      useCartStore
+        .getState()
+        .applyPromotion({ code: 'SAVE10', discountAmount: 10, promotionName: '10 Off Sale' })
+      useCartStore.getState().clearCart()
+      const { promotionCode, discountAmount, promotionName } = useCartStore.getState()
+      expect(promotionCode).toBeNull()
+      expect(discountAmount).toBeNull()
+      expect(promotionName).toBeNull()
+    })
+  })
+
+  describe('applyPromotion', () => {
+    it('should store the promotion code, discount amount and promotion name', () => {
+      useCartStore
+        .getState()
+        .applyPromotion({ code: 'SAVE10', discountAmount: 10, promotionName: '10 Off Sale' })
+      const { promotionCode, discountAmount, promotionName } = useCartStore.getState()
+      expect(promotionCode).toBe('SAVE10')
+      expect(discountAmount).toBe(10)
+      expect(promotionName).toBe('10 Off Sale')
+    })
+
+    it('should overwrite a previously applied promotion', () => {
+      useCartStore
+        .getState()
+        .applyPromotion({ code: 'SAVE10', discountAmount: 10, promotionName: '10 Off Sale' })
+      useCartStore
+        .getState()
+        .applyPromotion({ code: 'SAVE20', discountAmount: 20, promotionName: '20 Off Sale' })
+      const { promotionCode, discountAmount } = useCartStore.getState()
+      expect(promotionCode).toBe('SAVE20')
+      expect(discountAmount).toBe(20)
+    })
+  })
+
+  describe('removePromotion', () => {
+    it('should clear the applied promotion fields', () => {
+      useCartStore
+        .getState()
+        .applyPromotion({ code: 'SAVE10', discountAmount: 10, promotionName: '10 Off Sale' })
+      useCartStore.getState().removePromotion()
+      const { promotionCode, discountAmount, promotionName } = useCartStore.getState()
+      expect(promotionCode).toBeNull()
+      expect(discountAmount).toBeNull()
+      expect(promotionName).toBeNull()
+    })
+
+    it('should not affect cart items', () => {
+      useCartStore.getState().addItem({ productId: 'p1', name: 'Widget', price: 10.0 })
+      useCartStore
+        .getState()
+        .applyPromotion({ code: 'SAVE10', discountAmount: 10, promotionName: '10 Off Sale' })
+      useCartStore.getState().removePromotion()
+      expect(useCartStore.getState().items).toHaveLength(1)
+    })
+  })
+
+  describe('legacy rehydration (version migration)', () => {
+    afterEach(() => {
+      localStorage.removeItem('cart-storage')
+    })
+
+    it('should rehydrate a legacy version-less payload without crashing, defaulting the new promo fields', async () => {
+      localStorage.setItem(
+        'cart-storage',
+        JSON.stringify({
+          state: {
+            items: [{ productId: 'p1', name: 'Widget', price: 10, quantity: 2 }],
+            total: 20,
+            itemCount: 2,
+          },
+        })
+      )
+
+      await expect(useCartStore.persist.rehydrate()).resolves.not.toThrow()
+
+      const state = useCartStore.getState()
+      expect(state.items).toEqual([{ productId: 'p1', name: 'Widget', price: 10, quantity: 2 }])
+      expect(state.promotionCode).toBeNull()
+      expect(state.discountAmount).toBeNull()
+      expect(state.promotionName).toBeNull()
+    })
+
+    it('should rehydrate a v0 payload without crashing, defaulting the new promo fields', async () => {
+      localStorage.setItem(
+        'cart-storage',
+        JSON.stringify({
+          state: {
+            items: [{ productId: 'p1', name: 'Widget', price: 10, quantity: 1 }],
+            total: 10,
+            itemCount: 1,
+          },
+          version: 0,
+        })
+      )
+
+      await expect(useCartStore.persist.rehydrate()).resolves.not.toThrow()
+
+      const state = useCartStore.getState()
+      expect(state.items).toEqual([{ productId: 'p1', name: 'Widget', price: 10, quantity: 1 }])
+      expect(state.promotionCode).toBeNull()
+      expect(state.discountAmount).toBeNull()
+      expect(state.promotionName).toBeNull()
+    })
   })
 
   describe('side effects', () => {
@@ -109,6 +222,10 @@ describe('cartStore', () => {
       useCartStore.getState().updateQuantity('p1', 0)
       useCartStore.getState().addItem({ productId: 'p2', name: 'Gadget', price: 25.0 })
       useCartStore.getState().removeItem('p2')
+      useCartStore
+        .getState()
+        .applyPromotion({ code: 'SAVE10', discountAmount: 10, promotionName: '10 Off Sale' })
+      useCartStore.getState().removePromotion()
       useCartStore.getState().clearCart()
 
       expect(events).toHaveLength(0)

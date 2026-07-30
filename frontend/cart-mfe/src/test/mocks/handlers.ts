@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { mockCart, mockEmptyCart } from './cart'
+import { mockValidDiscount, mockInvalidDiscount } from './promotion'
 
 const API_BASE = 'http://localhost:8080/api'
 
@@ -46,6 +47,13 @@ export const handlers = [
   http.delete(`${API_BASE}/cart/clear`, () => {
     return HttpResponse.json(mockEmptyCart)
   }),
+
+  http.post(`${API_BASE}/promotions/validate`, async ({ request }) => {
+    const body = (await request.json()) as { code: string }
+    return HttpResponse.json(
+      body.code.toUpperCase() === 'SAVE10' ? mockValidDiscount : mockInvalidDiscount
+    )
+  }),
 ]
 
-export { mockCart, mockEmptyCart }
+export { mockCart, mockEmptyCart, mockValidDiscount, mockInvalidDiscount }

@@ -1,6 +1,7 @@
 export { useNotifications } from './useNotifications'
 export { useApiSetup } from './useApiSetup'
 export { useExposeAuthToken } from './useExposeAuthToken'
+export { useCartBridge } from './useCartBridge'
 export { useColorMode } from './useColorMode'
 export { useInventoryStream } from './useInventoryStream'
 export { useToastBridge, TOAST_EVENT } from './useToastBridge'

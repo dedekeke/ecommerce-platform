@@ -39,6 +39,11 @@ export const routes: Routes = [
       import('./pages/payment-methods/payment-methods.page').then((m) => m.PaymentMethodsPage),
   },
   {
+    path: 'preferences',
+    loadComponent: () =>
+      import('./pages/preferences/preferences.page').then((m) => m.PreferencesPage),
+  },
+  {
     path: '**',
     redirectTo: '',
   },

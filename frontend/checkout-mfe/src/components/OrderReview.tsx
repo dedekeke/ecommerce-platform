@@ -11,7 +11,13 @@ import Typography from '@mui/material/Typography'
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import type { ShippingAddress } from '../api/types'
-import { useCartStore, selectCartItems, selectCartTotal } from '../stores/cartStore'
+import {
+  useCartStore,
+  selectCartItems,
+  selectCartTotal,
+  selectPromotionCode,
+  selectDiscountAmount,
+} from '../stores/cartStore'
 
 const TAX_RATE = 0.1
 const SHIPPING_FLAT = 5
@@ -27,10 +33,16 @@ interface OrderReviewProps {
 export default function OrderReview({ address }: OrderReviewProps) {
   const items = useCartStore(selectCartItems)
   const subtotal = useCartStore(selectCartTotal)
-  const tax = subtotal * TAX_RATE
-  const isFreeShipping = subtotal >= FREE_SHIPPING_THRESHOLD
+  const promotionCode = useCartStore(selectPromotionCode)
+  const discountAmount = useCartStore(selectDiscountAmount)
+  // Mirrors cart-mfe's CartSummary math so both summaries agree: discount capped at subtotal,
+  // tax/shipping/total computed off the discounted subtotal.
+  const discount = Math.min(discountAmount ?? 0, subtotal)
+  const discountedSubtotal = subtotal - discount
+  const tax = discountedSubtotal * TAX_RATE
+  const isFreeShipping = discountedSubtotal >= FREE_SHIPPING_THRESHOLD
   const shipping = isFreeShipping ? 0 : SHIPPING_FLAT
-  const total = subtotal + tax + shipping
+  const total = discountedSubtotal + tax + shipping
 
   return (
     <Box>
@@ -143,6 +155,17 @@ export default function OrderReview({ address }: OrderReviewProps) {
             </Typography>
             <Typography variant="body2">{`$${subtotal.toFixed(2)}`}</Typography>
           </Stack>
+
+          {promotionCode && discount > 0 && (
+            <Stack direction="row" justifyContent="space-between">
+              <Typography variant="body2" color="success.main">
+                {`Discount (${promotionCode})`}
+              </Typography>
+              <Typography variant="body2" color="success.main">
+                {`-$${discount.toFixed(2)}`}
+              </Typography>
+            </Stack>
+          )}
 
           <Stack direction="row" justifyContent="space-between">
             <Typography variant="body2" color="text.secondary">

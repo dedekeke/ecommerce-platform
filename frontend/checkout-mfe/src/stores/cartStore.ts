@@ -22,6 +22,9 @@ export interface CartState {
   items: CartItem[]
   total: number
   itemCount: number
+  promotionCode: string | null
+  discountAmount: number | null
+  promotionName: string | null
   addItem: (item: Omit<CartItem, 'quantity'>) => void
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, quantity: number) => void
@@ -38,6 +41,9 @@ const initialState = {
   items: [] as CartItem[],
   total: 0,
   itemCount: 0,
+  promotionCode: null as string | null,
+  discountAmount: null as number | null,
+  promotionName: null as string | null,
 }
 
 export const useCartStore = create<CartState>()(
@@ -108,10 +114,18 @@ export const useCartStore = create<CartState>()(
       {
         name: 'cart-storage',
         storage: createJSONStorage(() => localStorage),
+        version: 1,
+        // v0 payloads (pre-promotion fields) lack promotionCode/discountAmount/promotionName —
+        // pass them through as-is; zustand's default merge fills the missing keys from
+        // initialState so existing carts survive instead of being wiped.
+        migrate: (persistedState) => persistedState as CartState,
         partialize: (state) => ({
           items: state.items,
           total: state.total,
           itemCount: state.itemCount,
+          promotionCode: state.promotionCode,
+          discountAmount: state.discountAmount,
+          promotionName: state.promotionName,
         }),
       }
     ),
@@ -122,6 +136,9 @@ export const useCartStore = create<CartState>()(
 export const selectCartItems = (state: CartState) => state.items
 export const selectCartTotal = (state: CartState) => state.total
 export const selectCartItemCount = (state: CartState) => state.itemCount
+export const selectPromotionCode = (state: CartState) => state.promotionCode
+export const selectDiscountAmount = (state: CartState) => state.discountAmount
+export const selectPromotionName = (state: CartState) => state.promotionName
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {

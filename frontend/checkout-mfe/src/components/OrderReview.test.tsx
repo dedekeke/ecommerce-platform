@@ -75,4 +75,35 @@ describe('OrderReview', () => {
     expect(screen.queryByLabelText(/card number/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/cvv/i)).not.toBeInTheDocument()
   })
+
+  it('should not show a discount line when no promotion is applied', () => {
+    useCartStore.getState().addItem({ productId: 'prod-1', name: 'Item A', price: 20 })
+    renderWithProviders(<OrderReview address={mockAddress} />)
+    expect(screen.queryByText(/discount/i)).not.toBeInTheDocument()
+  })
+
+  // Promo fields arrive via the shared `cart-storage` handoff from cart-mfe (see
+  // cartStore.ts partialize) — set directly here rather than via a checkout-mfe action.
+  it('should show a discount line and recompute tax/total off the discounted subtotal', () => {
+    useCartStore.getState().addItem({ productId: 'prod-1', name: 'Item A', price: 20 })
+    useCartStore.setState({ promotionCode: 'SAVE5', discountAmount: 5, promotionName: '$5 off' })
+    renderWithProviders(<OrderReview address={mockAddress} />)
+
+    expect(screen.getByText(/discount \(save5\)/i)).toBeInTheDocument()
+    expect(screen.getByText('-$5.00')).toBeInTheDocument()
+    // discounted subtotal = 15, tax (10%) = 1.50, shipping = $5 (under $50 threshold), total = 21.50
+    expect(screen.getByText('$1.50')).toBeInTheDocument()
+    expect(screen.getByText('$21.50')).toBeInTheDocument()
+  })
+
+  it('should cap the discount at the subtotal so totals never go negative', () => {
+    useCartStore.getState().addItem({ productId: 'prod-1', name: 'Item A', price: 10 })
+    useCartStore.setState({ promotionCode: 'BIGSAVE', discountAmount: 999, promotionName: 'Huge discount' })
+    renderWithProviders(<OrderReview address={mockAddress} />)
+
+    expect(screen.getByText('-$10.00')).toBeInTheDocument()
+    // discounted subtotal = 0, tax = 0, shipping = $5, total = 5 (shipping and total both render as $5.00)
+    expect(screen.getByText('$0.00')).toBeInTheDocument()
+    expect(screen.getAllByText('$5.00')).toHaveLength(2)
+  })
 })
