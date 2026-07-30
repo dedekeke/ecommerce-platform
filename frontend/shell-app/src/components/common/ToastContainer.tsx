@@ -48,7 +48,8 @@ interface ToastProps {
 function Toast({ notification, onClose }: ToastProps) {
   const duration = getDuration(notification)
   const remainingRef = useRef(duration)
-  const startedAtRef = useRef(Date.now())
+  // 0 placeholder: always set by startTimer in the mount effect before any pause reads it
+  const startedAtRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearTimer = useCallback(() => {
