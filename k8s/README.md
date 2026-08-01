@@ -71,6 +71,13 @@ kubectl apply -k k8s/overlays/production
 
 The base manifests reference two secrets that you MUST create out-of-band. Do NOT commit them.
 
+> `INTERNAL_SERVICE_TOKEN` is the shared inter-service credential
+> (`X-Internal-Service-Token`) that authorizes `POST /api/promotions/apply`.
+> promotion-service **fails fast at boot** without it when `SECURITY_ENABLED=true`,
+> and order-service's checkout saga cannot redeem promo codes without the
+> identical value. Under ESO it is sourced from the shared Vault path
+> `internal.service_token` (see `secrets/services/*-externalsecret.yaml`).
+
 ```bash
 # Application credentials
 kubectl create secret generic ecommerce-secrets \
@@ -86,7 +93,8 @@ kubectl create secret generic ecommerce-secrets \
   --from-literal=AUTH0_ISSUER_URI='...' \
   --from-literal=AUTH0_AUDIENCE='...' \
   --from-literal=AUTH0_DOMAIN='...' \
-  --from-literal=STRIPE_API_KEY='...'
+  --from-literal=STRIPE_API_KEY='...' \
+  --from-literal=INTERNAL_SERVICE_TOKEN="$(openssl rand -base64 48)"
 
 # Backup credentials (S3)
 kubectl create secret generic backup-secrets \

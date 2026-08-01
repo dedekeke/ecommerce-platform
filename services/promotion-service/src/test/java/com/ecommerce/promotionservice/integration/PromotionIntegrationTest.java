@@ -211,6 +211,10 @@ class PromotionIntegrationTest {
                 .purchaseAmount(BigDecimal.valueOf(200))
                 .build();
 
+        // No service token here: the `test` profile runs security.enabled=false,
+        // so this asserts the redemption BEHAVIOUR only. The authorization
+        // contract for /apply (service token required) is covered by
+        // PromotionControllerSecurityTest with the real filter chain.
         mockMvc.perform(post("/api/promotions/apply")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(applyRequest)))

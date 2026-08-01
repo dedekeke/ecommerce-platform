@@ -17,3 +17,10 @@ path "kv/data/auth0" {
 path "kv/metadata/auth0" {
   capabilities = ["read", "list"]
 }
+
+path "kv/data/internal" {
+  capabilities = ["read"]
+}
+path "kv/metadata/internal" {
+  capabilities = ["read", "list"]
+}

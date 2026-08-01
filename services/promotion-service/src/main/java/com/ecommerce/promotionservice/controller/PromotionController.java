@@ -48,7 +48,10 @@ public class PromotionController {
     }
 
     @PostMapping("/validate")
-    @Operation(summary = "Validate promotion", description = "Validate a promotion code for a purchase")
+    @Operation(summary = "Validate promotion",
+            description = "Validate a promotion code for a purchase. Public — a guest validates a code "
+                    + "before logging in. Rate limited per client IP at the gateway (enumeration guard); "
+                    + "it never mutates state, unlike /apply.")
     public ResponseEntity<DiscountResult> validatePromotion(@Valid @RequestBody PromotionValidationRequest request) {
         log.debug("POST /api/promotions/validate - Validating promotion: {}", request.getCode());
         DiscountResult result = promotionService.validatePromotion(request);
@@ -56,7 +59,11 @@ public class PromotionController {
     }
 
     @PostMapping("/apply")
-    @Operation(summary = "Apply promotion", description = "Apply a promotion code to a purchase and increment usage count")
+    @Operation(summary = "Apply promotion (service-to-service)",
+            description = "Apply a promotion code to a purchase and increment its usage count. "
+                    + "Restricted to trusted platform services: the caller must present the "
+                    + "X-Internal-Service-Token header (a user JWT, admin included, is rejected). "
+                    + "Called by order-service's checkout saga on both the authenticated and guest paths.")
     public ResponseEntity<DiscountResult> applyPromotion(@Valid @RequestBody PromotionValidationRequest request) {
         log.debug("POST /api/promotions/apply - Applying promotion: {}", request.getCode());
         DiscountResult result = promotionService.applyPromotion(request);

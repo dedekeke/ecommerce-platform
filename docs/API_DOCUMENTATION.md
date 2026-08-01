@@ -252,19 +252,25 @@ GET /api/promotions/public/active
 **Authentication**: Not required
 **Response**: List of currently active promotions
 
-### Protected Endpoints
+### Public Endpoints
 
 #### Validate Promotion
 ```
 POST /api/promotions/validate
 ```
-**Authentication**: Required
+**Authentication**: None — a guest checks a promo code before logging in.
+
+**Rate limit**: per client IP at the gateway, `GATEWAY_PROMO_VALIDATE_RATE`/
+`GATEWAY_PROMO_VALIDATE_BURST` (default 2 req/s, burst 5). Deliberately tight:
+a public validate endpoint is a promo-code enumeration oracle. Exceeding it
+returns `429 Too Many Requests`.
+
 **Request Body**:
 ```json
 {
   "code": "string",
-  "orderTotal": "number",
-  "userId": "string"
+  "purchaseAmount": "number",
+  "categoryId": "number (optional)"
 }
 ```
 **Response**:
@@ -276,17 +282,28 @@ POST /api/promotions/validate
 }
 ```
 
+### Service-to-Service Endpoints
+
 #### Apply Promotion
 ```
 POST /api/promotions/apply
 ```
-**Authentication**: Required
-**Request Body**:
+**Authentication**: Internal service credential — the request MUST carry
+`X-Internal-Service-Token` matching the deployment's `INTERNAL_SERVICE_TOKEN`.
+A user JWT (including `SCOPE_admin`) is NOT sufficient: this call increments the
+promotion usage counter and is issued only by order-service's checkout saga,
+on both the authenticated and the guest path.
+
+Not callable from a browser: the API gateway strips any client-supplied
+`X-Internal-Service-Token` and does not exempt this path from authentication.
+Unauthorized callers get `401` (no/invalid token) or `403` (user JWT).
+
+**Request Body**: same shape as `/validate`.
 ```json
 {
   "code": "string",
-  "orderId": "string",
-  "orderTotal": "number"
+  "purchaseAmount": "number",
+  "categoryId": "number (optional)"
 }
 ```
 

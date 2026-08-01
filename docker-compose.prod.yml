@@ -527,6 +527,9 @@ services:
       GRPC_CLIENT_INVENTORY_SERVICE: static://inventory-service:9091
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      # Service credential for POST /api/promotions/apply — must match
+      # promotion-service's value.
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       SECURITY_ENABLED: "true"
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8084/actuator/health"]
@@ -747,6 +750,9 @@ services:
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      # REQUIRED with SECURITY_ENABLED=true: guards POST /api/promotions/apply.
+      # Boot fails fast if unset; must match order-service's value.
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       SECURITY_ENABLED: "true"
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8090/actuator/health"]
