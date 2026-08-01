@@ -177,13 +177,23 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update a product")
+    @Operation(
+            summary = "Update a product",
+            description = "Updates catalog attributes. stockQuantity is create-only and is IGNORED here — "
+                    + "use PATCH /api/products/{id}/stock to change stock."
+    )
     public ResponseEntity<ProductResponse> updateProduct(
             @Parameter(description = "Product ID")
             @PathVariable Long id,
             @Valid @RequestBody ProductRequest request
     ) {
         log.info("PUT /api/v1/products/{}", id);
+
+        // Makes the deliberate ignore observable instead of silent (PR#155 review).
+        if (request.getStockQuantity() != null) {
+            log.warn("PUT /api/products/{} carried stockQuantity={} — ignored; "
+                    + "stock changes must use PATCH /api/products/{}/stock", id, request.getStockQuantity(), id);
+        }
 
         Product product = productMapper.toEntity(request);
         Product updated = productService.updateProduct(id, product);
@@ -193,7 +203,11 @@ public class ProductController {
     }
 
     @PatchMapping("/{id}/stock")
-    @Operation(summary = "Update product stock quantity")
+    @Operation(
+            summary = "Update product stock quantity",
+            description = "The only write path for the catalog stock snapshot after creation (admin scope). "
+                    + "Authoritative stock movement (reservations, restock) lives in inventory-service."
+    )
     public ResponseEntity<ProductResponse> updateStock(
             @Parameter(description = "Product ID")
             @PathVariable Long id,

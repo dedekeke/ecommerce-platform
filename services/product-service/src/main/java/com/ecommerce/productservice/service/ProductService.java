@@ -182,7 +182,18 @@ public class ProductService {
     }
 
     /**
-     * Update an existing product.
+     * Update an existing product's catalog attributes.
+     *
+     * <p><b>stockQuantity is deliberately NOT updated here.</b> Stock movement is
+     * owned by inventory-service (reservations under pessimistic locking, restock,
+     * refund restoration, reorder alerts — see {@code InventoryService}); this
+     * service keeps only a catalog display snapshot that drives the in-stock
+     * listing filters. A general PUT carries whatever stock value the client read
+     * when it opened its form, so writing it back would blindly overwrite any
+     * change made in between — a lost update against a number this service does
+     * not own. Stock is seeded on create and moved afterwards only through
+     * {@link #updateStockQuantity(Long, int)} (PATCH /api/products/{id}/stock),
+     * which makes the intent explicit and auditable.
      */
     @Transactional
     @Caching(evict = {
@@ -194,7 +205,7 @@ public class ProductService {
 
         Product product = getProductById(id);
 
-        // Update fields
+        // Update fields (stockQuantity excluded by design — see javadoc)
         product.setName(productDetails.getName());
         product.setDescription(productDetails.getDescription());
         product.setPrice(productDetails.getPrice());
@@ -219,7 +230,8 @@ public class ProductService {
     }
 
     /**
-     * Update product stock quantity.
+     * Set the catalog stock snapshot for a product — the ONLY write path for
+     * {@code stockQuantity} after creation (see {@link #updateProduct}).
      */
     @Transactional
     @Caching(evict = {
@@ -227,6 +239,9 @@ public class ProductService {
         @CacheEvict(value = ProductListingCache.LISTINGS_CACHE, allEntries = true)
     })
     public Product updateStockQuantity(Long id, int quantity) {
+        if (quantity < 0) {
+            throw new IllegalArgumentException("Stock quantity cannot be negative: " + quantity);
+        }
         log.info("Updating stock quantity for product ID: {} to {}", id, quantity);
 
         Product product = getProductById(id);

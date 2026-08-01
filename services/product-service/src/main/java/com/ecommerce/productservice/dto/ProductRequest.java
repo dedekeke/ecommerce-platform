@@ -45,6 +45,13 @@ public class ProductRequest {
 
     private Dimensions dimensions;
 
+    /**
+     * CREATE-ONLY. Seeds the catalog stock snapshot on POST /api/products.
+     * IGNORED on PUT /api/products/{id}: stock movement is owned by
+     * inventory-service, and echoing a stale snapshot back through a general
+     * update would clobber concurrent stock changes. Use
+     * PATCH /api/products/{id}/stock?quantity=N to change it.
+     */
     @Min(value = 0, message = "Stock quantity cannot be negative")
     private Integer stockQuantity;
 
