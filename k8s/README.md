@@ -73,10 +73,12 @@ The base manifests reference two secrets that you MUST create out-of-band. Do NO
 
 > `INTERNAL_SERVICE_TOKEN` is the shared inter-service credential
 > (`X-Internal-Service-Token`) that authorizes `POST /api/promotions/apply`.
-> promotion-service **fails fast at boot** without it when `SECURITY_ENABLED=true`,
-> and order-service's checkout saga cannot redeem promo codes without the
-> identical value. Under ESO it is sourced from the shared Vault path
-> `internal.service_token` (see `secrets/services/*-externalsecret.yaml`).
+> promotion-service AND order-service both **fail fast at boot** without it when
+> `SECURITY_ENABLED=true`, and the value must be identical in both. Watch the
+> `promotion.apply.auth_failure` counter / `PromotionApplyAuthFailure` alert after
+> rotating it: while the two sides disagree, promotion usage limits are not enforced.
+> Under ESO it is sourced from the shared Vault path `internal.service_token`
+> (see `secrets/services/*-externalsecret.yaml`).
 
 ```bash
 # Application credentials
