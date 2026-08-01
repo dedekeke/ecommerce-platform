@@ -12,40 +12,41 @@ export const handlers = [
   http.post(`${API_BASE}/cart/items`, async ({ request }) => {
     const body = (await request.json()) as { productId: string; quantity: number }
     const newItem = {
-      itemId: `item-new-${Date.now()}`,
+      id: `item-new-${Date.now()}`,
       productId: body.productId,
-      name: 'New Product',
+      productName: 'New Product',
+      productSku: 'SKU-NEW',
+      productImageUrl: null,
       price: 29.99,
       quantity: body.quantity,
+      subtotal: 29.99 * body.quantity,
     }
-    return HttpResponse.json(
-      {
-        ...mockCart,
-        items: [...mockCart.items, newItem],
-        itemCount: mockCart.itemCount + body.quantity,
-        total: mockCart.total + 29.99 * body.quantity,
-      },
-      { status: 201 }
-    )
+    return HttpResponse.json({
+      ...mockCart,
+      items: [...mockCart.items, newItem],
+      totalItems: mockCart.totalItems + body.quantity,
+      totalAmount: mockCart.totalAmount + 29.99 * body.quantity,
+    })
   }),
 
   http.put(`${API_BASE}/cart/items/:itemId`, async ({ params, request }) => {
     const { itemId } = params
     const body = (await request.json()) as { quantity: number }
     const updatedItems = mockCart.items.map((item) =>
-      item.itemId === itemId ? { ...item, quantity: body.quantity } : item
+      item.id === itemId ? { ...item, quantity: body.quantity } : item
     )
     return HttpResponse.json({ ...mockCart, items: updatedItems })
   }),
 
   http.delete(`${API_BASE}/cart/items/:itemId`, ({ params }) => {
     const { itemId } = params
-    const remaining = mockCart.items.filter((item) => item.itemId !== itemId)
+    const remaining = mockCart.items.filter((item) => item.id !== itemId)
     return HttpResponse.json({ ...mockCart, items: remaining })
   }),
 
+  // Matches cart-service: DELETE /api/cart/clear responds 204 No Content.
   http.delete(`${API_BASE}/cart/clear`, () => {
-    return HttpResponse.json(mockEmptyCart)
+    return new HttpResponse(null, { status: 204 })
   }),
 
   http.post(`${API_BASE}/promotions/validate`, async ({ request }) => {

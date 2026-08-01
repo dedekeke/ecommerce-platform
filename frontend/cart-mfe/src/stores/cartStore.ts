@@ -99,6 +99,18 @@ export const useCartStore = create<CartState>()(
           set({ ...initialState }, false, 'clearCart')
         },
 
+        replaceItems: (items: CartItem[]) => {
+          set(
+            {
+              items,
+              total: calculateTotal(items),
+              itemCount: calculateItemCount(items),
+            },
+            false,
+            'replaceItems'
+          )
+        },
+
         // The applied promotion is persisted alongside items/total (see `partialize`) under the
         // same `cart-storage` key checkout-mfe reads, so the code survives the cart -> checkout
         // navigation. See docs/handoff note in PromoCodeInput/usePromotion for the checkout-mfe

@@ -5,6 +5,12 @@ import type {
   UpdateCartItemRequest,
 } from '../types'
 
+/**
+ * cart-service REST client (services/cart-service CartController). All endpoints are
+ * JWT sub-keyed — the server derives the cart owner from the bearer token, so no
+ * userId is ever sent. Item mutations are keyed by the SERVER item id
+ * (CartItemResponse.id), not the productId.
+ */
 export const cartService = {
   async getCart(): Promise<CartResponse> {
     const response = await apiClient.get<CartResponse>('/cart')
@@ -17,44 +23,36 @@ export const cartService = {
   },
 
   async updateItemQuantity(
-    productId: string,
+    itemId: string,
     request: UpdateCartItemRequest
   ): Promise<CartResponse> {
     const response = await apiClient.put<CartResponse>(
-      `/cart/items/${productId}`,
+      `/cart/items/${itemId}`,
       request
     )
     return response.data
   },
 
-  async removeItem(productId: string): Promise<CartResponse> {
+  async removeItem(itemId: string): Promise<CartResponse> {
     const response = await apiClient.delete<CartResponse>(
-      `/cart/items/${productId}`
+      `/cart/items/${itemId}`
     )
     return response.data
   },
 
-  async clearCart(): Promise<CartResponse> {
-    const response = await apiClient.delete<CartResponse>('/cart')
-    return response.data
+  /** cart-service responds 204 No Content. */
+  async clearCart(): Promise<void> {
+    await apiClient.delete<void>('/cart/clear')
   },
 
-  async getCartItemCount(): Promise<number> {
-    const response = await apiClient.get<{ count: number }>('/cart/count')
-    return response.data.count
-  },
-
-  async syncCart(
-    items: Array<{ productId: string; quantity: number }>
-  ): Promise<CartResponse> {
-    const response = await apiClient.post<CartResponse>('/cart/sync', { items })
-    return response.data
-  },
-
-  async mergeGuestCart(guestCartId: string): Promise<CartResponse> {
-    const response = await apiClient.post<CartResponse>('/cart/merge', {
-      guestCartId,
-    })
+  /**
+   * Merge-on-login claim seam (`POST /api/cart/merge`): folds the guest cart built
+   * under the caller's own VERIFIED email into their authenticated cart. No body —
+   * the guest email is resolved server-side, never supplied by the client.
+   * Idempotent; safe to call on every login.
+   */
+  async mergeGuestCart(): Promise<CartResponse> {
+    const response = await apiClient.post<CartResponse>('/cart/merge')
     return response.data
   },
 }

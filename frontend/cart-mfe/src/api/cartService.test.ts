@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { setupServer } from 'msw/node'
-import { handlers, mockCart, mockEmptyCart } from '../test/mocks'
+import { handlers, mockCart } from '../test/mocks'
 import { getCart, addItem, updateItemQty, removeItem, clearCart } from './cartService'
 
 const server = setupServer(...handlers)
@@ -11,11 +11,16 @@ afterAll(() => server.close())
 
 describe('cartService', () => {
   describe('getCart', () => {
-    it('should return the current cart', async () => {
+    it('should return the current cart in the cart-service wire shape', async () => {
       const cart = await getCart()
-      expect(cart.cartId).toBe(mockCart.cartId)
+      expect(cart.id).toBe(mockCart.id)
       expect(cart.items).toHaveLength(2)
-      expect(cart.total).toBe(309.97)
+      expect(cart.totalAmount).toBe(309.97)
+      expect(cart.items[0]).toMatchObject({
+        id: 'item-1',
+        productId: 'prod-1',
+        productName: 'Wireless Headphones',
+      })
     })
   })
 
@@ -29,7 +34,7 @@ describe('cartService', () => {
   describe('updateItemQty', () => {
     it('should update item quantity and return updated cart', async () => {
       const updated = await updateItemQty('item-1', { quantity: 5 })
-      const item = updated.items.find((i) => i.itemId === 'item-1')
+      const item = updated.items.find((i) => i.id === 'item-1')
       expect(item?.quantity).toBe(5)
     })
   })
@@ -37,16 +42,13 @@ describe('cartService', () => {
   describe('removeItem', () => {
     it('should remove an item and return updated cart', async () => {
       const updated = await removeItem('item-1')
-      expect(updated.items.find((i) => i.itemId === 'item-1')).toBeUndefined()
+      expect(updated.items.find((i) => i.id === 'item-1')).toBeUndefined()
     })
   })
 
   describe('clearCart', () => {
-    it('should clear the cart and return empty cart', async () => {
-      const cleared = await clearCart()
-      expect(cleared.cartId).toBe(mockEmptyCart.cartId)
-      expect(cleared.items).toHaveLength(0)
-      expect(cleared.total).toBe(0)
+    it('should resolve on the 204 No Content response', async () => {
+      await expect(clearCart()).resolves.toBeUndefined()
     })
   })
 })
