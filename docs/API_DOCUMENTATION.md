@@ -131,6 +131,20 @@ PUT /api/products/{productId}
 ```
 **Authentication**: Required (Admin)
 
+> `stockQuantity` is **create-only**. It is accepted (and ignored) on this PUT:
+> inventory-service owns stock movement, and a general update echoing back a
+> snapshot read at form-open time would clobber concurrent stock changes. Use
+> the stock endpoint below.
+
+#### Update Product Stock
+```
+PATCH /api/products/{productId}/stock?quantity={n}
+```
+**Authentication**: Required (Admin)
+The only write path for the catalog stock snapshot after creation. Authoritative
+stock movement (reservations, restock, refund restoration) lives in
+inventory-service — see `PUT /api/inventory/product/{productId}/stock`.
+
 #### Delete Product
 ```
 DELETE /api/products/{productId}
