@@ -226,6 +226,11 @@ refund:
 promotion:
   service:
     url: ${PROMOTION_SERVICE_URL}
+    # Shared service credential sent as X-Internal-Service-Token. Required by a
+    # security-enabled promotion-service on POST /api/promotions/apply; must
+    # match that service's INTERNAL_SERVICE_TOKEN. Never a user JWT — the saga
+    # applies promotions on the guest checkout path too, where none exists.
+    internal-token: ${INTERNAL_SERVICE_TOKEN:}
 
 # Product Service (load-balanced via Eureka) for subscription price lookups
 product:

@@ -218,4 +218,132 @@ class GatewayConfigFidelityTest {
         assertThat(promotionPredicates).anySatisfy(p ->
                 assertThat(p).contains("/api/v1/promotions/**").contains("/api/v1/currency/**"));
     }
+
+    // ---------- promotion validate: per-IP brute-force guard ----------
+
+    /**
+     * {@code POST /api/promotions/validate} stays permitAll (guests apply a
+     * promo code before logging in), which makes it a promo-code enumeration
+     * oracle. It must therefore be rate limited PER CLIENT IP — the caller is
+     * anonymous, so there is no principal to key on — via the same
+     * {@code ipKeyResolver} used by the other guest-reachable routes.
+     */
+    @Test
+    void should_rateLimitPromotionValidate_perClientIp_onBothVersions() {
+        List<String> keyResolvers = promotionValidateRouteIndexes().stream()
+                .map(i -> props.get(rateLimiterArgsPrefix(i) + "key-resolver"))
+                .toList();
+
+        assertThat(keyResolvers)
+                .as("both the unversioned and /v1 validate routes must be IP-keyed")
+                .hasSize(2)
+                .allSatisfy(r -> assertThat(r).isEqualTo("#{@ipKeyResolver}"));
+    }
+
+    @Test
+    void should_bindPromotionValidateLimits_toEnvOverridableVariables() {
+        promotionValidateRouteIndexes().forEach(i -> {
+            String prefix = rateLimiterArgsPrefix(i) + "redis-rate-limiter.";
+            assertThat(props.get(prefix + "replenishRate")).asString().contains("GATEWAY_PROMO_VALIDATE_RATE");
+            assertThat(props.get(prefix + "burstCapacity")).asString().contains("GATEWAY_PROMO_VALIDATE_BURST");
+        });
+    }
+
+    /**
+     * The validate ceiling must be materially tighter than the general
+     * promotion route's (100/200) — a shopper tries a handful of codes, a
+     * scraper tries thousands.
+     */
+    @Test
+    void should_keepPromotionValidateLimit_tighterThanGeneralPromotionRoute() {
+        int validateRate = placeholderDefaultAsInt(props.get(
+                rateLimiterArgsPrefix(promotionValidateRouteIndexes().get(0))
+                        + "redis-rate-limiter.replenishRate"));
+
+        assertThat(validateRate).isLessThan(100);
+    }
+
+    @Test
+    void should_scopePromotionValidateRoute_toPostOnly() {
+        promotionValidateRouteIndexes().forEach(i -> {
+            String routePrefix = "spring.cloud.gateway.routes[" + i + "]";
+            assertThat(props.get(routePrefix + ".predicates[0]")).asString().contains("promotions/validate");
+            assertThat(props.get(routePrefix + ".predicates[1]")).isEqualTo("Method=POST");
+        });
+    }
+
+    /**
+     * Spring Cloud Gateway matches routes in declared order, so the narrow
+     * validate route must precede the catch-all {@code /api/promotions/**}
+     * route — otherwise it never wins and the tight limit is dead config.
+     */
+    @Test
+    void should_declarePromotionValidateRoute_beforeGeneralPromotionRoute() {
+        int firstValidate = promotionValidateRouteIndexes().get(0);
+        int firstGeneral = routeIndexesByIdPrefix("promotion-service").get(0);
+
+        assertThat(firstValidate).isLessThan(firstGeneral);
+    }
+
+    /**
+     * {@code X-Internal-Service-Token} is the service-to-service credential that
+     * authorizes {@code POST /api/promotions/apply}. Nothing arriving from the
+     * public edge may carry it, so the gateway strips any client-supplied value
+     * on every route before forwarding.
+     */
+    @Test
+    void should_stripClientSuppliedInternalServiceTokenHeader() {
+        List<String> defaultFilters = props.entrySet().stream()
+                .filter(e -> e.getKey().matches("spring\\.cloud\\.gateway\\.default-filters\\[\\d+]"))
+                .map(Map.Entry::getValue)
+                .toList();
+
+        assertThat(defaultFilters).contains("RemoveRequestHeader=X-Internal-Service-Token");
+    }
+
+    private static List<Integer> routeIndexesByIdPrefix(String idPrefix) {
+        Pattern idKey = Pattern.compile("spring\\.cloud\\.gateway\\.routes\\[(\\d+)]\\.id");
+        return props.entrySet().stream()
+                .filter(e -> {
+                    Matcher m = idKey.matcher(e.getKey());
+                    return m.matches() && String.valueOf(e.getValue()).startsWith(idPrefix);
+                })
+                .map(e -> {
+                    Matcher m = idKey.matcher(e.getKey());
+                    m.matches();
+                    return Integer.parseInt(m.group(1));
+                })
+                .sorted()
+                .toList();
+    }
+
+    private static List<Integer> promotionValidateRouteIndexes() {
+        List<Integer> indexes = routeIndexesByIdPrefix("promotion-validate");
+        assertThat(indexes).as("promotion-validate routes must be declared").isNotEmpty();
+        return indexes;
+    }
+
+    /**
+     * Locates the {@code RequestRateLimiter} entry within a route's filter list
+     * (its position differs between the unversioned and /v1 routes, which put
+     * RewritePath first) and returns the prefix of its args.
+     */
+    private static String rateLimiterArgsPrefix(int routeIndex) {
+        String routePrefix = "spring.cloud.gateway.routes[" + routeIndex + "].filters[";
+        return props.entrySet().stream()
+                .filter(e -> e.getKey().startsWith(routePrefix)
+                        && e.getKey().endsWith("].name")
+                        && "RequestRateLimiter".equals(e.getValue()))
+                .map(e -> e.getKey().replace("].name", "].args."))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "route[" + routeIndex + "] has no RequestRateLimiter filter"));
+    }
+
+    /** Extracts {@code N} from a {@code ${VAR:N}} placeholder. */
+    private static int placeholderDefaultAsInt(String placeholder) {
+        Matcher m = Pattern.compile("\\$\\{[^:}]+:(\\d+)}").matcher(String.valueOf(placeholder));
+        assertThat(m.find()).as("expected a ${VAR:default} placeholder but was %s", placeholder).isTrue();
+        return Integer.parseInt(m.group(1));
+    }
 }

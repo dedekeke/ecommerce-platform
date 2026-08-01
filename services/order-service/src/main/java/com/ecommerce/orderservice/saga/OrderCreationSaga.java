@@ -226,8 +226,16 @@ public class OrderCreationSaga {
             // Step 4: Apply promotion (increment usage) if one was applied.
             if (order.getPromotionCode() != null && order.getDiscountAmount() != null) {
                 log.info("Saga Step 4: Applying promotion to increment usage: {}", order.getPromotionCode());
+                // Deliberately non-fatal: the order and its stock reservation
+                // already exist, so a redemption failure must not fail checkout.
+                // The failure is NOT silent — PromotionServiceClient distinguishes
+                // an authorization rejection (401/403 => promotion.apply.auth_failure
+                // counter + ERROR log marked PROMOTION_APPLY_AUTH_FAILURE, alerted
+                // on because usage limits stop being enforced) from a transient
+                // outage (circuit breaker).
                 try {
-                    DiscountResult applyResult = promotionServiceClient.applyPromotion(order.getPromotionCode());
+                    DiscountResult applyResult = promotionServiceClient.applyPromotion(
+                        order.getPromotionCode(), order.getSubtotal());
                     if (!applyResult.isValid()) {
                         log.warn("Failed to apply promotion: {}", applyResult.getMessage());
                     }

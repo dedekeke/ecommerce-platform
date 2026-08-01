@@ -95,6 +95,14 @@ spring:
       # bounded 5s wait into ~20s and quadrupling load on an already-failing
       # service. Retry now covers only fast-fail cases: connect/IO errors
       # (IOException) and the 502/503 statuses below.
+      #
+      # RemoveRequestHeader strips the inter-service credential
+      # (X-Internal-Service-Token) from EVERY inbound request. That header
+      # authorizes service-only endpoints downstream (e.g. POST
+      # /api/promotions/apply, which increments promotion usage counters); it is
+      # minted by services calling each other directly over the internal
+      # network, never by a client. Dropping it at the edge means a browser
+      # cannot forge or replay it even if the secret leaks into a frontend.
       default-filters:
         - name: Retry
           args:
@@ -108,6 +116,7 @@ spring:
               maxBackoff: 500ms
               factor: 2
               basedOnPreviousValue: false
+        - RemoveRequestHeader=X-Internal-Service-Token
 
       # ------------------------------------------------------------------
       # Route configuration policy (see docs/API_VERSIONING.md):
@@ -487,6 +496,51 @@ spring:
               args:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
+
+        # ---------- Promo-code validation (promotion-service) ----------
+        # POST /api/promotions/validate is permitAll by design: a GUEST enters a
+        # promo code in the cart before any login, so it must stay publicly
+        # callable. That also makes it a promo-code ENUMERATION ORACLE — each
+        # call reveals whether a code exists — so it is rate limited PER CLIENT
+        # IP (key-resolver: ipKeyResolver; the caller is anonymous, so there is
+        # no principal to key on), mirroring the guest cart/checkout routes.
+        #
+        # The ceiling is much TIGHTER than the general promotion route (2/5 vs
+        # 100/200) and tighter than search (200/400): a shopper tries a handful
+        # of codes, a scraper tries thousands. MUST precede the promotion-service
+        # route below so this more specific, POST-only route wins first-match
+        # (Spring Cloud Gateway matches in declared order); otherwise
+        # /api/promotions/validate is swallowed by /api/promotions/** and
+        # inherits the loose limit. Env-overridable.
+        - id: promotion-validate
+          uri: lb://promotion-service
+          predicates:
+            - Path=/api/promotions/validate
+            - Method=POST
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_PROMO_VALIDATE_RATE:2}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_PROMO_VALIDATE_BURST:5}
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/promotions>; rel="successor-version"
+        - id: promotion-validate-v1
+          uri: lb://promotion-service
+          predicates:
+            - Path=/api/v1/promotions/validate
+            - Method=POST
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_PROMO_VALIDATE_RATE:2}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_PROMO_VALIDATE_BURST:5}
                 redis-rate-limiter.requestedTokens: 1
 
         # ---------- Promotion Service ----------

@@ -528,6 +528,9 @@ services:
       GRPC_CLIENT_INVENTORY_SERVICE: static://inventory-service:9091
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      # Service credential for POST /api/promotions/apply — must match
+      # promotion-service's value (see .env.template).
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       SERVER_PORT: 8084
       SECURITY_ENABLED: "false"
     env_file:
@@ -734,6 +737,9 @@ services:
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      # Shared secret guarding POST /api/promotions/apply. Unused while
+      # SECURITY_ENABLED=false (local dev); required once security is on.
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       SERVER_PORT: 8090
       SECURITY_ENABLED: "false"
     env_file:

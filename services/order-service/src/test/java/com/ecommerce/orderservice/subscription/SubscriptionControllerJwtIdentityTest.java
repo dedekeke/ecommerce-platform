@@ -39,6 +39,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
         "security.enabled=true",
+        // Required by PromotionServiceClient's boot guard whenever security is on.
+        "promotion.service.internal-token=test-internal-service-token",
         "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://test-tenant.auth0.com/",
         "grpc.server.port=-1"
 })

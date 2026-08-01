@@ -94,6 +94,24 @@ public class SecurityConfig {
                     .pathMatchers(HttpMethod.GET,
                         "/api/media/*/content", "/api/v1/media/*/content").permitAll()
 
+                    // Promo-code validation — a GUEST types a code into the cart
+                    // before any login, so this POST must pass the gateway
+                    // unauthenticated (promotion-service also treats it as
+                    // permitAll). Scoped TIGHTLY: POST + the EXACT path only, on
+                    // both versions (the gateway authorizes the ORIGINAL request
+                    // path before the v1 RewritePath runs — Lore 2b8c4227).
+                    // Notably NOT opened: POST /api/promotions/apply, which
+                    // increments usage counters and is restricted to service
+                    // callers holding the internal service token; it stays behind
+                    // anyExchange().authenticated() here and is rejected by
+                    // promotion-service for any non-service caller.
+                    //
+                    // Being public makes validate a promo-code enumeration
+                    // oracle, so the promotion-validate route applies a tight
+                    // per-client-IP RequestRateLimiter (see application.yml).
+                    .pathMatchers(HttpMethod.POST,
+                        "/api/promotions/validate", "/api/v1/promotions/validate").permitAll()
+
                     // GraphQL BFF endpoint — per-query auth is enforced inside the
                     // resolvers via @PreAuthorize. The HTTP layer must permit the
                     // POST so GraphQL field-level errors carry through to clients
