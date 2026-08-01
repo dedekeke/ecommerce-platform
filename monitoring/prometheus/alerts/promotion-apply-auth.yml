@@ -1,0 +1,39 @@
+# Promotion redemption authorization alerts.
+#
+# order-service authorizes POST /api/promotions/apply with the shared service
+# credential (X-Internal-Service-Token / INTERNAL_SERVICE_TOKEN). If that
+# credential is missing, stale, or out of sync between the two services, every
+# apply is rejected with 401/403 — the checkout saga swallows the failure so
+# orders keep succeeding, which means there is NO customer-visible symptom.
+#
+# The business impact is silent and financial: promotion usage counters stop
+# incrementing, so limited-use / single-use codes can be redeemed without limit
+# for as long as the condition lasts. Hence: page on the FIRST occurrence, not
+# on a rate threshold.
+#
+# Counter: promotion.apply.auth_failure -> promotion_apply_auth_failure_total
+# (Micrometer's Prometheus naming). Incremented ONLY for 401/403, never for
+# transient promotion-service outages, so this alert has no overlap with the
+# availability SLO burn-rate alerts.
+
+groups:
+  - name: promotion-apply-auth
+    interval: 30s
+    rules:
+      - alert: PromotionApplyAuthFailure
+        expr: increase(promotion_apply_auth_failure_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: page
+          service: order-service
+          category: security
+        annotations:
+          summary: "order-service cannot authorize promotion redemption — usage limits NOT enforced"
+          description: >-
+            POST /api/promotions/apply is being rejected with 401/403. The
+            X-Internal-Service-Token shared secret is missing or does not match
+            promotion-service's INTERNAL_SERVICE_TOKEN. Promotion usage counters
+            are not incrementing: limited-use codes are effectively unlimited
+            until this is fixed. Grep order-service logs for
+            PROMOTION_APPLY_AUTH_FAILURE.
+          runbook: docs/OPERATIONS_RUNBOOK.md#promotion-apply-auth-failure

@@ -7,11 +7,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.math.BigDecimal;
 
@@ -50,6 +57,10 @@ class PromotionServiceClientTest {
 
     private static final String PROMOTION_SERVICE_URL = "http://localhost:8090";
     private static final String INTERNAL_TOKEN = "internal-service-token";
+    private static final boolean SECURITY_ENABLED = true;
+    private static final boolean SECURITY_DISABLED = false;
+
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
@@ -57,9 +68,18 @@ class PromotionServiceClientTest {
         lenient().when(restClientBuilder.defaultHeader(anyString(), any(String[].class)))
             .thenReturn(restClientBuilder);
         when(restClientBuilder.build()).thenReturn(restClient);
+        meterRegistry = new SimpleMeterRegistry();
 
-        promotionServiceClient = new PromotionServiceClient(
-            restClientBuilder, PROMOTION_SERVICE_URL, INTERNAL_TOKEN);
+        promotionServiceClient = newClient(INTERNAL_TOKEN, SECURITY_ENABLED);
+    }
+
+    private PromotionServiceClient newClient(String token, boolean securityEnabled) {
+        return new PromotionServiceClient(
+            restClientBuilder, PROMOTION_SERVICE_URL, token, securityEnabled, meterRegistry);
+    }
+
+    private double applyAuthFailureCount() {
+        return meterRegistry.counter(PromotionServiceClient.APPLY_AUTH_FAILURE_METRIC).count();
     }
 
     // ==================== Service credential ====================
@@ -77,14 +97,106 @@ class PromotionServiceClientTest {
     }
 
     @Test
-    @DisplayName("should_omitInternalServiceToken_when_tokenBlank")
-    void should_omitInternalServiceToken_when_tokenBlank() {
+    @DisplayName("should_omitInternalServiceToken_when_tokenBlankAndSecurityDisabled")
+    void should_omitInternalServiceToken_when_tokenBlankAndSecurityDisabled() {
         clearInvocations(restClientBuilder);
 
-        new PromotionServiceClient(restClientBuilder, PROMOTION_SERVICE_URL, "  ");
+        newClient("  ", SECURITY_DISABLED);
 
         verify(restClientBuilder, never()).defaultHeader(
             eq(PromotionServiceClient.INTERNAL_TOKEN_HEADER), any(String[].class));
+    }
+
+    /**
+     * Fail CLOSED at boot instead of fail-open at runtime: with security on and
+     * no credential, every /apply is 401'd, the saga swallows it, and
+     * limited-use promo codes become unlimited with no visible symptom.
+     */
+    @ParameterizedTest(name = "token=\"{0}\"")
+    @ValueSource(strings = {"", "   "})
+    @DisplayName("should_failFast_when_tokenBlankAndSecurityEnabled")
+    void should_failFast_when_tokenBlankAndSecurityEnabled(String token) {
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+            () -> newClient(token, SECURITY_ENABLED));
+
+        assertTrue(thrown.getMessage().contains("INTERNAL_SERVICE_TOKEN"));
+    }
+
+    // ==================== /apply authorization failures ====================
+
+    @ParameterizedTest(name = "status={0}")
+    @ValueSource(ints = {401, 403})
+    @DisplayName("should_countApplyAuthFailure_when_promotionServiceRejectsCredential")
+    void should_countApplyAuthFailure_when_promotionServiceRejectsCredential(int status) {
+        stubApplyPost();
+        when(responseSpec.body(DiscountResult.class)).thenThrow(httpError(status));
+
+        promotionServiceClient.applyPromotion("SAVE20", BigDecimal.valueOf(100.00));
+
+        assertEquals(1.0, applyAuthFailureCount());
+    }
+
+    /**
+     * Availability over strictness: the order is already being created, so an
+     * apply rejection degrades to "not applied" rather than failing checkout.
+     * It must be observable (counter + ERROR marker), never silent.
+     */
+    @Test
+    @DisplayName("should_returnInvalidResult_when_applyRejectedWithUnauthorized")
+    void should_returnInvalidResult_when_applyRejectedWithUnauthorized() {
+        stubApplyPost();
+        when(responseSpec.body(DiscountResult.class)).thenThrow(httpError(401));
+
+        DiscountResult result = promotionServiceClient.applyPromotion("SAVE20", BigDecimal.valueOf(100.00));
+
+        assertFalse(result.isValid());
+    }
+
+    /**
+     * A permanent 401/403 must NOT propagate: Resilience4j would retry it three
+     * times per order and open the breaker for the healthy validate/loyalty
+     * calls that share it.
+     */
+    @Test
+    @DisplayName("should_notPropagateException_when_applyRejectedWithForbidden")
+    void should_notPropagateException_when_applyRejectedWithForbidden() {
+        stubApplyPost();
+        when(responseSpec.body(DiscountResult.class)).thenThrow(httpError(403));
+
+        assertDoesNotThrow(() -> promotionServiceClient.applyPromotion("SAVE20", BigDecimal.valueOf(100.00)));
+    }
+
+    /**
+     * The counter must mean "credential is broken", not "promotion-service had a
+     * bad day" — a transient failure keeps the existing circuit-breaker path.
+     */
+    @Test
+    @DisplayName("should_notCountAuthFailure_when_applyFailsTransiently")
+    void should_notCountAuthFailure_when_applyFailsTransiently() {
+        stubApplyPost();
+        when(responseSpec.body(DiscountResult.class))
+            .thenThrow(new RestClientException("connection reset"));
+
+        assertThrows(RestClientException.class,
+            () -> promotionServiceClient.applyPromotion("SAVE20", BigDecimal.valueOf(100.00)));
+        assertEquals(0.0, applyAuthFailureCount());
+    }
+
+    @Test
+    @DisplayName("should_notCountAuthFailure_when_applySucceeds")
+    void should_notCountAuthFailure_when_applySucceeds() {
+        stubApplyPost();
+        when(responseSpec.body(DiscountResult.class))
+            .thenReturn(DiscountResult.builder().valid(true).build());
+
+        promotionServiceClient.applyPromotion("SAVE20", BigDecimal.valueOf(100.00));
+
+        assertEquals(0.0, applyAuthFailureCount());
+    }
+
+    private static HttpClientErrorException httpError(int status) {
+        return HttpClientErrorException.create(
+            HttpStatusCode.valueOf(status), "rejected", HttpHeaders.EMPTY, new byte[0], null);
     }
 
     @Test

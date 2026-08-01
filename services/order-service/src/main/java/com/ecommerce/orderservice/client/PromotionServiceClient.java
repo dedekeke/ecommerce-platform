@@ -4,11 +4,16 @@ import com.ecommerce.orderservice.client.dto.DiscountResult;
 import com.ecommerce.orderservice.client.dto.LoyaltyResult;
 import com.ecommerce.orderservice.client.dto.PromotionValidationRequest;
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -30,23 +35,51 @@ public class PromotionServiceClient {
 
     static final String INTERNAL_TOKEN_HEADER = "X-Internal-Service-Token";
 
+    /**
+     * Counter incremented ONLY when promotion-service rejects an apply on
+     * AUTHORIZATION grounds (401/403) — i.e. a credential misconfiguration,
+     * never a transient outage. Alert on any non-zero rate: while it fires,
+     * limited-use promo codes are effectively unlimited (see
+     * {@link #applyPromotion}).
+     */
+    static final String APPLY_AUTH_FAILURE_METRIC = "promotion.apply.auth_failure";
+
+    /** Distinct log marker so the same condition is greppable/alertable in logs. */
+    static final Marker APPLY_AUTH_FAILURE = MarkerFactory.getMarker("PROMOTION_APPLY_AUTH_FAILURE");
+
     private final RestClient restClient;
+    private final Counter applyAuthFailureCounter;
 
     public PromotionServiceClient(
         RestClient.Builder restClientBuilder,
         @Value("${promotion.service.url:http://promotion-service:8090}") String promotionServiceUrl,
-        @Value("${promotion.service.internal-token:}") String internalServiceToken
+        @Value("${promotion.service.internal-token:}") String internalServiceToken,
+        @Value("${security.enabled:true}") boolean securityEnabled,
+        MeterRegistry meterRegistry
     ) {
         RestClient.Builder builder = restClientBuilder.baseUrl(promotionServiceUrl);
         if (internalServiceToken != null && !internalServiceToken.isBlank()) {
             builder.defaultHeader(INTERNAL_TOKEN_HEADER, internalServiceToken);
+        } else if (securityEnabled) {
+            // Fail fast rather than boot into a fail-OPEN state: without the
+            // credential every /apply is 401'd, the saga swallows it, and
+            // limited-use promo codes silently become unlimited. Mirrors
+            // promotion-service's own boot guard on the same secret.
+            throw new IllegalStateException(
+                "INTERNAL_SERVICE_TOKEN must be configured when security is enabled "
+                    + "(authorizes POST /api/promotions/apply; without it promotion usage limits "
+                    + "are not enforced)");
         } else {
-            // Local/dev promotion-service runs with security.enabled=false and
-            // ignores the header; any secured deployment rejects /apply without it.
+            // Local/dev only: promotion-service runs with security.enabled=false
+            // and ignores the header.
             log.warn("No promotion service internal token configured — POST /api/promotions/apply "
                 + "will be rejected by a security-enabled promotion-service");
         }
         this.restClient = builder.build();
+        this.applyAuthFailureCounter = Counter.builder(APPLY_AUTH_FAILURE_METRIC)
+            .description("Promotion apply calls rejected by promotion-service with 401/403 "
+                + "(service credential misconfigured; promotion usage limits not being enforced)")
+            .register(meterRegistry);
     }
 
     /**
@@ -92,6 +125,15 @@ public class PromotionServiceClient {
      * bare code string is rejected (unsupported media type) and the usage
      * counter is never incremented.
      *
+     * <p>An AUTHORIZATION rejection (401/403) is handled separately from a
+     * transient failure: it means this service's credential is missing or stale,
+     * so retrying and tripping the circuit breaker would only add noise while
+     * the real problem is a config error. Checkout still proceeds — availability
+     * over strictness, the order is already paid for — but the condition is made
+     * loud and alertable ({@value #APPLY_AUTH_FAILURE_METRIC} + an ERROR log
+     * marked {@code PROMOTION_APPLY_AUTH_FAILURE}), because while it persists
+     * usage counters never increment and limited-use codes are unlimited.
+     *
      * @param promotionCode  Promotion code to apply
      * @param purchaseAmount Pre-discount purchase amount the code was validated against
      * @return Discount result
@@ -107,15 +149,42 @@ public class PromotionServiceClient {
             .purchaseAmount(purchaseAmount)
             .build();
 
-        DiscountResult result = restClient.post()
-            .uri("/api/promotions/apply")
-            .body(request)
-            .retrieve()
-            .body(DiscountResult.class);
+        try {
+            DiscountResult result = restClient.post()
+                .uri("/api/promotions/apply")
+                .body(request)
+                .retrieve()
+                .body(DiscountResult.class);
 
-        log.info("Promotion applied successfully: {}", promotionCode);
+            log.info("Promotion applied successfully: {}", promotionCode);
 
-        return result;
+            return result;
+        } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.Forbidden e) {
+            return handleApplyAuthFailure(promotionCode, e);
+        }
+    }
+
+    /**
+     * Records an /apply authorization rejection and degrades to "not applied".
+     * Deliberately does NOT rethrow: a 401/403 is permanent until the deployment
+     * is fixed, so letting it reach Resilience4j would retry it 3x per order and
+     * open the breaker for the healthy validate/loyalty calls sharing it.
+     */
+    private DiscountResult handleApplyAuthFailure(String promotionCode, HttpClientErrorException e) {
+        applyAuthFailureCounter.increment();
+        log.error(APPLY_AUTH_FAILURE,
+            "PROMOTION_APPLY_AUTH_FAILURE - promotion-service rejected apply for code {} with {}. "
+                + "The service credential (X-Internal-Service-Token / INTERNAL_SERVICE_TOKEN) is missing "
+                + "or does not match. Promotion usage counters are NOT incrementing: limited-use codes "
+                + "can be redeemed without limit until this is fixed.",
+            promotionCode, e.getStatusCode());
+
+        return DiscountResult.builder()
+            .valid(false)
+            .message("Promotion could not be applied.")
+            .discountAmount(BigDecimal.ZERO)
+            .promotionCode(promotionCode)
+            .build();
     }
 
     /**
