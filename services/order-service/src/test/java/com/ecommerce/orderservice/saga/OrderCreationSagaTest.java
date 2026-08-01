@@ -1,6 +1,7 @@
 package com.ecommerce.orderservice.saga;
 
 import com.ecommerce.orderservice.client.PromotionServiceClient;
+import com.ecommerce.orderservice.client.dto.DiscountResult;
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
@@ -268,6 +269,37 @@ class OrderCreationSagaTest {
 
         assertNotNull(result);
         verify(orderService).createOrder(eq(userId), anyList(), eq(address), eq(promotionCode), isNull());
+    }
+
+    /**
+     * Step 4 redeems the code against the SAME pre-discount amount the code was
+     * validated with (the order subtotal); promotion-service re-validates the
+     * request before incrementing the usage counter.
+     */
+    @Test
+    void should_applyPromotionWithOrderSubtotal_when_orderCarriesDiscount() {
+        String userId = "user-apply";
+        Address address = createMockAddress();
+        String promotionCode = "SAVE20";
+        String orderId = UUID.randomUUID().toString();
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockPaymentService.setPaymentSuccess(true);
+
+        Order mockOrder = createMockOrder(orderId, "ORD-2025-00002", userId, address);
+        mockOrder.setPromotionCode(promotionCode);
+        mockOrder.setDiscountAmount(new BigDecimal("12.00"));
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), eq(promotionCode), isNull()))
+            .thenReturn(mockOrder);
+        when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
+            .thenReturn(mockOrder);
+        when(promotionServiceClient.applyPromotion(anyString(), any(BigDecimal.class)))
+            .thenReturn(DiscountResult.builder().valid(true).build());
+
+        saga.executeOrderCreationSaga(userId, address, promotionCode);
+
+        verify(promotionServiceClient).applyPromotion(promotionCode, mockOrder.getSubtotal());
     }
 
     @Test

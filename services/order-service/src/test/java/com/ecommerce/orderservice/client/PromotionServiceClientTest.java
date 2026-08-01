@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestClient;
@@ -17,6 +18,7 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,13 +49,42 @@ class PromotionServiceClientTest {
     private PromotionServiceClient promotionServiceClient;
 
     private static final String PROMOTION_SERVICE_URL = "http://localhost:8090";
+    private static final String INTERNAL_TOKEN = "internal-service-token";
 
     @BeforeEach
     void setUp() {
         when(restClientBuilder.baseUrl(anyString())).thenReturn(restClientBuilder);
+        lenient().when(restClientBuilder.defaultHeader(anyString(), any(String[].class)))
+            .thenReturn(restClientBuilder);
         when(restClientBuilder.build()).thenReturn(restClient);
 
-        promotionServiceClient = new PromotionServiceClient(restClientBuilder, PROMOTION_SERVICE_URL);
+        promotionServiceClient = new PromotionServiceClient(
+            restClientBuilder, PROMOTION_SERVICE_URL, INTERNAL_TOKEN);
+    }
+
+    // ==================== Service credential ====================
+
+    /**
+     * The saga applies promotions on the GUEST checkout path, where there is no
+     * user JWT — so the caller's own service credential, sent on every call, is
+     * what authorizes the (service-only) /apply endpoint.
+     */
+    @Test
+    @DisplayName("should_sendInternalServiceToken_when_tokenConfigured")
+    void should_sendInternalServiceToken_when_tokenConfigured() {
+        verify(restClientBuilder).defaultHeader(
+            PromotionServiceClient.INTERNAL_TOKEN_HEADER, INTERNAL_TOKEN);
+    }
+
+    @Test
+    @DisplayName("should_omitInternalServiceToken_when_tokenBlank")
+    void should_omitInternalServiceToken_when_tokenBlank() {
+        clearInvocations(restClientBuilder);
+
+        new PromotionServiceClient(restClientBuilder, PROMOTION_SERVICE_URL, "  ");
+
+        verify(restClientBuilder, never()).defaultHeader(
+            eq(PromotionServiceClient.INTERNAL_TOKEN_HEADER), any(String[].class));
     }
 
     @Test
@@ -196,19 +227,57 @@ class PromotionServiceClientTest {
             .promotionCode("SAVE20")
             .build();
 
-        when(restClient.post()).thenReturn(requestBodyUriSpec);
-        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
-        when(requestBodySpec.body(any(String.class))).thenReturn(requestBodySpec);
-        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        stubApplyPost();
         when(responseSpec.body(DiscountResult.class)).thenReturn(expectedResult);
 
         // When
-        DiscountResult result = promotionServiceClient.applyPromotion(promotionCode);
+        DiscountResult result = promotionServiceClient.applyPromotion(
+            promotionCode, BigDecimal.valueOf(100.00));
 
         // Then
         assertNotNull(result);
         assertTrue(result.isValid());
         assertEquals(promotionCode, result.getPromotionCode());
+    }
+
+    /**
+     * Regression: /apply re-validates before redeeming, so it requires the same
+     * JSON body as /validate. Posting a bare code string was rejected by the
+     * endpoint and the usage counter was never incremented.
+     */
+    @Test
+    @DisplayName("should_postValidationRequestBody_when_applyingPromotion")
+    void should_postValidationRequestBody_when_applyingPromotion() {
+        stubApplyPost();
+        when(responseSpec.body(DiscountResult.class))
+            .thenReturn(DiscountResult.builder().valid(true).build());
+
+        promotionServiceClient.applyPromotion("SAVE20", BigDecimal.valueOf(100.00));
+
+        ArgumentCaptor<PromotionValidationRequest> body =
+            ArgumentCaptor.forClass(PromotionValidationRequest.class);
+        verify(requestBodySpec).body(body.capture());
+        assertEquals("SAVE20", body.getValue().getCode());
+        assertEquals(BigDecimal.valueOf(100.00), body.getValue().getPurchaseAmount());
+    }
+
+    @Test
+    @DisplayName("should_targetApplyEndpoint_when_applyingPromotion")
+    void should_targetApplyEndpoint_when_applyingPromotion() {
+        stubApplyPost();
+        when(responseSpec.body(DiscountResult.class))
+            .thenReturn(DiscountResult.builder().valid(true).build());
+
+        promotionServiceClient.applyPromotion("SAVE20", BigDecimal.valueOf(100.00));
+
+        verify(requestBodyUriSpec).uri("/api/promotions/apply");
+    }
+
+    private void stubApplyPost() {
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(PromotionValidationRequest.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
     }
 
     @Test

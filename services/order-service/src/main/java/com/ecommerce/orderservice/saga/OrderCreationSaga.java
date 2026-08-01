@@ -227,7 +227,8 @@ public class OrderCreationSaga {
             if (order.getPromotionCode() != null && order.getDiscountAmount() != null) {
                 log.info("Saga Step 4: Applying promotion to increment usage: {}", order.getPromotionCode());
                 try {
-                    DiscountResult applyResult = promotionServiceClient.applyPromotion(order.getPromotionCode());
+                    DiscountResult applyResult = promotionServiceClient.applyPromotion(
+                        order.getPromotionCode(), order.getSubtotal());
                     if (!applyResult.isValid()) {
                         log.warn("Failed to apply promotion: {}", applyResult.getMessage());
                     }

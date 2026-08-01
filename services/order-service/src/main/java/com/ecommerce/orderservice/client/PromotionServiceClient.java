@@ -17,20 +17,36 @@ import java.math.BigDecimal;
 /**
  * REST client for communicating with Promotion Service.
  * Protected by Resilience4j circuit breaker, retry, and bulkhead patterns.
+ *
+ * <p>Calls carry a SERVICE credential (the shared {@value #INTERNAL_TOKEN_HEADER}
+ * secret), never the end user's JWT. {@code POST /api/promotions/apply} is
+ * restricted to service callers on the promotion-service side, and the checkout
+ * saga applies a promotion on the GUEST path too — where no user JWT exists —
+ * so a caller-owned credential is the only one available on both paths.
  */
 @Slf4j
 @Component
 public class PromotionServiceClient {
 
+    static final String INTERNAL_TOKEN_HEADER = "X-Internal-Service-Token";
+
     private final RestClient restClient;
 
     public PromotionServiceClient(
         RestClient.Builder restClientBuilder,
-        @Value("${promotion.service.url:http://promotion-service:8090}") String promotionServiceUrl
+        @Value("${promotion.service.url:http://promotion-service:8090}") String promotionServiceUrl,
+        @Value("${promotion.service.internal-token:}") String internalServiceToken
     ) {
-        this.restClient = restClientBuilder
-            .baseUrl(promotionServiceUrl)
-            .build();
+        RestClient.Builder builder = restClientBuilder.baseUrl(promotionServiceUrl);
+        if (internalServiceToken != null && !internalServiceToken.isBlank()) {
+            builder.defaultHeader(INTERNAL_TOKEN_HEADER, internalServiceToken);
+        } else {
+            // Local/dev promotion-service runs with security.enabled=false and
+            // ignores the header; any secured deployment rejects /apply without it.
+            log.warn("No promotion service internal token configured — POST /api/promotions/apply "
+                + "will be rejected by a security-enabled promotion-service");
+        }
+        this.restClient = builder.build();
     }
 
     /**
@@ -71,18 +87,29 @@ public class PromotionServiceClient {
      * Apply a promotion code (increments usage count).
      * Protected by circuit breaker with fallback.
      *
-     * @param promotionCode Promotion code to apply
+     * <p>The endpoint re-validates before redeeming, so it needs the same
+     * {@link PromotionValidationRequest} body as {@code /validate} — posting a
+     * bare code string is rejected (unsupported media type) and the usage
+     * counter is never incremented.
+     *
+     * @param promotionCode  Promotion code to apply
+     * @param purchaseAmount Pre-discount purchase amount the code was validated against
      * @return Discount result
      */
     @CircuitBreaker(name = "promotion-service", fallbackMethod = "applyPromotionFallback")
     @Retry(name = "promotion-service")
     @Bulkhead(name = "promotion-service")
-    public DiscountResult applyPromotion(String promotionCode) {
+    public DiscountResult applyPromotion(String promotionCode, BigDecimal purchaseAmount) {
         log.info("Applying promotion code: {}", promotionCode);
+
+        PromotionValidationRequest request = PromotionValidationRequest.builder()
+            .code(promotionCode)
+            .purchaseAmount(purchaseAmount)
+            .build();
 
         DiscountResult result = restClient.post()
             .uri("/api/promotions/apply")
-            .body(promotionCode)
+            .body(request)
             .retrieve()
             .body(DiscountResult.class);
 
@@ -159,7 +186,7 @@ public class PromotionServiceClient {
         return BigDecimal.ZERO;
     }
 
-    private DiscountResult applyPromotionFallback(String promotionCode, Throwable t) {
+    private DiscountResult applyPromotionFallback(String promotionCode, BigDecimal purchaseAmount, Throwable t) {
         log.error("Promotion Service unavailable for applying promotion. Code: {}, Error: {}",
             promotionCode, t.getMessage());
 
