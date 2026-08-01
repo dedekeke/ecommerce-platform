@@ -81,6 +81,17 @@ public class SecurityConfig {
                         "/api/search/**", "/api/v1/search/**").permitAll()
                     .pathMatchers(HttpMethod.GET,
                         "/api/promotions/public/**", "/api/v1/promotions/public/**").permitAll()
+                    // Public product imagery (ADR, PR#153 review): media is
+                    // owner-private until attached to a product; product imagery
+                    // is a public asset served inline by media-service at
+                    // /{id}/content so plain <img> tags (no auth header) work.
+                    // GET-only and single-segment; metadata (/{id}), /download,
+                    // /user/{userId} and upload stay behind the catch-all
+                    // authenticated() rule. Both versions listed because the
+                    // gateway authorizes the ORIGINAL request path before the
+                    // v1 RewritePath runs (Lore 2b8c4227).
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/media/*/content", "/api/v1/media/*/content").permitAll()
 
                     // GraphQL BFF endpoint — per-query auth is enforced inside the
                     // resolvers via @PreAuthorize. The HTTP layer must permit the
