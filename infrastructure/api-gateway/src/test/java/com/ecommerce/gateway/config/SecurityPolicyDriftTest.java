@@ -331,6 +331,42 @@ class SecurityPolicyDriftTest {
                 .isTrue();
     }
 
+    // --- Promo codes: POST /api/promotions/validate must be public on BOTH
+    //     versions (a GUEST enters a code in the cart before logging in), while
+    //     POST /api/promotions/apply — which increments usage counters and is a
+    //     service-to-service call from order-service's saga — must never be
+    //     reachable from the edge by an anonymous caller. ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/promotions/validate", "/api/v1/promotions/validate"})
+    void should_permitUnauthenticatedPost_when_promotionValidatePath(String path) {
+        assertThat(runPost(path).reachedBackend())
+                .as("POST %s must be public so a guest can check a promo code pre-login", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/promotions/validate", "/api/v1/promotions/validate"})
+    void should_denyUnauthenticatedGet_when_promotionValidatePath(String path) {
+        // The exemption is POST-only: a GET to the same path stays authenticated.
+        assertThat(runGet(path).denied401())
+                .as("GET %s must not inherit the POST-only validate exemption", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/promotions/apply",
+            "/api/v1/promotions/apply",
+            "/api/promotions",                    // admin create
+            "/api/promotions/validate/extra"      // exact-path exemption, no sub-paths
+    })
+    void should_denyUnauthenticatedPost_when_nonValidatePromotionPath(String path) {
+        assertThat(runPost(path).denied401())
+                .as("POST %s must stay authenticated (only the exact validate path is public)", path)
+                .isTrue();
+    }
+
     // --- Authenticated matrix: catalog writes require SCOPE_admin on both versions.
     //     A non-admin JWT must be FORBIDDEN (403); an admin JWT must pass through.
     //     PATCH is the red-first case: without a PATCH matcher it fell through to
