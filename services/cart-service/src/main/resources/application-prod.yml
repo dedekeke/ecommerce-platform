@@ -1,0 +1,28 @@
+# Production profile overrides.
+# Swagger / OpenAPI UI is disabled in production (kept enabled in dev/local/docker).
+# See k8s base ConfigMaps + helm values: SPRING_PROFILES_ACTIVE=prod.
+spring:
+  datasource:
+    hikari:
+      # cart's pool lives only in docker/local profiles; make it explicit and
+      # env-overridable in prod too, sized against the shared-Postgres budget
+      # (docs/db-connection-budget.md). Without this, prod falls back to Hikari
+      # defaults (max-pool-size 10), which the budget does not account for.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+# Log-level hardening for production (Scalability P1).
+# Silences verbose SQL / parameter-binding logging inherited from the base profile.
+logging:
+  level:
+    root: WARN
+    com.ecommerce: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN

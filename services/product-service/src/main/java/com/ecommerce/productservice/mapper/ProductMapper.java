@@ -6,6 +6,8 @@ import com.ecommerce.productservice.model.Category;
 import com.ecommerce.productservice.model.Product;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
+
 /**
  * Mapper for converting between Product entities and DTOs.
  */
@@ -63,7 +65,9 @@ public class ProductMapper {
             .category(product.getCategory() != null ? categoryMapper.toResponse(product.getCategory()) : null)
             .price(product.getPrice())
             .currency(product.getCurrency())
-            .images(product.getImages())
+            // Copy into a plain Set: product.getImages() is a Hibernate PersistentSet,
+            // which is not safe to cache/serialize (its @class can't round-trip).
+            .images(product.getImages() != null ? new HashSet<>(product.getImages()) : null)
             .dimensions(product.getDimensions())
             .stockQuantity(product.getStockQuantity())
             .active(product.getActive())

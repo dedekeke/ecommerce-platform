@@ -66,6 +66,28 @@
             <artifactId>spring-cloud-starter-openfeign</artifactId>
         </dependency>
 
+        <!-- Resilience4j — circuit breaker + bulkhead around the product-service
+             Feign call so a product-service brownout fails fast on the
+             add-to-cart / checkout funnel instead of burning the read timeout.
+             Versions are managed by the parent POM (resilience4j.version).
+             NOTE: unlike order-service we KEEP resilience4j-micrometer so the
+             breaker/bulkhead state and call metrics are exported via the
+             existing actuator/prometheus endpoint — valuable for alerting on
+             the checkout funnel. order-service's exclusion was a defensive
+             carry-over, not a documented incompatibility. -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-circuitbreaker</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
         <!-- Database -->
         <dependency>
             <groupId>org.postgresql</groupId>

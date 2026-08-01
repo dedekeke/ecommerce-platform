@@ -40,6 +40,8 @@ if [ -z "$SERVICE" ]; then
     echo "    - search-service"
     echo "    - media-service"
     echo "    - promotion-service"
+    echo "    - recommendation-service"
+    echo "    - review-service"
     exit 1
 fi
 
@@ -56,7 +58,7 @@ fi
 
 # Determine service path and profile
 case "$SERVICE" in
-    user-service|product-service|cart-service|order-service|payment-service|inventory-service|notification-service|search-service|media-service|promotion-service)
+    user-service|product-service|cart-service|order-service|payment-service|inventory-service|notification-service|search-service|media-service|promotion-service|recommendation-service|review-service)
         SERVICE_PATH="services/$SERVICE"
         PROFILE="local"
         ;;

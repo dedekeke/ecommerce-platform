@@ -14,11 +14,7 @@ import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.reactive.CorsConfigurationSource;
-import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -42,16 +38,21 @@ public class SecurityConfig {
     @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}")
     private String issuer;
 
+    @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:}")
+    private String jwkSetUri;
+
     @Value("${auth0.audience:}")
     private String audience;
 
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        // Disable CORS in security - handled by Spring Cloud Gateway globalcors config
+        http.cors(ServerHttpSecurity.CorsSpec::disable);
+
         if (!securityEnabled) {
             log.info("Security is DISABLED - all endpoints are public");
             http
                 .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable);
         } else {
             log.info("Security is ENABLED - JWT authentication required");
@@ -59,21 +60,127 @@ public class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                     // Public endpoints
                     .pathMatchers("/actuator/**").permitAll()
-                    .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/webjars/**").permitAll()
-                    .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-                    .pathMatchers(HttpMethod.GET, "/api/search/**").permitAll()
-                    .pathMatchers(HttpMethod.GET, "/api/promotions/public/**").permitAll()
+                    // Swagger UI assets are public; the per-service api-docs proxied via
+                    // /aggregate/<svc>/v3/api-docs require authentication in production so that
+                    // internal API schemas are not exposed without a valid JWT.
+                    .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/webjars/**").permitAll()
+                    .pathMatchers("/v3/api-docs", "/v3/api-docs/swagger-config").permitAll()
+                    .pathMatchers("/aggregate/*/v3/api-docs/**").authenticated()
+                    // Public catalog browsing — kept identical across the unversioned
+                    // and /api/v1 routes. The gateway authorizes the ORIGINAL request
+                    // path (the v1 RewritePath filter runs later during routing), so
+                    // each versioned prefix must be listed explicitly or it falls
+                    // through to anyExchange().authenticated() (Lore 2b8c4227).
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/products", "/api/products/**",
+                        "/api/v1/products", "/api/v1/products/**").permitAll()
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/categories", "/api/categories/**",
+                        "/api/v1/categories", "/api/v1/categories/**").permitAll()
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/search/**", "/api/v1/search/**").permitAll()
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/promotions/public/**", "/api/v1/promotions/public/**").permitAll()
+                    // Public media read path (ADR, PR#155): any media's bytes are
+                    // publicly readable by anyone who knows its opaque id — served
+                    // inline by media-service at /{id}/content so plain <img> tags
+                    // (no auth header) can render product imagery. A visibility
+                    // flag on Media is the gate before any private-media use case.
+                    // GET-only and single-segment; metadata (/{id}), /download,
+                    // /user/{userId} and upload stay behind the catch-all
+                    // authenticated() rule. Both versions listed because the
+                    // gateway authorizes the ORIGINAL request path before the
+                    // v1 RewritePath runs (Lore 2b8c4227).
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/media/*/content", "/api/v1/media/*/content").permitAll()
+
+                    // Promo-code validation — a GUEST types a code into the cart
+                    // before any login, so this POST must pass the gateway
+                    // unauthenticated (promotion-service also treats it as
+                    // permitAll). Scoped TIGHTLY: POST + the EXACT path only, on
+                    // both versions (the gateway authorizes the ORIGINAL request
+                    // path before the v1 RewritePath runs — Lore 2b8c4227).
+                    // Notably NOT opened: POST /api/promotions/apply, which
+                    // increments usage counters and is restricted to service
+                    // callers holding the internal service token; it stays behind
+                    // anyExchange().authenticated() here and is rejected by
+                    // promotion-service for any non-service caller.
+                    //
+                    // Being public makes validate a promo-code enumeration
+                    // oracle, so the promotion-validate route applies a tight
+                    // per-client-IP RequestRateLimiter (see application.yml).
+                    .pathMatchers(HttpMethod.POST,
+                        "/api/promotions/validate", "/api/v1/promotions/validate").permitAll()
+
+                    // GraphQL BFF endpoint — per-query auth is enforced inside the
+                    // resolvers via @PreAuthorize. The HTTP layer must permit the
+                    // POST so GraphQL field-level errors carry through to clients
+                    // rather than being short-circuited by the filter chain.
+                    .pathMatchers("/graphql", "/graphiql", "/graphiql/**").permitAll()
+
+                    // Stripe webhook — Stripe cannot present a JWT, so this POST must
+                    // pass the gateway unauthenticated and let payment-service
+                    // authenticate it by the Stripe-Signature HMAC. Without this the
+                    // catch-all below 401s Stripe at the edge and the webhook never
+                    // reaches the service. POST-only + exact paths so nothing else
+                    // under /api/payments/** is widened. Both the unversioned and the
+                    // /api/v1 path are listed because the gateway authorizes the
+                    // ORIGINAL request path before the v1 RewritePath runs during
+                    // routing (Lore 2b8c4227).
+                    .pathMatchers(HttpMethod.POST,
+                        "/api/payments/webhook", "/api/v1/payments/webhook").permitAll()
+
+                    // Guest checkout — an unauthenticated shopper cannot present a
+                    // JWT, so this POST must pass the gateway unauthenticated;
+                    // order-service derives the owning identity from the (validated)
+                    // email server-side. Scoped TIGHTLY: POST + the EXACT path only,
+                    // on both versions (the gateway authorizes the ORIGINAL request
+                    // path before the v1 RewritePath runs — Lore 2b8c4227). Every
+                    // other /api/orders/** call, and any other method on this path,
+                    // still falls through to anyExchange().authenticated(), so the
+                    // hardened authenticated create (POST /api/orders) is untouched.
+                    .pathMatchers(HttpMethod.POST,
+                        "/api/orders/guest", "/api/v1/orders/guest").permitAll()
+
+                    // Guest cart — the companion to guest checkout. An anonymous
+                    // shopper builds a cart without a JWT (identified by the
+                    // X-Guest-Email header, from which cart-service derives the
+                    // owner id). Only the guest-cart method+path pairs are opened,
+                    // on both versions (the gateway authorizes the ORIGINAL request
+                    // path before the v1 RewritePath runs — Lore 2b8c4227). Every
+                    // OTHER cart path — GET/POST/PUT/DELETE /api/cart, /api/cart/items,
+                    // and the authenticated POST /api/cart/merge — falls through to
+                    // anyExchange().authenticated(), so the authenticated cart is
+                    // untouched. Scoped tightly under the /guest subtree.
+                    .pathMatchers(HttpMethod.GET,
+                        "/api/cart/guest", "/api/v1/cart/guest").permitAll()
+                    .pathMatchers(HttpMethod.POST,
+                        "/api/cart/guest/items", "/api/v1/cart/guest/items").permitAll()
+                    .pathMatchers(HttpMethod.PUT,
+                        "/api/cart/guest/items/**", "/api/v1/cart/guest/items/**").permitAll()
+                    .pathMatchers(HttpMethod.DELETE,
+                        "/api/cart/guest/items/**", "/api/cart/guest/clear",
+                        "/api/v1/cart/guest/items/**", "/api/v1/cart/guest/clear").permitAll()
 
                     // Admin endpoints require admin role
                     .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
-                    .pathMatchers(HttpMethod.POST, "/api/products/**").hasAuthority("SCOPE_admin")
-                    .pathMatchers(HttpMethod.PUT, "/api/products/**").hasAuthority("SCOPE_admin")
-                    .pathMatchers(HttpMethod.DELETE, "/api/products/**").hasAuthority("SCOPE_admin")
+                    // Catalog writes require admin on BOTH versions. Any write method
+                    // not listed here would fall through to anyExchange().authenticated(),
+                    // letting a non-admin caller mutate the catalog (e.g. PATCH
+                    // /api/products/{id}/stock, PATCH /api/v1/categories/{id}/move).
+                    // PATCH is enumerated explicitly for exactly that reason.
+                    .pathMatchers(HttpMethod.POST, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.PUT, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.PATCH, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.DELETE, "/api/products/**", "/api/v1/products/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.POST, "/api/categories/**", "/api/v1/categories/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.PUT, "/api/categories/**", "/api/v1/categories/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.PATCH, "/api/categories/**", "/api/v1/categories/**").hasAuthority("SCOPE_admin")
+                    .pathMatchers(HttpMethod.DELETE, "/api/categories/**", "/api/v1/categories/**").hasAuthority("SCOPE_admin")
 
                     // All other endpoints require authentication
                     .anyExchange().authenticated()
                 )
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .oauth2ResourceServer(oauth2 -> oauth2
                     .jwt(jwt -> jwt.jwtDecoder(jwtDecoder()))
@@ -84,8 +191,25 @@ public class SecurityConfig {
     }
 
     /**
-     * JWT Decoder with custom validators for Auth0
-     * Only created when security is enabled
+     * JWT Decoder with custom validators for Auth0. Only created when security
+     * is enabled.
+     *
+     * <p>The decoder is built from the JWK Set URI rather than via
+     * {@code withIssuerLocation(issuer)}. The latter performs a blocking OIDC
+     * discovery HTTP call during bean construction (boot), so a transient Auth0
+     * outage at startup crashes the whole gateway. {@code withJwkSetUri(...)}
+     * defers the JWK fetch until the first token is decoded, so the gateway
+     * boots independently of issuer reachability (Lore bug 1b8953dc).
+     *
+     * <p>If {@code spring.security.oauth2.resourceserver.jwt.jwk-set-uri} is not
+     * explicitly configured we derive the standard JWKS endpoint from the
+     * issuer ({@code <issuer>/.well-known/jwks.json}) so existing configs that
+     * only set {@code issuer-uri} keep working without a boot-time call.
+     *
+     * <p>JWT validation is NOT weakened: the issuer claim is still enforced via
+     * {@link JwtValidators#createDefaultWithIssuer(String)} (which also applies
+     * the default timestamp checks) and the audience via {@link AudienceValidator},
+     * both at request time.
      */
     @Bean
     @ConditionalOnProperty(name = "security.enabled", havingValue = "true", matchIfMissing = true)
@@ -95,7 +219,7 @@ public class SecurityConfig {
         }
 
         NimbusReactiveJwtDecoder jwtDecoder = NimbusReactiveJwtDecoder
-            .withIssuerLocation(issuer)
+            .withJwkSetUri(resolveJwkSetUri())
             .build();
 
         OAuth2TokenValidator<Jwt> audienceValidator = new AudienceValidator(audience);
@@ -107,33 +231,12 @@ public class SecurityConfig {
         return jwtDecoder;
     }
 
-    /**
-     * CORS configuration for SPA frontends
-     */
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-
-        // Allow requests from frontend origins
-        configuration.setAllowedOrigins(Arrays.asList(
-            "http://localhost:3000",  // React Shell App
-            "http://localhost:5000",  // React Shell App (Vite default)
-            "http://localhost:5001",  // Product Catalog MFE
-            "http://localhost:5002",  // Cart MFE
-            "http://localhost:5003",  // Checkout MFE
-            "http://localhost:4200",  // User Dashboard MFE (Angular)
-            "http://localhost:4201"   // Admin Dashboard MFE (Angular)
-        ));
-
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
-        configuration.setAllowCredentials(true);
-        configuration.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-
-        return source;
+    private String resolveJwkSetUri() {
+        if (jwkSetUri != null && !jwkSetUri.isBlank()) {
+            return jwkSetUri;
+        }
+        String base = issuer.endsWith("/") ? issuer.substring(0, issuer.length() - 1) : issuer;
+        return base + "/.well-known/jwks.json";
     }
 
     /**

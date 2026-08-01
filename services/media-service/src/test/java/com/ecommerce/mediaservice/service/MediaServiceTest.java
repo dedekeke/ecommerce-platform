@@ -166,7 +166,7 @@ class MediaServiceTest {
         when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
 
         // When
-        MediaResponse response = mediaService.getMediaById(MEDIA_ID);
+        MediaResponse response = mediaService.getMediaById(MEDIA_ID, USER_ID, false);
 
         // Then
         assertThat(response).isNotNull();
@@ -182,9 +182,47 @@ class MediaServiceTest {
         when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.empty());
 
         // When/Then
-        assertThatThrownBy(() -> mediaService.getMediaById(MEDIA_ID))
+        assertThatThrownBy(() -> mediaService.getMediaById(MEDIA_ID, USER_ID, false))
                 .isInstanceOf(MediaNotFoundException.class)
                 .hasMessageContaining(MEDIA_ID);
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenGettingOtherUsersMedia() {
+        // Given - media owned by a different user; opaque-id endpoints must not
+        // leak existence, so ownership failure surfaces as 404, not 403.
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("secret.jpg")
+                .uploadedBy("different-user")
+                .build();
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+
+        // When/Then
+        assertThatThrownBy(() -> mediaService.getMediaById(MEDIA_ID, USER_ID, false))
+                .isInstanceOf(MediaNotFoundException.class)
+                .hasMessageContaining(MEDIA_ID);
+    }
+
+    @Test
+    void shouldAllowAdminToGetAnyMedia() {
+        // Given
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("secret.jpg")
+                .uploadedBy("different-user")
+                .build();
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+
+        // When
+        MediaResponse response = mediaService.getMediaById(MEDIA_ID, USER_ID, true);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.getId()).isEqualTo(MEDIA_ID);
+        assertThat(response.getUploadedBy()).isEqualTo("different-user");
     }
 
     @Test
@@ -194,6 +232,7 @@ class MediaServiceTest {
                 .id(MEDIA_ID)
                 .filename("test.jpg")
                 .storageUrl("/storage/stored-123.jpg")
+                .uploadedBy(USER_ID)
                 .build();
 
         Resource mockResource = mock(Resource.class);
@@ -202,11 +241,165 @@ class MediaServiceTest {
         when(fileStorageService.loadAsResource("stored-123.jpg")).thenReturn(mockResource);
 
         // When
-        Resource resource = mediaService.loadMediaFile(MEDIA_ID);
+        Resource resource = mediaService.loadMediaFile(MEDIA_ID, USER_ID, false);
 
         // Then
         assertThat(resource).isNotNull();
         verify(fileStorageService).loadAsResource("stored-123.jpg");
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenLoadingOtherUsersFile() {
+        // Given
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("secret.jpg")
+                .storageUrl("/storage/stored-123.jpg")
+                .uploadedBy("different-user")
+                .build();
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+
+        // When/Then
+        assertThatThrownBy(() -> mediaService.loadMediaFile(MEDIA_ID, USER_ID, false))
+                .isInstanceOf(MediaNotFoundException.class)
+                .hasMessageContaining(MEDIA_ID);
+
+        verify(fileStorageService, never()).loadAsResource(any());
+    }
+
+    @Test
+    void shouldAllowAdminToLoadAnyFile() {
+        // Given
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("secret.jpg")
+                .storageUrl("/storage/stored-123.jpg")
+                .uploadedBy("different-user")
+                .build();
+
+        Resource mockResource = mock(Resource.class);
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+        when(fileStorageService.loadAsResource("stored-123.jpg")).thenReturn(mockResource);
+
+        // When
+        Resource resource = mediaService.loadMediaFile(MEDIA_ID, USER_ID, true);
+
+        // Then
+        assertThat(resource).isNotNull();
+        verify(fileStorageService).loadAsResource("stored-123.jpg");
+    }
+
+    @Test
+    void shouldRejectSvgUpload() {
+        // Given - SVG is a scriptable document type and /content serves publicly;
+        // it was dropped from media.allowed-file-types (ADR, PR#155)
+        MultipartFile file = new MockMultipartFile(
+                "logo.svg",
+                "logo.svg",
+                "image/svg+xml",
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".getBytes()
+        );
+
+        // When/Then
+        assertThatThrownBy(() -> mediaService.uploadFile(file, USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("File type not allowed");
+
+        verifyNoInteractions(fileStorageService);
+        verify(mediaRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldGetPublicMediaByIdWithoutOwnershipCheck() {
+        // Given - owned by someone else; the public read path (product imagery)
+        // intentionally skips the ownership gate
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("product.jpg")
+                .contentType("image/jpeg")
+                .storageUrl("/storage/stored-123.jpg")
+                .uploadedBy("different-user")
+                .build();
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+
+        // When
+        MediaResponse response = mediaService.getPublicMediaById(MEDIA_ID);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.getId()).isEqualTo(MEDIA_ID);
+        assertThat(response.getContentUrl()).isEqualTo("/api/media/" + MEDIA_ID + "/content");
+    }
+
+    @Test
+    void shouldThrowWhenPublicMediaNotFound() {
+        // Given
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.empty());
+
+        // When/Then
+        assertThatThrownBy(() -> mediaService.getPublicMediaById(MEDIA_ID))
+                .isInstanceOf(MediaNotFoundException.class)
+                .hasMessageContaining(MEDIA_ID);
+    }
+
+    @Test
+    void shouldLoadPublicMediaFileWithoutOwnershipCheck() {
+        // Given
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("product.jpg")
+                .storageUrl("/storage/stored-123.jpg")
+                .uploadedBy("different-user")
+                .build();
+
+        Resource mockResource = mock(Resource.class);
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+        when(fileStorageService.loadAsResource("stored-123.jpg")).thenReturn(mockResource);
+
+        // When
+        Resource resource = mediaService.loadPublicMediaFile(MEDIA_ID);
+
+        // Then
+        assertThat(resource).isNotNull();
+        verify(fileStorageService).loadAsResource("stored-123.jpg");
+    }
+
+    @Test
+    void shouldThrowWhenPublicMediaFileNotFound() {
+        // Given
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.empty());
+
+        // When/Then
+        assertThatThrownBy(() -> mediaService.loadPublicMediaFile(MEDIA_ID))
+                .isInstanceOf(MediaNotFoundException.class)
+                .hasMessageContaining(MEDIA_ID);
+
+        verify(fileStorageService, never()).loadAsResource(any());
+    }
+
+    @Test
+    void shouldIncludeContentUrlInMediaResponse() {
+        // Given
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("test.jpg")
+                .contentType("image/jpeg")
+                .storageUrl("/storage/test.jpg")
+                .uploadedBy(USER_ID)
+                .build();
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+
+        // When
+        MediaResponse response = mediaService.getMediaById(MEDIA_ID, USER_ID, false);
+
+        // Then
+        assertThat(response.getDownloadUrl()).isEqualTo("/api/media/" + MEDIA_ID + "/download");
+        assertThat(response.getContentUrl()).isEqualTo("/api/media/" + MEDIA_ID + "/content");
     }
 
     @Test
@@ -281,7 +474,7 @@ class MediaServiceTest {
         when(mediaRepository.findByUploadedBy(USER_ID)).thenReturn(userMedia);
 
         // When
-        List<MediaResponse> responses = mediaService.getMediaByUser(USER_ID);
+        List<MediaResponse> responses = mediaService.getMediaByUser(USER_ID, USER_ID, false);
 
         // Then
         assertThat(responses).hasSize(2);
@@ -289,6 +482,39 @@ class MediaServiceTest {
         assertThat(responses.get(1).getId()).isEqualTo("2");
 
         verify(mediaRepository).findByUploadedBy(USER_ID);
+    }
+
+    @Test
+    void shouldThrowSecurityExceptionWhenListingOtherUsersMedia() {
+        // Given - the listing path is keyed on a caller-supplied userId (a known
+        // identifier, not an opaque resource id), so a cross-user attempt is a
+        // 403 authorization failure rather than a 404.
+
+        // When/Then
+        assertThatThrownBy(() -> mediaService.getMediaByUser("different-user", USER_ID, false))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("not authorized");
+
+        verify(mediaRepository, never()).findByUploadedBy(any());
+    }
+
+    @Test
+    void shouldAllowAdminToListAnyUsersMedia() {
+        // Given
+        List<Media> userMedia = Arrays.asList(
+                Media.builder().id("1").filename("file1.jpg").uploadedBy("different-user").build()
+        );
+
+        when(mediaRepository.findByUploadedBy("different-user")).thenReturn(userMedia);
+
+        // When
+        List<MediaResponse> responses = mediaService.getMediaByUser("different-user", USER_ID, true);
+
+        // Then
+        assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).getId()).isEqualTo("1");
+
+        verify(mediaRepository).findByUploadedBy("different-user");
     }
 
     @Test

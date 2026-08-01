@@ -16,6 +16,12 @@
     <description>Inventory and stock management service with gRPC support</description>
 
     <dependencies>
+        <!-- Shared logback base (single physical copy lives in common-logging) -->
+        <dependency>
+            <groupId>com.ecommerce</groupId>
+            <artifactId>common-logging</artifactId>
+        </dependency>
+
         <!-- Spring Boot Starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -96,6 +102,12 @@
             <artifactId>zipkin-reporter-brave</artifactId>
         </dependency>
 
+        <!-- Structured JSON logging (managed version in parent pom) -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -124,6 +136,12 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- H2 for fast in-memory JPA/outbox integration tests. -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

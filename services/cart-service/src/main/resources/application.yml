@@ -15,12 +15,78 @@ spring:
         initial-interval: 1000
         multiplier: 1.1
         max-interval: 2000
+    # Feign client timeouts — without these a slow/hung user-service would block
+    # cart threads on the abandoned-cart email resolution indefinitely.
+    # Spring Cloud 2023.0.x (OpenFeign 4.x) binds the spring.cloud.openfeign.* prefix.
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: ${FEIGN_DEFAULT_CONNECT_TIMEOUT_MS:2000}
+            readTimeout: ${FEIGN_DEFAULT_READ_TIMEOUT_MS:5000}
+          user-service:
+            connectTimeout: ${USER_SERVICE_CONNECT_TIMEOUT_MS:2000}
+            readTimeout: ${USER_SERVICE_READ_TIMEOUT_MS:3000}
+          # product-service sits on the add-to-cart / checkout funnel. Keep the
+          # read timeout tight so a brownout is caught quickly (and counted as a
+          # slow call by the circuit breaker) rather than blocking a request
+          # thread for the default 5s.
+          product-service:
+            connectTimeout: ${PRODUCT_SERVICE_CONNECT_TIMEOUT_MS:2000}
+            readTimeout: ${PRODUCT_SERVICE_READ_TIMEOUT_MS:2000}
+
+# Resilience4j — protects the product-service Feign call (via ProductServiceGateway).
+# Conventions mirror order-service: named "default" config + per-instance overrides,
+# every knob env-overridable. Values default to order-service's defaults.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: ${CB_DEFAULT_SLIDING_WINDOW_SIZE:10}
+        minimumNumberOfCalls: ${CB_DEFAULT_MIN_CALLS:5}
+        failureRateThreshold: ${CB_DEFAULT_FAILURE_RATE:50}
+        slowCallRateThreshold: ${CB_DEFAULT_SLOW_CALL_RATE:80}
+        # Must stay strictly BELOW the product-service Feign readTimeout (2000ms),
+        # otherwise a call always errors before it can be counted as "slow" and
+        # slow-call detection is dead.
+        slowCallDurationThreshold: ${CB_DEFAULT_SLOW_CALL_DURATION:1500ms}
+        waitDurationInOpenState: ${CB_DEFAULT_WAIT_IN_OPEN:30s}
+        permittedNumberOfCallsInHalfOpenState: ${CB_DEFAULT_HALF_OPEN_CALLS:3}
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # Record-all semantics: every exception counts as a failure EXCEPT the
+        # ignored ones. We deliberately do NOT use a recordExceptions allow-list:
+        # since @CircuitBreaker wraps @Bulkhead, a BulkheadFullException (and any
+        # other unavailability type) must count as a failure so the breaker can
+        # open on saturation. An allow-list would flip semantics and treat every
+        # unlisted exception as SUCCESS. Only genuine client answers are ignored:
+        # a 4xx (e.g. product-not-found) is a valid response, not an outage.
+        ignoreExceptions:
+          - feign.FeignException.FeignClientException
+    instances:
+      product-service:
+        baseConfig: default
+        failureRateThreshold: ${PRODUCT_CB_FAILURE_RATE:50}
+        waitDurationInOpenState: ${PRODUCT_CB_WAIT_IN_OPEN:20s}
+
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: ${BULKHEAD_DEFAULT_MAX_CONCURRENT:25}
+        maxWaitDuration: ${BULKHEAD_DEFAULT_MAX_WAIT:0ms}
+    instances:
+      product-service:
+        baseConfig: default
+        maxConcurrentCalls: ${PRODUCT_BULKHEAD_MAX_CONCURRENT:20}
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics,prometheus
+  health:
+    circuitbreakers:
+      enabled: true
   endpoint:
     health:
       show-details: always

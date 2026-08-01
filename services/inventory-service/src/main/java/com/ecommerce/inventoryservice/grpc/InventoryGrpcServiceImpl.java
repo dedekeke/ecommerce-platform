@@ -76,7 +76,8 @@ public class InventoryGrpcServiceImpl extends InventoryServiceGrpc.InventoryServ
             Map<String, Integer> productQuantities = request.getItemsList().stream()
                     .collect(Collectors.toMap(
                             CheckAvailabilityRequest::getProductId,
-                            CheckAvailabilityRequest::getQuantity
+                            CheckAvailabilityRequest::getQuantity,
+                            Integer::sum
                     ));
 
             Map<String, Boolean> availabilityMap = inventoryService.bulkCheckAvailability(productQuantities);
@@ -133,10 +134,18 @@ public class InventoryGrpcServiceImpl extends InventoryServiceGrpc.InventoryServ
             Map<String, Integer> productQuantities = request.getItemsList().stream()
                     .collect(Collectors.toMap(
                             StockItem::getProductId,
-                            StockItem::getQuantity
+                            StockItem::getQuantity,
+                            Integer::sum
                     ));
 
-            int expirationMinutes = request.getExpirationMinutes() > 0 ? request.getExpirationMinutes() : null;
+            // proto3 defaults expiration_minutes to 0 when the client omits it, and a
+            // negative value is meaningless as a TTL. In both cases pass null so the
+            // service applies its configured default TTL
+            // (inventory.reservation.default-expiration-minutes). A boxed Integer is
+            // required: a primitive int would unbox the null branch and throw NPE.
+            Integer expirationMinutes = request.getExpirationMinutes() > 0
+                    ? request.getExpirationMinutes()
+                    : null;
 
             List<InventoryReservation> reservations = inventoryService.bulkReserveStock(
                     request.getOrderId(),
@@ -283,6 +292,80 @@ public class InventoryGrpcServiceImpl extends InventoryServiceGrpc.InventoryServ
 
         } catch (Exception e) {
             log.error("Error updating stock: {}", e.getMessage(), e);
+            responseObserver.onError(e);
+        }
+    }
+
+    @Override
+    public void restoreStock(RestoreStockRequest request,
+                             StreamObserver<RestoreStockResponse> responseObserver) {
+        log.info("gRPC RestoreStock called: restorationId={} order={} items={}",
+                request.getRestorationId(), request.getOrderId(), request.getItemsCount());
+
+        try {
+            if (request.getRestorationId() == null || request.getRestorationId().isBlank()) {
+                responseObserver.onNext(RestoreStockResponse.newBuilder()
+                        .setSuccess(false)
+                        .setMessage("restoration_id is required")
+                        .build());
+                responseObserver.onCompleted();
+                return;
+            }
+            if (request.getItemsCount() == 0) {
+                responseObserver.onNext(RestoreStockResponse.newBuilder()
+                        .setSuccess(false)
+                        .setMessage("items must contain at least one entry")
+                        .setRestorationId(request.getRestorationId())
+                        .build());
+                responseObserver.onCompleted();
+                return;
+            }
+
+            Map<String, Integer> productQuantities = request.getItemsList().stream()
+                    .collect(Collectors.toMap(
+                            RestoreStockLineItem::getProductId,
+                            RestoreStockLineItem::getQuantity,
+                            Integer::sum
+                    ));
+
+            boolean restored = inventoryService.restoreStock(
+                    request.getRestorationId(),
+                    request.getOrderId(),
+                    request.getReason(),
+                    productQuantities
+            );
+
+            RestoreStockResponse response = RestoreStockResponse.newBuilder()
+                    .setSuccess(true)
+                    .setMessage(restored
+                            ? "Stock restored successfully"
+                            : "Restoration already applied (idempotent replay)")
+                    .setRestorationId(request.getRestorationId())
+                    .build();
+
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+
+        } catch (InventoryNotFoundException e) {
+            log.error("RestoreStock — inventory not found: {}", e.getMessage());
+            responseObserver.onNext(RestoreStockResponse.newBuilder()
+                    .setSuccess(false)
+                    .setMessage(e.getMessage())
+                    .setRestorationId(request.getRestorationId())
+                    .build());
+            responseObserver.onCompleted();
+
+        } catch (IllegalArgumentException e) {
+            log.error("RestoreStock — invalid argument: {}", e.getMessage());
+            responseObserver.onNext(RestoreStockResponse.newBuilder()
+                    .setSuccess(false)
+                    .setMessage(e.getMessage())
+                    .setRestorationId(request.getRestorationId())
+                    .build());
+            responseObserver.onCompleted();
+
+        } catch (Exception e) {
+            log.error("RestoreStock — unexpected error", e);
             responseObserver.onError(e);
         }
     }

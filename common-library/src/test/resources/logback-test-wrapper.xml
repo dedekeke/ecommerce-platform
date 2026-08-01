@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Test-only wrapper that mirrors a service's logback-spring.xml so the shared
+     base can be exercised through Spring Boot's Joran extension (springProfile). -->
+<configuration>
+    <include resource="logback-includes/logging-base.xml"/>
+</configuration>

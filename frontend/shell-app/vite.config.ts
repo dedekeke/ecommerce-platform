@@ -1,10 +1,19 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import federation from '@originjs/vite-plugin-federation'
+import { resolve } from 'path'
+import { mockAuthBuildGuard } from './mockAuthBuildGuard'
 
 // https://vite.dev/config/
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@ecommerce/shared-ui': resolve(__dirname, '../shared-ui/src'),
+    },
+  },
   plugins: [
+    // Fails any `vite build` when VITE_AUTH_MODE=mock (MOCK_AUTH_PRODUCTION_GUARD).
+    mockAuthBuildGuard(),
     react(),
     federation({
       name: 'shell',
@@ -23,6 +32,27 @@ export default defineConfig({
     target: 'esnext',
     minify: false,
     cssCodeSplit: false,
+    // §1.6 Asset hashing for long-lived CDN caching. Vite hashes by default;
+    // explicit `[name].[hash]` patterns document the contract that nginx
+    // (see infrastructure/cdn/nginx-static.conf) relies on for the
+    // immutable Cache-Control header on /assets/*.
+    assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        // manualChunks split heavy vendor libs out of the main entry so
+        // unrelated app changes don't bust the vendor cache. We do NOT
+        // chunk react/react-dom/react-router-dom because they are declared
+        // as `shared` in the federation plugin and must stay in the shell.
+        manualChunks: {
+          'mui-vendor': ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+          'auth-vendor': ['@auth0/auth0-react'],
+          'motion-vendor': ['framer-motion'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

@@ -12,6 +12,22 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    # Producer tuning rationale (applied 2026-04-30, see SCALING_AND_IMPROVEMENTS.md §2.6):
+    #   notification-service publishes admin-notified / stock-back saga events from
+    #   StockAlertListener. Throughput is modest but the same batching + compression
+    #   benefits apply: smaller broker footprint and idempotent retries.
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      compression-type: zstd
+      batch-size: 65536
+      linger-ms: 5
+      buffer-memory: 67108864
+      properties:
+        max.in.flight.requests.per.connection: 5
+        enable.idempotence: true
     consumer:
       group-id: notification-service
       auto-offset-reset: earliest
@@ -32,6 +48,11 @@ spring:
           starttls:
             enable: true
             required: true
+          # Bound timeouts so a stalled SMTP peer can't hang the sending thread
+          # (and, via the retry scheduler, the whole @Scheduled pipeline) forever.
+          connectiontimeout: ${MAIL_SMTP_CONNECTION_TIMEOUT:5000}
+          timeout: ${MAIL_SMTP_TIMEOUT:5000}
+          writetimeout: ${MAIL_SMTP_WRITE_TIMEOUT:5000}
         transport:
           protocol: smtp
     default-encoding: UTF-8
@@ -57,9 +78,18 @@ notification:
     max-attempts: 3
     initial-delay-minutes: 1
   sms:
-    provider: ${SMS_PROVIDER}
-    api-key: ${SMS_API_KEY}
-    api-secret: ${SMS_API_SECRET}
+    # Provider selection: 'noop' (default, logs only) or 'twilio' (real). Credentials env-only.
+    provider: ${SMS_PROVIDER:noop}
+    twilio:
+      account-sid: ${TWILIO_ACCOUNT_SID:}
+      auth-token: ${TWILIO_AUTH_TOKEN:}
+      from-number: ${TWILIO_FROM_NUMBER:}
+  push:
+    # Provider selection: 'noop' (default, logs only) or 'fcm' (Firebase Cloud Messaging).
+    provider: ${PUSH_PROVIDER:noop}
+    fcm:
+      credentials-path: ${FCM_CREDENTIALS_PATH:}
+      project-id: ${FCM_PROJECT_ID:}
   email:
     from: ${EMAIL_FROM}
     from-name: ${EMAIL_FROM_NAME}

@@ -1,0 +1,8 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/orderdb
+    username: <your-postgres-user>
+    password: <your-postgres-password>
+
+security:
+  enabled: false

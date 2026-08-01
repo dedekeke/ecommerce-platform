@@ -1,0 +1,32 @@
+# Production profile overrides.
+# Swagger / OpenAPI UI is disabled in production (kept enabled in dev/local/docker).
+# See k8s base ConfigMaps + helm values: SPRING_PROFILES_ACTIVE=prod.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+# Log-level hardening for production (Scalability P1).
+# Gateway is reactive (no Hibernate); pin the noisy routing/security/netty loggers
+# that default to DEBUG in the base profile.
+logging:
+  level:
+    root: WARN
+    com.ecommerce: INFO
+    # Exact-key override: base sets com.ecommerce.gateway: DEBUG,
+    # which logback resolves independently of the com.ecommerce ancestor above.
+    com.ecommerce.gateway: INFO
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: INFO
+    org.springframework.web.reactive: INFO
+    reactor.netty: INFO
+# Distributed-trace sampling — lowered for production (Perf P2).
+# Full-rate (1.0) sampling inherited from the base profile floods the single
+# Zipkin collector + single-node Elasticsearch backend under load. Env-tunable
+# (TRACING_SAMPLING_PROBABILITY_PROD) so ops can retune without a redeploy;
+# defaults to 10%. See docs/TRACING_SETUP.md.
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY_PROD:0.1}

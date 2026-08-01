@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -20,12 +21,14 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -36,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 @Testcontainers
 class UserControllerIntegrationTest {
 
@@ -98,7 +102,9 @@ class UserControllerIntegrationTest {
                                 .authorities(new SimpleGrantedAuthority("SCOPE_read:profile"))))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.auth0Id", is(auth0Id)))
+                // UserProfileResponse exposes the public id (auth0Id is internal
+                // and intentionally not serialized).
+                .andExpect(jsonPath("$.id", is(testUser.getId().toString())))
                 .andExpect(jsonPath("$.email", is("test@example.com")))
                 .andExpect(jsonPath("$.firstName", is("John")))
                 .andExpect(jsonPath("$.lastName", is("Doe")))
@@ -120,7 +126,8 @@ class UserControllerIntegrationTest {
                                 .authorities(new SimpleGrantedAuthority("SCOPE_read:profile"))))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.auth0Id", is(newAuth0Id)))
+                // auth0Id is internal and not serialized; assert returned fields.
+                .andExpect(jsonPath("$.id", notNullValue()))
                 .andExpect(jsonPath("$.email", is("newuser@example.com")))
                 .andExpect(jsonPath("$.firstName", is("Jane")))
                 .andExpect(jsonPath("$.lastName", is("Smith")));
@@ -197,23 +204,197 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void testGetUserById_existingUser_shouldReturnProfile() throws Exception {
+    void testCreateUser_nonAdminScope_shouldReturnForbidden() throws Exception {
+        // Authz guard: an authenticated but non-admin caller must not be able to
+        // provision arbitrary user rows. Leaving POST /api/users open lets any
+        // caller pre-seed a victim's email with a bogus auth0Id and block that
+        // victim's genuine first login (unique-constraint DoS).
+        String payload = objectMapper.writeValueAsString(Map.of(
+                "auth0Id", "auth0|attacker-created",
+                "email", "victim@example.com",
+                "firstName", "Vic",
+                "lastName", "Tim"));
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|attacker"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_write:profile")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isForbidden());
+
+        // And nothing was persisted.
+        assertThat(userRepository.findByEmail("victim@example.com")).isEmpty();
+    }
+
+    @Test
+    void testCreateUser_unauthenticated_shouldBeDenied() throws Exception {
+        String payload = objectMapper.writeValueAsString(Map.of(
+                "auth0Id", "auth0|anon-created",
+                "email", "anon@example.com"));
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().is4xxClientError())
+                .andExpect(result -> {
+                    int status = result.getResponse().getStatus();
+                    org.assertj.core.api.Assertions.assertThat(status).isIn(401, 403);
+                });
+    }
+
+    @Test
+    void testCreateUser_adminScope_shouldCreateUser() throws Exception {
+        String payload = objectMapper.writeValueAsString(Map.of(
+                "auth0Id", "auth0|provisioned789",
+                "email", "provisioned@example.com",
+                "firstName", "Pro",
+                "lastName", "Visioned"));
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|admin"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.email", is("provisioned@example.com")))
+                .andExpect(jsonPath("$.firstName", is("Pro")))
+                .andExpect(jsonPath("$.lastName", is("Visioned")));
+
+        assertThat(userRepository.findByAuth0Id("auth0|provisioned789")).isPresent();
+    }
+
+    @Test
+    void testCreateUser_adminScope_emailCollision_shouldReturnConflict() throws Exception {
+        // An admin provisioning a row whose email already belongs to a different
+        // account must get a controlled 409 — never an opaque 500 from the DB
+        // unique constraint.
+        String payload = objectMapper.writeValueAsString(Map.of(
+                "auth0Id", "auth0|different-id",
+                "email", "test@example.com", // already owned by testUser (auth0|test123)
+                "firstName", "Dupe",
+                "lastName", "Email"));
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|admin"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("EMAIL_ALREADY_REGISTERED")));
+
+        // The pre-existing account is untouched: still owned by the original sub.
+        User owner = userRepository.findByEmail("test@example.com").orElseThrow();
+        assertThat(owner.getAuth0Id()).isEqualTo(auth0Id);
+    }
+
+    @Test
+    void testGetUserById_adminScope_shouldReturnProfile() throws Exception {
         mockMvc.perform(get("/api/users/" + testUser.getId())
                         .with(jwt()
                                 .jwt(jwt -> jwt.subject("auth0|admin"))
-                                .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.id", is(testUser.getId().intValue())))
+                // id is serialized as a String in UserProfileResponse.
+                .andExpect(jsonPath("$.id", is(testUser.getId().toString())))
                 .andExpect(jsonPath("$.email", is("test@example.com")));
     }
 
     @Test
-    void testGetUserById_nonExistentUser_shouldReturnNotFound() throws Exception {
+    void testGetUserById_nonExistentUser_withAdminScope_shouldReturnNotFound() throws Exception {
         mockMvc.perform(get("/api/users/99999")
                         .with(jwt()
                                 .jwt(jwt -> jwt.subject("auth0|admin"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testGetUserById_nonAdminScope_shouldReturnForbidden() throws Exception {
+        // IDOR guard: an authenticated but non-admin caller must not be able to
+        // read another user's full profile by internal id.
+        mockMvc.perform(get("/api/users/" + testUser.getId())
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|attacker"))
                                 .authorities(new SimpleGrantedAuthority("SCOPE_read:users"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testGetUserById_selfServiceProfileScope_shouldReturnForbidden() throws Exception {
+        // read:profile is the self-service scope; it must not unlock the admin
+        // by-id lookup. Self reads must go through GET /api/users/me.
+        mockMvc.perform(get("/api/users/" + testUser.getId())
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject(auth0Id))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_read:profile"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testGetUserById_unauthenticated_shouldBeDenied() throws Exception {
+        // No bearer token: the request must never reach the handler. Under
+        // method security the @PreAuthorize interceptor denies the anonymous
+        // principal with 403; the URL-level entry point yields 401. Either way
+        // access to PII is refused, so we assert the request is rejected (not
+        // 2xx) rather than pinning a brittle exact code dependent on filter
+        // ordering.
+        mockMvc.perform(get("/api/users/" + testUser.getId()))
+                .andExpect(status().is4xxClientError())
+                .andExpect(result -> {
+                    int status = result.getResponse().getStatus();
+                    org.assertj.core.api.Assertions.assertThat(status).isIn(401, 403);
+                });
+    }
+
+    @Test
+    void testGetUserByAuth0Id_adminScope_shouldReturnMinimalContact() throws Exception {
+        mockMvc.perform(get("/api/users/by-auth0/{sub}", auth0Id)
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|caller"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.email", is("test@example.com")))
+                .andExpect(jsonPath("$.fullName", is("John Doe")))
+                // PII fields must NOT leak through this internal endpoint
+                .andExpect(jsonPath("$.id").doesNotExist())
+                .andExpect(jsonPath("$.role").doesNotExist())
+                .andExpect(jsonPath("$.phoneNumber").doesNotExist())
+                .andExpect(jsonPath("$.active").doesNotExist())
+                .andExpect(jsonPath("$.emailVerified").doesNotExist());
+    }
+
+    @Test
+    void testGetUserByAuth0Id_internalServiceScope_shouldReturnContact() throws Exception {
+        mockMvc.perform(get("/api/users/by-auth0/{sub}", auth0Id)
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|caller"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_internal:service"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email", is("test@example.com")))
+                .andExpect(jsonPath("$.fullName", is("John Doe")));
+    }
+
+    @Test
+    void testGetUserByAuth0Id_insufficientScope_shouldReturnForbidden() throws Exception {
+        mockMvc.perform(get("/api/users/by-auth0/{sub}", auth0Id)
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|caller"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_read:profile"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testGetUserByAuth0Id_nonExistentUser_shouldReturnNotFound() throws Exception {
+        mockMvc.perform(get("/api/users/by-auth0/{sub}", "auth0|ghost")
+                        .with(jwt()
+                                .jwt(jwt -> jwt.subject("auth0|caller"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isNotFound());
     }
 

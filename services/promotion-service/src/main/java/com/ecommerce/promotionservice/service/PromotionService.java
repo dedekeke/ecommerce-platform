@@ -1,6 +1,7 @@
 package com.ecommerce.promotionservice.service;
 
 import com.ecommerce.promotionservice.dto.*;
+import com.ecommerce.promotionservice.event.PromotionEventPublisher;
 import com.ecommerce.promotionservice.exception.PromotionCodeAlreadyExistsException;
 import com.ecommerce.promotionservice.exception.PromotionNotFoundException;
 import com.ecommerce.promotionservice.mapper.PromotionMapper;
@@ -27,6 +28,7 @@ public class PromotionService {
 
     private final PromotionRepository promotionRepository;
     private final PromotionMapper promotionMapper;
+    private final PromotionEventPublisher promotionEventPublisher;
 
     public PromotionResponse createPromotion(PromotionRequest request) {
         log.info("Creating promotion with code: {}", request.getCode());
@@ -37,6 +39,8 @@ public class PromotionService {
 
         Promotion promotion = promotionMapper.toEntity(request);
         Promotion saved = promotionRepository.save(promotion);
+
+        promotionEventPublisher.publishPromotionCreated(saved);
 
         log.info("Promotion created successfully with id: {}", saved.getId());
         return promotionMapper.toResponse(saved);
@@ -56,7 +60,7 @@ public class PromotionService {
     }
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "promotions", key = "#id")
+    @Cacheable(value = "promotions", key = "#id", sync = true)
     public PromotionResponse getPromotionById(Long id) {
         log.debug("Fetching promotion with id: {}", id);
 
@@ -67,7 +71,7 @@ public class PromotionService {
     }
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "promotions", key = "'code:' + #code")
+    @Cacheable(value = "promotions", key = "'code:' + #code", sync = true)
     public PromotionResponse getPromotionByCode(String code) {
         log.debug("Fetching promotion with code: {}", code);
 
@@ -78,7 +82,7 @@ public class PromotionService {
     }
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "activePromotions")
+    @Cacheable(value = "activePromotions", sync = true)
     public List<PromotionResponse> getAllActivePromotions() {
         log.debug("Fetching all active promotions");
 
@@ -154,6 +158,15 @@ public class PromotionService {
                 .build();
     }
 
+    /**
+     * Applies a promotion and increments its usage counter. The increment is a
+     * single atomic conditional UPDATE ({@link PromotionRepository#redeemByCode})
+     * that both checks {@code currentUses < maxUses} and increments in one SQL
+     * statement, so concurrent redemptions of the same limited-use code are
+     * serialized by the row lock and the cap can never be exceeded (money loss).
+     * A zero row count means the code was exhausted between validation and
+     * redemption, so we reject.
+     */
     @CacheEvict(value = {"promotions", "activePromotions"}, allEntries = true)
     public DiscountResult applyPromotion(PromotionValidationRequest request) {
         log.info("Applying promotion with code: {}", request.getCode());
@@ -165,16 +178,19 @@ public class PromotionService {
             return validationResult;
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        Promotion promotion = promotionRepository.findValidPromotionByCode(request.getCode(), now)
-                .orElseThrow(() -> new PromotionNotFoundException(request.getCode()));
+        int redeemed = promotionRepository.redeemByCode(request.getCode(), LocalDateTime.now());
 
-        promotion.incrementUsage();
-        promotionRepository.save(promotion);
+        if (redeemed == 0) {
+            log.warn("Promotion usage limit reached or no longer valid for code: {}", request.getCode());
+            return DiscountResult.builder()
+                    .valid(false)
+                    .message("Promotion has reached its maximum usage limit")
+                    .promotionCode(request.getCode())
+                    .promotionName(validationResult.getPromotionName())
+                    .build();
+        }
 
-        log.info("Promotion applied successfully. Code: {}, New usage count: {}",
-                promotion.getCode(), promotion.getCurrentUses());
-
+        log.info("Promotion applied successfully. Code: {}", request.getCode());
         return validationResult;
     }
 

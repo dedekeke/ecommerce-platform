@@ -12,6 +12,10 @@ service InventoryService {
   rpc CommitReservation(CommitReservationRequest) returns (CommitReservationResponse);
   rpc ReleaseReservation(ReleaseReservationRequest) returns (ReleaseReservationResponse);
   rpc CheckAvailability(CheckAvailabilityRequest) returns (CheckAvailabilityResponse);
+  // Restore stock for refunded items. Used by the refund-saga to put returned
+  // units back into available inventory. Must be idempotent — callers may
+  // retry after a recovery so the server should de-duplicate by restorationId.
+  rpc RestoreStock(RestoreStockRequest) returns (RestoreStockResponse);
 }
 
 // Reserve Stock
@@ -65,4 +69,20 @@ message CheckAvailabilityResponse {
   string message = 2;
   bool all_available = 3;
   repeated string unavailable_products = 4;
+}
+
+// Restore Stock — used by refund saga to return units to availability.
+// `restoration_id` is the saga-generated idempotency key; the server SHOULD
+// short-circuit if it has seen this id before.
+message RestoreStockRequest {
+  string restoration_id = 1;
+  string order_id = 2;
+  repeated StockItem items = 3;
+  string reason = 4;
+}
+
+message RestoreStockResponse {
+  bool success = 1;
+  string message = 2;
+  string restoration_id = 3;
 }

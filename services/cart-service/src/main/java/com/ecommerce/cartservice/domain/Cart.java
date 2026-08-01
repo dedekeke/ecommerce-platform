@@ -31,7 +31,9 @@ import java.util.List;
 @Table(name = "carts", indexes = {
     @Index(name = "idx_user_id", columnList = "user_id"),
     @Index(name = "idx_status", columnList = "status"),
-    @Index(name = "idx_expires_at", columnList = "expires_at")
+    @Index(name = "idx_expires_at", columnList = "expires_at"),
+    // V2__Add_perf_indexes — see docs/DB_INDEX_AUDIT.md
+    @Index(name = "idx_cart_status_updated", columnList = "status, updated_at")
 })
 @EntityListeners(AuditingEntityListener.class)
 @Data
@@ -50,6 +52,15 @@ public class Cart {
      */
     @Column(name = "user_id", nullable = false, length = 100)
     private String userId;
+
+    /**
+     * Shopper email, denormalised from user-service on first add-to-cart.
+     * Lets the AbandonedCartScanner emit cart.abandoned events with a
+     * recipient without each scan re-querying user-service. May be null if
+     * the lookup failed; the scanner/notification-service degrade gracefully.
+     */
+    @Column(name = "user_email", length = 255)
+    private String userEmail;
 
     /**
      * Cart items
@@ -87,6 +98,14 @@ public class Cart {
      */
     @Column(name = "expires_at")
     private Instant expiresAt;
+
+    /**
+     * Last time an abandonment reminder email was queued for this cart.
+     * Used by {@code AbandonedCartScanner} to enforce a 7-day cool-off so
+     * the same shopper isn't pestered every night.
+     */
+    @Column(name = "last_abandonment_reminder_at")
+    private Instant lastAbandonmentReminderAt;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)

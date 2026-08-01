@@ -2,8 +2,10 @@ package com.ecommerce.inventoryservice.service;
 
 import com.ecommerce.inventoryservice.domain.entity.Inventory;
 import com.ecommerce.inventoryservice.domain.entity.InventoryReservation;
+import com.ecommerce.inventoryservice.domain.entity.InventoryRestoration;
 import com.ecommerce.inventoryservice.domain.enums.InventoryStatus;
 import com.ecommerce.inventoryservice.domain.enums.ReservationStatus;
+import com.ecommerce.inventoryservice.event.InventoryStockChangedEvent;
 import com.ecommerce.inventoryservice.event.InventoryUpdatedEvent;
 import com.ecommerce.inventoryservice.event.StockLowEvent;
 import com.ecommerce.inventoryservice.exception.InsufficientStockException;
@@ -12,16 +14,25 @@ import com.ecommerce.inventoryservice.exception.InvalidReservationException;
 import com.ecommerce.inventoryservice.exception.ReservationNotFoundException;
 import com.ecommerce.inventoryservice.repository.InventoryRepository;
 import com.ecommerce.inventoryservice.repository.InventoryReservationRepository;
+import com.ecommerce.inventoryservice.repository.InventoryRestorationRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -31,10 +42,23 @@ public class InventoryService {
 
     private final InventoryRepository inventoryRepository;
     private final InventoryReservationRepository reservationRepository;
+    private final InventoryRestorationRepository restorationRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final PlatformTransactionManager transactionManager;
+
+    /**
+     * Lazily-built template that runs each expired-reservation release in its
+     * OWN (REQUIRES_NEW) transaction, so one failing row cannot roll back or
+     * block the rows released before/after it in the same job pass.
+     */
+    private TransactionTemplate requiresNewTx;
 
     @Value("${inventory.reservation.default-expiration-minutes:15}")
     private int defaultExpirationMinutes;
+
+    @Value("${inventory.reservation.expired-release-batch-size:200}")
+    private int expiredReleaseBatchSize;
 
     private static final String INVENTORY_UPDATED_TOPIC = "inventory-updated";
     private static final String STOCK_LOW_TOPIC = "stock-low";
@@ -277,24 +301,126 @@ public class InventoryService {
     }
 
     /**
-     * Auto-release expired reservations (scheduled job)
+     * Restore stock for refunded items. Idempotent on {@code restorationId}:
+     * if the same id has been processed before, this returns {@code false}
+     * without touching inventory or publishing events.
+     *
+     * @return {@code true} if stock was actually restored, {@code false} on
+     *         a deduplicated replay.
      */
     @Transactional
+    public boolean restoreStock(String restorationId,
+                                String orderId,
+                                String reason,
+                                Map<String, Integer> productQuantities) {
+        if (restorationId == null || restorationId.isBlank()) {
+            throw new IllegalArgumentException("restorationId is required");
+        }
+        if (productQuantities == null || productQuantities.isEmpty()) {
+            throw new IllegalArgumentException("productQuantities must contain at least one entry");
+        }
+
+        if (restorationRepository.existsById(restorationId)) {
+            log.warn("RestoreStock replay detected for restorationId={} — skipping", restorationId);
+            return false;
+        }
+
+        for (Map.Entry<String, Integer> entry : productQuantities.entrySet()) {
+            String productId = entry.getKey();
+            Integer qty = entry.getValue();
+            if (qty == null || qty <= 0) {
+                throw new IllegalArgumentException(
+                        "Quantity for product " + productId + " must be positive");
+            }
+
+            Inventory inventory = inventoryRepository.findByProductIdForUpdate(productId)
+                    .orElseThrow(() -> new InventoryNotFoundException(
+                            "Inventory not found for product: " + productId));
+
+            inventory.restock(qty);
+            inventoryRepository.save(inventory);
+            publishInventoryUpdatedEvent(inventory, "RESTOCK",
+                    "Refund restoration: " + (reason == null ? "Customer refund" : reason));
+        }
+
+        restorationRepository.save(InventoryRestoration.builder()
+                .restorationId(restorationId)
+                .orderId(orderId)
+                .reason(reason)
+                .itemsCount(productQuantities.size())
+                .build());
+
+        log.info("RestoreStock applied: restorationId={} order={} items={}",
+                restorationId, orderId, productQuantities.size());
+        return true;
+    }
+
+    /**
+     * Auto-release expired reservations (scheduled job).
+     *
+     * <p>Deliberately NOT method-level {@code @Transactional}: each reservation
+     * is released in its own {@code REQUIRES_NEW} transaction
+     * ({@link #releaseSingleExpiredReservation}). A single poison row therefore
+     * neither rolls back the healthy rows released alongside it nor holds the
+     * {@code SELECT ... FOR UPDATE} locks for the whole run.
+     *
+     * <p>Progress guarantee / termination: rows that fail to release are
+     * recorded in {@code failedIds} and excluded from subsequent fetches. Every
+     * fetched row is thus removed from the eligible set each pass — either it
+     * flips to {@code EXPIRED} (released) or it is excluded (failed) — so the
+     * working set strictly shrinks and the loop always terminates. This is what
+     * lets healthy, later-expiring rows behind a persistently-failing head row
+     * still get released instead of being head-of-line blocked forever.
+     */
     public int releaseExpiredReservations() {
         log.info("Checking for expired reservations...");
 
-        List<InventoryReservation> expiredReservations =
-                reservationRepository.findExpiredReservations(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        Pageable batch = PageRequest.of(0, expiredReleaseBatchSize);
+        Set<String> failedIds = new HashSet<>();
+        int totalReleased = 0;
 
-        if (expiredReservations.isEmpty()) {
-            log.info("No expired reservations found");
-            return 0;
+        while (true) {
+            List<InventoryReservation> expired = failedIds.isEmpty()
+                    ? reservationRepository.findExpiredReservations(now, batch)
+                    : reservationRepository.findExpiredReservationsExcluding(now, failedIds, batch);
+            if (expired.isEmpty()) {
+                break;
+            }
+
+            for (InventoryReservation reservation : expired) {
+                if (releaseSingleExpiredReservation(reservation)) {
+                    totalReleased++;
+                } else {
+                    // Exclude from the next fetch so a poison row at the head of
+                    // the expiresAt ordering cannot block the rows behind it.
+                    failedIds.add(reservation.getId());
+                }
+            }
+
+            // A partial page means we reached the tail of the eligible rows;
+            // failed rows stay parked in failedIds and get retried on the next
+            // scheduled run (when a transient failure may have cleared).
+            if (expired.size() < expiredReleaseBatchSize) {
+                break;
+            }
         }
 
-        log.info("Found {} expired reservations", expiredReservations.size());
+        if (totalReleased == 0) {
+            log.info("No expired reservations released");
+        } else {
+            log.info("Released {} expired reservations", totalReleased);
+        }
+        if (!failedIds.isEmpty()) {
+            log.warn("{} expired reservations could not be released this run; will retry next run",
+                    failedIds.size());
+        }
+        return totalReleased;
+    }
 
-        for (InventoryReservation reservation : expiredReservations) {
-            try {
+    private boolean releaseSingleExpiredReservation(InventoryReservation reservation) {
+        try {
+            return Boolean.TRUE.equals(requiresNewTx().execute(status -> {
                 Inventory inventory = inventoryRepository.findByProductIdForUpdate(reservation.getProductId())
                         .orElseThrow(() -> new InventoryNotFoundException("Inventory not found for product: " + reservation.getProductId()));
 
@@ -307,12 +433,21 @@ public class InventoryService {
                 publishInventoryUpdatedEvent(inventory, "EXPIRE", "Reservation expired: " + reservation.getId());
 
                 log.info("Released expired reservation: {}", reservation.getId());
-            } catch (Exception e) {
-                log.error("Error releasing reservation {}: {}", reservation.getId(), e.getMessage(), e);
-            }
+                return true;
+            }));
+        } catch (Exception e) {
+            log.error("Error releasing reservation {}: {}", reservation.getId(), e.getMessage(), e);
+            return false;
         }
+    }
 
-        return expiredReservations.size();
+    private TransactionTemplate requiresNewTx() {
+        if (requiresNewTx == null) {
+            TransactionTemplate template = new TransactionTemplate(transactionManager);
+            template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            requiresNewTx = template;
+        }
+        return requiresNewTx;
     }
 
     /**
@@ -352,6 +487,36 @@ public class InventoryService {
             log.debug("Published InventoryUpdatedEvent for product: {}", inventory.getProductId());
         } catch (Exception e) {
             log.error("Failed to publish InventoryUpdatedEvent: {}", e.getMessage(), e);
+        }
+
+        publishStockChangedSpringEvent(inventory, /*previousAvailable*/ null);
+    }
+
+    /**
+     * In-process broadcast for the SSE fan-out. Independent of Kafka so a
+     * temporarily down broker does not block real-time UI updates.
+     *
+     * @param previousAvailable previous available quantity if known; otherwise
+     *                          the current value is reused so the payload
+     *                          stays well-formed.
+     */
+    private void publishStockChangedSpringEvent(Inventory inventory, Integer previousAvailable) {
+        if (applicationEventPublisher == null) {
+            return; // Defensive: in unit tests built without the publisher.
+        }
+        try {
+            int current = inventory.getAvailableQuantity();
+            int previous = previousAvailable != null ? previousAvailable : current;
+            applicationEventPublisher.publishEvent(InventoryStockChangedEvent.builder()
+                    .productId(inventory.getProductId())
+                    .sku(inventory.getSku())
+                    .availableQty(current)
+                    .previousQty(previous)
+                    .timestamp(LocalDateTime.now())
+                    .build());
+        } catch (Exception ex) {
+            log.warn("Failed to publish InventoryStockChangedEvent for product {}: {}",
+                    inventory.getProductId(), ex.getMessage());
         }
     }
 

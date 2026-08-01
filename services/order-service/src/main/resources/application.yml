@@ -6,16 +6,27 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE}
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL}
-    username: ${SPRING_DATASOURCE_USERNAME}
-    password: ${SPRING_DATASOURCE_PASSWORD}
+    url: ${ORDER_DB_URL}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 20000
-      idle-timeout: 300000
-      max-lifetime: 1200000
+      # Env-overridable pool (docs/db-connection-budget.md); tune without rebuild.
+      # Largest pool: OrderCreationSaga is @Transactional and holds this connection
+      # across synchronous gRPC/REST calls to cart/promotion/payment/inventory plus a
+      # Kafka publish, so a connection is pinned for the whole saga duration.
+      # 12 is a deliberately conservative default (not load-verified yet — see the
+      # k6 load-test follow-up); CPU-based HPA does not react to connection-bound
+      # saturation, so we do NOT run this pool thin. Budget still fits (12x8=96).
+      maximum-pool-size: ${DB_POOL_SIZE:12}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 3000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      pool-name: ${spring.application.name}-hikari
+      register-mbeans: true
+      validation-timeout: 1000
 
   jpa:
     hibernate:
@@ -33,11 +44,29 @@ spring:
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}
+    # Producer tuning rationale (applied 2026-04-30, see SCALING_AND_IMPROVEMENTS.md §2.6):
+    #   - acks=all + enable.idempotence=true: exactly-once delivery semantics; required
+    #     for the transactional outbox so a retry never produces a duplicate event.
+    #   - compression-type=zstd: ~60–70% size reduction on JSON payloads, cheaper than
+    #     gzip on CPU; reduces broker disk I/O and replication bandwidth.
+    #   - batch-size=64KB + linger-ms=5: trades 5ms of latency for batched sends;
+    #     drastically improves throughput under burst load (default 16KB batches under-fill).
+    #   - buffer-memory=64MB: producer-side send buffer; absorbs short broker stalls
+    #     without back-pressuring the application thread.
+    #   - max.in.flight.requests.per.connection=5: maximum allowed when idempotence is
+    #     enabled; preserves per-partition order while permitting pipelining.
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
       retries: 3
+      compression-type: zstd
+      batch-size: 65536
+      linger-ms: 5
+      buffer-memory: 67108864
+      properties:
+        max.in.flight.requests.per.connection: 5
+        enable.idempotence: true
     consumer:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
@@ -52,7 +81,7 @@ spring:
 
 # Server Configuration
 server:
-  port: ${SERVER_PORT}
+  port: 8084
   shutdown: graceful
   compression:
     enabled: true
@@ -72,7 +101,7 @@ eureka:
 # gRPC Server Configuration
 grpc:
   server:
-    port: ${GRPC_SERVER_PORT}
+    port: ${GRPC_ORDER_PORT:9191}
   client:
     # Global client configuration for connection pooling
     GLOBAL:
@@ -120,7 +149,7 @@ management:
         enabled: true
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT}
@@ -135,7 +164,27 @@ auth0:
   domain: ${AUTH0_DOMAIN}
   audience: ${AUTH0_AUDIENCE}
 
+spring.security.oauth2.resourceserver.jwt:
+  issuer-uri: https://${AUTH0_DOMAIN}/
+  audiences: ${AUTH0_AUDIENCE}
+
+# Transactional Outbox (polling-based relay)
+# - enabled: master switch for the @Scheduled relay; disabled in tests
+# - poll-interval-ms: how often the relay claims a batch
+# - batch-size: max rows pulled per poll (caps blast radius of stuck events)
+outbox:
+  relay:
+    enabled: ${OUTBOX_RELAY_ENABLED:true}
+    poll-interval-ms: ${OUTBOX_RELAY_POLL_INTERVAL_MS:500}
+    batch-size: ${OUTBOX_RELAY_BATCH_SIZE:100}
+
 # Application-specific configuration
+# Shipping/fulfillment provider seam. `noop` (default) records the carrier +
+# tracking an operator enters manually; `external` selects the (not-yet-built)
+# real carrier integration. Mirrors payment.provider / notification.sms.provider.
+shipping:
+  provider: ${SHIPPING_PROVIDER:noop}
+
 order:
   number:
     prefix: ORD
@@ -150,11 +199,44 @@ order:
     cleanup-old-orders-cron: "0 0 3 * * ?"
     daily-sales-report-cron: "0 0 1 * * ?"
     abandoned-hours-threshold: 24
+  # See docs/PARTITIONING.md — archival is the §1.2 hot-table-trim mechanism
+  # until row count crosses the 50M partitioning trigger.
+  archival:
+    enabled: ${ORDER_ARCHIVAL_ENABLED:true}
+    cron: ${ORDER_ARCHIVAL_CRON:0 0 4 * * ?}
+    cutoff-days: ${ORDER_ARCHIVAL_CUTOFF_DAYS:365}
+    batch-size: ${ORDER_ARCHIVAL_BATCH_SIZE:1000}
+
+# §3.6 Subscription / recurring orders
+subscription:
+  scheduler-enabled: ${SUBSCRIPTION_SCHEDULER_ENABLED:true}
+  scheduler-poll-ms: ${SUBSCRIPTION_SCHEDULER_POLL_MS:60000}
+  # Last-resort unit price when product-service is unreachable at fire time.
+  fallback-price: ${SUBSCRIPTION_FALLBACK_PRICE:0.01}
+
+# §3.8 Refund saga async executor (bounded pool — do NOT rely on
+# SimpleAsyncTaskExecutor which spawns an unbounded thread per task).
+refund:
+  executor:
+    core-pool-size: ${REFUND_EXECUTOR_CORE_POOL_SIZE:4}
+    max-pool-size: ${REFUND_EXECUTOR_MAX_POOL_SIZE:8}
+    queue-capacity: ${REFUND_EXECUTOR_QUEUE_CAPACITY:100}
 
 # Promotion Service URL
 promotion:
   service:
     url: ${PROMOTION_SERVICE_URL}
+    # Shared service credential sent as X-Internal-Service-Token. Required by a
+    # security-enabled promotion-service on POST /api/promotions/apply; must
+    # match that service's INTERNAL_SERVICE_TOKEN. Never a user JWT — the saga
+    # applies promotions on the guest checkout path too, where none exists.
+    internal-token: ${INTERNAL_SERVICE_TOKEN:}
+
+# Product Service (load-balanced via Eureka) for subscription price lookups
+product:
+  service:
+    url: ${PRODUCT_SERVICE_URL:lb://product-service}
+    price-lookup-timeout-ms: ${PRODUCT_PRICE_LOOKUP_TIMEOUT_MS:2000}
 
 # Resilience4j Configuration
 resilience4j:

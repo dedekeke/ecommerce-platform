@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+  namespace: ecommerce
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: "http://eureka-server:8761/eureka/"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  ZIPKIN_URL: "http://zipkin:9411/api/v2/spans"
+  SECURITY_ENABLED: "true"
+  # Trusted reverse-proxy CIDRs whose X-Forwarded-For the gateway will believe
+  # when deriving the client IP for the guest-endpoint rate limit and the
+  # /api/admin IP whitelist (see ClientIpResolver). The gateway Service is
+  # ClusterIP, so the immediate TCP peer is ALWAYS an in-cluster pod (ingress-nginx),
+  # i.e. an RFC1918 pod IP — hence the private ranges below are the sensible,
+  # broadly-correct default across CNIs (Flannel 10.244/16, Calico 192.168/16,
+  # GKE/EKS/AKS 10.x/172.x). MUST be verified and narrowed to THIS cluster's real
+  # ingress/pod-network CIDR per environment (see docs/SECURITY.md → "Trusted
+  # proxy configuration (deploy checklist)"). If left empty, XFF is ignored and
+  # every client is keyed on the ingress pod IP — breaking rate limiting and
+  # locking out admin IP whitelisting.
+  GATEWAY_TRUSTED_PROXIES: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: ecommerce
+  labels:
+    app: api-gateway
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        tier: backend
+    spec:
+      containers:
+        - name: api-gateway
+          image: ecommerce/api-gateway:1.0.0
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: api-gateway-config
+            - secretRef:
+                name: ecommerce-secrets
+          # GC tuning (applied 2026-04-30, see docs/SCALING_AND_IMPROVEMENTS.md §2.4):
+          # ZGC for the gateway — sub-millisecond GC pauses for the latency-critical path.
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=70.0 -XX:+UseZGC -XX:+ZGenerational"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "300m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: ecommerce
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app: api-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: ecommerce
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway

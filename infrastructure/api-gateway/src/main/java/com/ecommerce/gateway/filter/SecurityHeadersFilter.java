@@ -46,8 +46,18 @@ public class SecurityHeadersFilter implements WebFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        return chain.filter(exchange)
-            .doOnSuccess(aVoid -> addSecurityHeaders(exchange));
+        // Register the header writer as a beforeCommit hook instead of running it
+        // after chain.filter() completes. By the time the downstream chain (or the
+        // security filter chain emitting a 401) finishes, the response is already
+        // committed and its Netty headers are read-only — mutating them throws
+        // UnsupportedOperationException, which Netty then reports as a 500. The
+        // beforeCommit callback fires while the headers are still writable, so it
+        // works for both 2xx and short-circuited (e.g. 401) responses.
+        exchange.getResponse().beforeCommit(() -> {
+            addSecurityHeaders(exchange);
+            return Mono.empty();
+        });
+        return chain.filter(exchange);
     }
 
     private void addSecurityHeaders(ServerWebExchange exchange) {

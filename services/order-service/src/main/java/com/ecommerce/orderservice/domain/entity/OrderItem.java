@@ -21,7 +21,14 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "order_items")
+@Table(name = "order_items", indexes = {
+    // V2__Add_perf_indexes — see docs/DB_INDEX_AUDIT.md.
+    // JPA does not auto-create indexes for FK columns; PostgreSQL also does
+    // not auto-index FKs. Explicit index avoids sequential scans on the
+    // common "load items for order N" path.
+    @Index(name = "idx_order_item_order", columnList = "order_id"),
+    @Index(name = "idx_order_item_product", columnList = "productId")
+})
 public class OrderItem {
 
     @Id

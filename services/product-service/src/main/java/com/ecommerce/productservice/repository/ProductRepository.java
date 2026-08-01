@@ -54,10 +54,11 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * Find products by category or any of its subcategories.
      * This is useful for hierarchical category filtering.
      */
-    @Query("SELECT p FROM Product p WHERE " +
-           "p.category = :category OR " +
-           "p.category.parent = :category OR " +
-           "p.category.parent.parent = :category")
+    @Query("SELECT p FROM Product p " +
+           "LEFT JOIN p.category c " +
+           "LEFT JOIN c.parent c1 " +
+           "LEFT JOIN c1.parent c2 " +
+           "WHERE c = :category OR c1 = :category OR c2 = :category")
     Page<Product> findByCategoryOrSubcategories(@Param("category") Category category, Pageable pageable);
 
     /**
@@ -88,12 +89,20 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     /**
      * Advanced search with multiple filters.
      * All parameters are optional.
+     * Category filter includes subcategories (up to 2 levels deep).
      */
-    @Query("SELECT p FROM Product p WHERE " +
+    @Query("SELECT p FROM Product p " +
+           "LEFT JOIN p.category c " +
+           "LEFT JOIN c.parent c1 " +
+           "LEFT JOIN c1.parent c2 " +
+           "WHERE " +
            "(:searchTerm IS NULL OR " +
            "  LOWER(p.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "  LOWER(p.description) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) AND " +
-           "(:categoryId IS NULL OR p.category.id = :categoryId) AND " +
+           "(:categoryId IS NULL OR " +
+           "  c.id = :categoryId OR " +
+           "  c1.id = :categoryId OR " +
+           "  c2.id = :categoryId) AND " +
            "(:minPrice IS NULL OR p.price >= :minPrice) AND " +
            "(:maxPrice IS NULL OR p.price <= :maxPrice) AND " +
            "(:activeOnly = false OR p.active = true) AND " +

@@ -88,23 +88,71 @@ public class MediaService {
     }
 
     /**
-     * Get media by ID
+     * Get media by ID. Callers may only read their own media unless they hold
+     * admin scope; a cross-user attempt is reported as 404 to avoid leaking the
+     * existence of another user's media through opaque ids.
      */
-    public MediaResponse getMediaById(String id) {
+    public MediaResponse getMediaById(String id, String requesterId, boolean isAdmin) {
+        Media media = findOwnedMedia(id, requesterId, isAdmin);
+        return toMediaResponse(media);
+    }
+
+    /**
+     * Load media file as Resource, enforcing the same ownership rules as
+     * {@link #getMediaById(String, String, boolean)}.
+     */
+    public Resource loadMediaFile(String id, String requesterId, boolean isAdmin) {
+        Media media = findOwnedMedia(id, requesterId, isAdmin);
+
+        String filename = extractFilename(media.getStorageUrl());
+        return fileStorageService.loadAsResource(filename);
+    }
+
+    /**
+     * Look up media by id and assert the caller may access it. Non-owners without
+     * admin scope get a {@link MediaNotFoundException} (404) rather than a 403 so
+     * opaque media ids cannot be enumerated.
+     */
+    private Media findOwnedMedia(String id, String requesterId, boolean isAdmin) {
+        Media media = mediaRepository.findById(id)
+                .orElseThrow(() -> new MediaNotFoundException(id));
+
+        if (!isAdmin && !media.getUploadedBy().equals(requesterId)) {
+            logger.warn("Access denied: user {} attempted to access media {} owned by {}",
+                    requesterId, id, media.getUploadedBy());
+            throw new MediaNotFoundException(id);
+        }
+
+        return media;
+    }
+
+    /**
+     * Public (unauthenticated) metadata lookup for the {@code /content} read path.
+     *
+     * <p>Enforced invariant (ADR, PR#155): any media's BYTES are publicly readable
+     * by anyone who knows its opaque id — there is no attachment or visibility
+     * check here. Metadata ({@code /{id}}), {@code /download} and
+     * {@code /user/{userId}} keep their ownership gates.
+     *
+     * <p>Gate for future work: the first private-media consumer (avatars, review
+     * photos, ...) must add a public/visibility flag on the {@link Media} document,
+     * defaulted at upload and checked in this method and
+     * {@link #loadPublicMediaFile(String)}, before shipping.
+     */
+    public MediaResponse getPublicMediaById(String id) {
         Media media = mediaRepository.findById(id)
                 .orElseThrow(() -> new MediaNotFoundException(id));
         return toMediaResponse(media);
     }
 
     /**
-     * Load media file as Resource
+     * Load a media file for the public {@code /content} read path — no ownership
+     * check, see {@link #getPublicMediaById(String)}.
      */
-    public Resource loadMediaFile(String id) {
+    public Resource loadPublicMediaFile(String id) {
         Media media = mediaRepository.findById(id)
                 .orElseThrow(() -> new MediaNotFoundException(id));
-
-        String filename = extractFilename(media.getStorageUrl());
-        return fileStorageService.loadAsResource(filename);
+        return fileStorageService.loadAsResource(extractFilename(media.getStorageUrl()));
     }
 
     /**
@@ -152,9 +200,16 @@ public class MediaService {
     }
 
     /**
-     * Get all media uploaded by a user
+     * Get all media uploaded by a user. The listing is keyed on a caller-supplied
+     * userId, so a caller may only list their own uploads unless they hold admin
+     * scope; a cross-user attempt is a 403 authorization failure.
      */
-    public List<MediaResponse> getMediaByUser(String userId) {
+    public List<MediaResponse> getMediaByUser(String userId, String requesterId, boolean isAdmin) {
+        if (!isAdmin && !userId.equals(requesterId)) {
+            logger.warn("Access denied: user {} attempted to list media of user {}", requesterId, userId);
+            throw new SecurityException("User is not authorized to list this user's media");
+        }
+
         List<Media> mediaList = mediaRepository.findByUploadedBy(userId);
         return mediaList.stream()
                 .map(this::toMediaResponse)
@@ -231,6 +286,7 @@ public class MediaService {
                 .contentType(media.getContentType())
                 .size(media.getSize())
                 .downloadUrl("/api/media/" + media.getId() + "/download")
+                .contentUrl("/api/media/" + media.getId() + "/content")
                 .uploadedBy(media.getUploadedBy())
                 .createdAt(media.getCreatedAt());
 

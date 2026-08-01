@@ -1,0 +1,43 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ecommerce
+
+resources:
+  - namespace.yaml
+  # infra
+  - infra/eureka-server.yaml
+  - infra/config-server.yaml
+  - infra/api-gateway.yaml
+  # backend services
+  - backend/user-service.yaml
+  - backend/product-service.yaml
+  - backend/cart-service.yaml
+  - backend/order-service.yaml
+  - backend/payment-service.yaml
+  - backend/inventory-service.yaml
+  - backend/notification-service.yaml
+  - backend/search-service.yaml
+  - backend/media-service.yaml
+  - backend/promotion-service.yaml
+  - backend/review-service.yaml
+  # frontends
+  - frontend/shell-app.yaml
+  - frontend/admin-dashboard-mfe.yaml
+  - frontend/cart-mfe.yaml
+  - frontend/checkout-mfe.yaml
+  - frontend/product-catalog-mfe.yaml
+  - frontend/user-dashboard-mfe.yaml
+  # cross-cutting
+  - hpa.yaml
+  - scaling
+  - policies/network-policy.yaml
+  - ingress/ingress.yaml
+  - cronjobs/postgres-backup.yaml
+  - cronjobs/mongodb-backup.yaml
+  - cronjobs/mysql-backup.yaml
+
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/part-of: ecommerce-platform

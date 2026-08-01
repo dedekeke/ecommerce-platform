@@ -29,7 +29,13 @@ import java.util.List;
     @Index(name = "idx_status", columnList = "status"),
     @Index(name = "idx_created_at", columnList = "createdAt"),
     @Index(name = "idx_promotion_code", columnList = "promotionCode"),
-    @Index(name = "idx_user_status_date", columnList = "userId, status, createdAt")
+    @Index(name = "idx_user_status_date", columnList = "userId, status, createdAt"),
+    // V2__Add_perf_indexes — see docs/DB_INDEX_AUDIT.md
+    @Index(name = "idx_order_payment_intent", columnList = "paymentIntentId"),
+    @Index(name = "idx_order_status_created", columnList = "status, createdAt"),
+    // V14 — claim-later lookup: resolve a registered user's guest orders by the
+    // email they placed them under.
+    @Index(name = "idx_order_guest_email", columnList = "guest_email")
 })
 public class Order {
 
@@ -80,10 +86,75 @@ public class Order {
 
     private String paymentIntentId;
 
+    /**
+     * Stripe PaymentIntent client secret, persisted so an idempotent checkout
+     * replay can re-serve it to the owning session for payment confirmation.
+     *
+     * <p>No entity is serialized to JSON anymore: every controller path returns
+     * a dedicated DTO ({@link com.ecommerce.orderservice.dto.OrderResponse} for
+     * reads, {@link com.ecommerce.orderservice.dto.CheckoutResponse} for the
+     * checkout create/replay path), and outbox events serialize a separate
+     * {@code OrderEvent}. The secret is exposed ONLY through
+     * {@code CheckoutResponse}, which reads it via the getter — never as entity
+     * JSON. The former {@code @JsonIgnore} workaround is therefore removed;
+     * {@code OrderResponse} simply never maps this field. See
+     * {@code OrderResponseTest} / {@code OrderControllerResponseDtoTest} for the
+     * guarding assertions.</p>
+     */
+    @Column(name = "payment_client_secret")
+    private String paymentClientSecret;
+
+    /**
+     * Guest checkout marker. {@code true} for orders created through the
+     * unauthenticated {@code POST /api/orders/guest} path, whose {@link #userId}
+     * carries the {@code guest:} prefix. Lets reporting / support tell a guest
+     * order apart from an authenticated one without parsing the userId.
+     */
+    @Column(name = "guest_order", nullable = false)
+    @Builder.Default
+    private boolean guestOrder = false;
+
+    /**
+     * Email the guest placed the order under (normalized: trimmed + lowercased).
+     * This is the claim key: when a user later registers/verifies this address,
+     * their guest orders are found by this column and relinked to the real
+     * account (see {@code OrderService.claimGuestOrders}). Null for authenticated
+     * orders.
+     */
+    @Column(name = "guest_email")
+    private String guestEmail;
+
     private String promotionCode;
+
+    /**
+     * Shipping carrier for the (single) outbound shipment. Set on the
+     * CONFIRMED/PROCESSING -> SHIPPED transition; null until the order ships.
+     */
+    @Column(name = "carrier", length = 100)
+    private String carrier;
+
+    /** Carrier tracking number, surfaced to the customer once shipped. */
+    @Column(name = "tracking_number", length = 100)
+    private String trackingNumber;
+
+    /** When the order was marked shipped. */
+    @Column(name = "shipped_at")
+    private LocalDateTime shippedAt;
+
+    /** When the order was marked delivered. */
+    @Column(name = "delivered_at")
+    private LocalDateTime deliveredAt;
 
     @Column(precision = 10, scale = 2)
     private BigDecimal discountAmount;
+
+    /**
+     * Loyalty tier discount applied on top of any promotion-code discount.
+     * Computed at checkout from the customer's promotion-service tier and
+     * surfaced here so the pricing breakdown is auditable.
+     */
+    @Column(name = "loyalty_discount", precision = 10, scale = 2)
+    private BigDecimal loyaltyDiscount;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
@@ -118,13 +189,18 @@ public class Order {
                 .map(item -> item.getSubtotal() != null ? item.getSubtotal() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Apply discount if any
+        // Apply promotion-code discount, then loyalty-tier discount. Both are
+        // stored as absolute amounts; loyalty is computed from the
+        // post-promotion subtotal upstream (see OrderService.createOrder).
         BigDecimal discountedSubtotal = subtotal;
         if (discountAmount != null && discountAmount.compareTo(BigDecimal.ZERO) > 0) {
-            discountedSubtotal = subtotal.subtract(discountAmount);
-            if (discountedSubtotal.compareTo(BigDecimal.ZERO) < 0) {
-                discountedSubtotal = BigDecimal.ZERO;
-            }
+            discountedSubtotal = discountedSubtotal.subtract(discountAmount);
+        }
+        if (loyaltyDiscount != null && loyaltyDiscount.compareTo(BigDecimal.ZERO) > 0) {
+            discountedSubtotal = discountedSubtotal.subtract(loyaltyDiscount);
+        }
+        if (discountedSubtotal.compareTo(BigDecimal.ZERO) < 0) {
+            discountedSubtotal = BigDecimal.ZERO;
         }
 
         // Calculate total (ensure tax and shippingCost are not null)
@@ -141,6 +217,23 @@ public class Order {
             );
         }
         this.status = newStatus;
+    }
+
+    /**
+     * Transition to SHIPPED and record the shipment. Delegates the transition
+     * guard to {@link #updateStatus(OrderStatus)}.
+     */
+    public void markShipped(String carrier, String trackingNumber) {
+        updateStatus(OrderStatus.SHIPPED);
+        this.carrier = carrier;
+        this.trackingNumber = trackingNumber;
+        this.shippedAt = LocalDateTime.now();
+    }
+
+    /** Transition to DELIVERED and stamp the delivery time. */
+    public void markDelivered() {
+        updateStatus(OrderStatus.DELIVERED);
+        this.deliveredAt = LocalDateTime.now();
     }
 
     public boolean canBeCancelled() {

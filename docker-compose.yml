@@ -1,3 +1,20 @@
+# =============================================================================
+# Local development stack.
+#
+# Backend image build strategy
+# -----------------------------
+# Infrastructure tier (eureka-server, config-server, api-gateway) builds from
+# the standalone hermetic multi-stage `Dockerfile`. These stage the full
+# reactor pom list (guarded by scripts/check-dockerfile-reactor-poms.sh) and
+# build inside Docker with NO pre-built host JAR, so `docker compose up --build`
+# works from a clean checkout and matches the CD image builds.
+#
+# Some service-tier entries still build from `Dockerfile.runtime`, which wraps a
+# host-built JAR (run `mvn clean install -DskipTests` first). Their standalone
+# `Dockerfile`s stage an incomplete reactor pom list and are NOT yet hermetic;
+# migrating the service tier to standalone Dockerfiles is tracked as a follow-up
+# (the drift guard reports them as advisory warnings).
+# =============================================================================
 services:
   # ============================================
   # DATABASES
@@ -13,6 +30,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    # Explicit ceiling for the shared instance; must cover the sum of every
+    # co-tenant service's Hikari pool at max replicas + admin reserve.
+    # See docs/db-connection-budget.md. Value routed through .env (no hardcoding).
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS}"]
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./docker/init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
@@ -37,7 +58,9 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./docker/init-mysql.sql:/docker-entrypoint-initdb.d/init.sql
-    command: --default-authentication-plugin=mysql_native_password
+    # --max-connections caps the shared MySQL instance to fit the co-tenant pool
+    # budget + admin reserve (docs/db-connection-budget.md). Value routed through .env.
+    command: --default-authentication-plugin=mysql_native_password --max-connections=${MYSQL_MAX_CONNECTIONS}
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
       interval: 10s
@@ -195,6 +218,23 @@ services:
   # OBSERVABILITY
   # ============================================
 
+  # MailHog - Local SMTP server for development email capture
+  # SMTP: localhost:1025  |  Web UI: http://localhost:8025
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ecommerce-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:8025/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ecommerce-network
+
   # Zipkin - Distributed Tracing
   zipkin:
     image: openzipkin/zipkin:3
@@ -258,10 +298,14 @@ services:
       - ecommerce-network
 
   # API Gateway - Entry point for all client requests
+  # Builds from the standalone hermetic multi-stage Dockerfile (fixed in PR#98),
+  # matching eureka-server and config-server. This needs no pre-built host JAR,
+  # keeps compose consistent with the CD image builds, and avoids the
+  # version-pinned Dockerfile.runtime (which hardcodes the SNAPSHOT JAR name).
   api-gateway:
     build:
       context: .
-      dockerfile: infrastructure/api-gateway/Dockerfile.runtime
+      dockerfile: infrastructure/api-gateway/Dockerfile
     container_name: ecommerce-gateway
     depends_on:
       eureka-server:
@@ -285,6 +329,9 @@ services:
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
       SERVER_PORT: 8080
       SECURITY_ENABLED: "false"
+      # Trusted proxy CIDRs for X-Forwarded-For (see ClientIpResolver). Empty by
+      # default: the gateway is exposed directly here, so XFF is not trusted.
+      GATEWAY_TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-}
       # Auth0 vars from .env needed directly
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
     # env_file:
@@ -481,6 +528,9 @@ services:
       GRPC_CLIENT_INVENTORY_SERVICE: static://inventory-service:9091
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      # Service credential for POST /api/promotions/apply — must match
+      # promotion-service's value (see .env.template).
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       SERVER_PORT: 8084
       SECURITY_ENABLED: "false"
     env_file:
@@ -633,7 +683,7 @@ services:
       - "8089:8089"
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATA_MONGODB_URI: mongodb://admin:admin123@mongodb:27017/mediadb?authSource=admin
+      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/mediadb?authSource=admin
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
       AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI}
@@ -687,6 +737,9 @@ services:
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      # Shared secret guarding POST /api/promotions/apply. Unused while
+      # SECURITY_ENABLED=false (local dev); required once security is on.
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       SERVER_PORT: 8090
       SECURITY_ENABLED: "false"
     env_file:

@@ -1,0 +1,51 @@
+# Disaster recovery — Kafka MirrorMaker 2.0 (active/passive replication to a DR cluster).
+# Requires the Strimzi Kafka operator (provides the KafkaMirrorMaker2 CRD).
+# Source/target bootstrap endpoints are env-driven: render via
+#   `envsubst < kafka-mirrormaker2.yaml | kubectl apply -f -`
+# with KAFKA_SOURCE_BOOTSTRAP / KAFKA_DR_BOOTSTRAP exported.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaMirrorMaker2
+metadata:
+  name: ecommerce-mm2
+  namespace: ecommerce
+spec:
+  version: 3.7.0
+  replicas: 2
+  connectCluster: dr
+  clusters:
+    - alias: source
+      bootstrapServers: ${KAFKA_SOURCE_BOOTSTRAP}
+      config:
+        config.storage.replication.factor: 3
+        offset.storage.replication.factor: 3
+        status.storage.replication.factor: 3
+    - alias: dr
+      bootstrapServers: ${KAFKA_DR_BOOTSTRAP}
+      config:
+        config.storage.replication.factor: 3
+        offset.storage.replication.factor: 3
+        status.storage.replication.factor: 3
+  mirrors:
+    - sourceCluster: source
+      targetCluster: dr
+      sourceConnector:
+        tasksMax: 4
+        config:
+          replication.factor: 3
+          offset-syncs.topic.replication.factor: 3
+          sync.topic.acls.enabled: "false"
+          refresh.topics.interval.seconds: 60
+          # Keep DR topic names identical (no source alias prefix) for clean failover.
+          replication.policy.class: org.apache.kafka.connect.mirror.IdentityReplicationPolicy
+      checkpointConnector:
+        tasksMax: 2
+        config:
+          checkpoints.topic.replication.factor: 3
+          sync.group.offsets.enabled: "true"
+          emit.checkpoints.interval.seconds: 60
+      heartbeatConnector:
+        config:
+          heartbeats.topic.replication.factor: 3
+      # Replicate all e-commerce domain topics; exclude internal MM2/Connect bookkeeping topics.
+      topicsPattern: "ecommerce\\..*|.*-events|.*-commands"
+      groupsPattern: ".*"

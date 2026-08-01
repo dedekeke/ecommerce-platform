@@ -1,0 +1,29 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/notificationdb
+
+  # Local dev points at MailHog (docker-compose service "mailhog").
+  # SMTP: localhost:1025  |  Web UI: http://localhost:8025
+  # For prod, override host/port and provide real credentials.
+  mail:
+    host: localhost
+    port: 1025
+    username: ""
+    password: ""
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+            required: false
+
+notification:
+  email:
+    enabled: true
+  sms:
+    api-secret: <sms-api-secret>
+
+security:
+  enabled: false

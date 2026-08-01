@@ -50,11 +50,17 @@ fi
 echo -e "${GREEN}Found Java process: PID $JAVA_PID${NC}"
 echo ""
 
+# Service images do not ship the .jfc settings file; copy it in from the repo.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+JFC_FILE="$SCRIPT_DIR/../../config/jfr/virtual-threads-monitoring.jfc"
+[ -f "$JFC_FILE" ] || { echo "Error: JFC settings file not found at $JFC_FILE"; exit 1; }
+docker cp "$JFC_FILE" "${PID}:/tmp/virtual-threads-monitoring.jfc"
+
 # Start JFR recording
 echo -e "${YELLOW}Starting JFR recording...${NC}"
 docker exec "$PID" jcmd "$JAVA_PID" JFR.start \
     name=virtual-threads-recording \
-    settings=/app/config/jfr/virtual-threads-monitoring.jfc \
+    settings=/tmp/virtual-threads-monitoring.jfc \
     duration="${DURATION}s" \
     filename=/tmp/recording.jfr
 
@@ -72,7 +78,7 @@ echo ""
 
 # Analyze pinning events
 echo -e "${YELLOW}Analyzing virtual thread pinning events...${NC}"
-PINNED_COUNT=$(jfr print --events jdk.VirtualThreadPinned "$RECORDING_FILE" 2>/dev/null | grep -c "jdk.VirtualThreadPinned" || echo "0")
+PINNED_COUNT=$(jfr print --events jdk.VirtualThreadPinned "$RECORDING_FILE" 2>/dev/null | grep -c "jdk.VirtualThreadPinned" || true)
 
 if [ "$PINNED_COUNT" -gt 0 ]; then
     echo -e "${RED}⚠️  Found $PINNED_COUNT thread pinning events!${NC}"

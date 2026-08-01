@@ -48,25 +48,11 @@ fi
 # Load environment variables
 export $(cat .env | grep -v '^#' | xargs)
 
-echo -e "${YELLOW}Step 1: Creating cart database${NC}"
-# Check if PostgreSQL is running
-if ! pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
-    echo -e "${YELLOW}PostgreSQL is not running. Starting with docker-compose...${NC}"
-    docker-compose up -d postgres
-    echo "Waiting for PostgreSQL to be ready..."
-    sleep 10
-fi
-
-# Create cart_db database
-echo "Creating cart_db database..."
-PGPASSWORD=postgres psql -h localhost -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'cart_db'" | grep -q 1 || \
-PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE cart_db;"
-
-echo -e "${GREEN}✓ Database setup complete${NC}"
-echo ""
-
-echo -e "${YELLOW}Step 2: Starting infrastructure services${NC}"
-docker-compose up -d postgres mysql mongodb redis zookeeper kafka zipkin eureka-server
+# Databases are created on first container boot by the init scripts mounted in
+# docker-compose.yml (docker/init-postgres.sql, docker/init-mysql.sql); schema
+# migrations run via each service's Flyway. No manual psql step needed.
+echo -e "${YELLOW}Step 1: Starting infrastructure services${NC}"
+docker-compose up -d postgres mysql mongodb redis zookeeper kafka elasticsearch mailhog zipkin eureka-server
 
 echo "Waiting for services to be ready..."
 sleep 30
@@ -103,6 +89,13 @@ else
     echo -e "${RED}✗ MongoDB is not ready${NC}"
 fi
 
+# Elasticsearch
+if curl -s http://localhost:9200/_cluster/health > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Elasticsearch is ready${NC}"
+else
+    echo -e "${RED}✗ Elasticsearch is not ready${NC}"
+fi
+
 # Zipkin
 if curl -s http://localhost:9411/health > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Zipkin is ready${NC}"
@@ -128,6 +121,8 @@ echo "  - MySQL: localhost:3306"
 echo "  - MongoDB: localhost:27017"
 echo "  - Redis: localhost:6379"
 echo "  - Kafka: localhost:9092"
+echo "  - Elasticsearch: http://localhost:9200"
+echo "  - MailHog: SMTP localhost:1025, UI http://localhost:8025"
 echo "  - Zipkin: http://localhost:9411"
 echo "  - Eureka: http://localhost:8761"
 echo ""

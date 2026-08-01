@@ -1,11 +1,12 @@
 package com.ecommerce.orderservice.saga;
 
 import com.ecommerce.orderservice.client.PromotionServiceClient;
+import com.ecommerce.orderservice.client.dto.DiscountResult;
 import com.ecommerce.orderservice.domain.embedded.Address;
 import com.ecommerce.orderservice.domain.entity.Order;
 import com.ecommerce.orderservice.domain.entity.OrderItem;
 import com.ecommerce.orderservice.domain.enums.OrderStatus;
-import com.ecommerce.orderservice.event.OrderEventPublisher;
+import com.ecommerce.orderservice.exception.EmptyCartException;
 import com.ecommerce.orderservice.grpc.proto.cart.CartItem;
 import com.ecommerce.orderservice.grpc.proto.cart.CartServiceGrpc;
 import com.ecommerce.orderservice.grpc.proto.cart.GetCartResponse;
@@ -15,6 +16,7 @@ import com.ecommerce.orderservice.grpc.proto.payment.CreatePaymentIntentResponse
 import com.ecommerce.orderservice.grpc.proto.payment.PaymentServiceGrpc;
 import com.ecommerce.orderservice.service.OrderService;
 import io.grpc.ManagedChannel;
+import io.grpc.Status;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -36,8 +39,12 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * Integration tests for OrderCreationSaga
- * Tests the complete order creation flow and compensation logic
+ * Mockito-level tests for {@link OrderCreationSaga} orchestration: gRPC step
+ * wiring, parallel fan-out compensation, and the delegation to the atomic
+ * {@link OrderService} operations. Transactional/rollback guarantees (state and
+ * event committing together, compensation surviving orchestration failure) are
+ * proven separately in {@code OrderCompensationIntegrationTest} against a real
+ * transaction manager — a pure-Mockito test cannot observe commit boundaries.
  */
 @ExtendWith(MockitoExtension.class)
 class OrderCreationSagaTest {
@@ -46,9 +53,6 @@ class OrderCreationSagaTest {
 
     @Mock
     private OrderService orderService;
-
-    @Mock
-    private OrderEventPublisher eventPublisher;
 
     @Mock
     private PromotionServiceClient promotionServiceClient;
@@ -64,57 +68,32 @@ class OrderCreationSagaTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        // Set up mock gRPC services
         mockCartService = new MockCartService();
         mockInventoryService = new MockInventoryService();
         mockPaymentService = new MockPaymentService();
 
-        // Create in-process servers for each service
         String cartServerName = InProcessServerBuilder.generateName();
         String inventoryServerName = InProcessServerBuilder.generateName();
         String paymentServerName = InProcessServerBuilder.generateName();
 
         grpcCleanup.register(
             InProcessServerBuilder.forName(cartServerName)
-                .directExecutor()
-                .addService(mockCartService)
-                .build()
-                .start()
-        );
-
+                .directExecutor().addService(mockCartService).build().start());
         grpcCleanup.register(
             InProcessServerBuilder.forName(inventoryServerName)
-                .directExecutor()
-                .addService(mockInventoryService)
-                .build()
-                .start()
-        );
-
+                .directExecutor().addService(mockInventoryService).build().start());
         grpcCleanup.register(
             InProcessServerBuilder.forName(paymentServerName)
-                .directExecutor()
-                .addService(mockPaymentService)
-                .build()
-                .start()
-        );
+                .directExecutor().addService(mockPaymentService).build().start());
 
-        // Create channels
         cartChannel = grpcCleanup.register(
-            InProcessChannelBuilder.forName(cartServerName).directExecutor().build()
-        );
-
+            InProcessChannelBuilder.forName(cartServerName).directExecutor().build());
         inventoryChannel = grpcCleanup.register(
-            InProcessChannelBuilder.forName(inventoryServerName).directExecutor().build()
-        );
-
+            InProcessChannelBuilder.forName(inventoryServerName).directExecutor().build());
         paymentChannel = grpcCleanup.register(
-            InProcessChannelBuilder.forName(paymentServerName).directExecutor().build()
-        );
+            InProcessChannelBuilder.forName(paymentServerName).directExecutor().build());
 
-        // Create saga with mocked dependencies
-        saga = new OrderCreationSaga(orderService, eventPublisher, promotionServiceClient);
-
-        // Use reflection to inject gRPC stubs (since @GrpcClient doesn't work in tests)
+        saga = new OrderCreationSaga(orderService, promotionServiceClient);
         injectGrpcStubs();
     }
 
@@ -145,40 +124,35 @@ class OrderCreationSagaTest {
         }
     }
 
+    // ---- happy path ---------------------------------------------------------
+
     @Test
     void testSuccessfulOrderCreation() {
-        // Arrange
         String userId = "user123";
         Address address = createMockAddress();
         String orderId = UUID.randomUUID().toString();
         String orderNumber = "ORD-2025-00001";
 
-        // Configure mock services
         mockCartService.setCartItems(createMockCartItems());
         mockInventoryService.setReservationSuccess(true);
         mockPaymentService.setPaymentSuccess(true);
 
-        // Mock order service
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
             .thenReturn(mockOrder);
-        when(orderService.setPaymentIntent(eq(orderId), anyString()))
+        when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
             .thenReturn(mockOrder);
 
-        // Act
         Order result = saga.executeOrderCreationSaga(userId, address, null);
 
-        // Assert
         assertNotNull(result);
         assertEquals(orderNumber, result.getOrderNumber());
         assertEquals(userId, result.getUserId());
 
-        // Verify all steps were called
-        verify(orderService, times(1)).createOrder(eq(userId), anyList(), eq(address), isNull());
-        verify(orderService, times(1)).setPaymentIntent(eq(orderId), anyString());
-        verify(eventPublisher, times(1)).publishOrderCreatedEvent(mockOrder);
+        verify(orderService).createOrder(eq(userId), anyList(), eq(address), isNull(), isNull());
+        // ORDER_CREATED is now published atomically inside finalizeSuccessfulOrder.
+        verify(orderService).finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), isNull(), isNull());
 
-        // Verify gRPC calls
         assertTrue(mockCartService.wasGetCartCalled());
         assertTrue(mockInventoryService.wasReserveStockCalled());
         assertTrue(mockPaymentService.wasCreatePaymentIntentCalled());
@@ -186,86 +160,95 @@ class OrderCreationSagaTest {
     }
 
     @Test
-    void testOrderCreation_CartEmpty_ThrowsException() {
-        // Arrange
-        String userId = "user123";
-        Address address = createMockAddress();
-
-        // Configure empty cart
-        mockCartService.setCartItems(new ArrayList<>());
-
-        // Act & Assert
-        OrderCreationSaga.SagaException exception = assertThrows(
-            OrderCreationSaga.SagaException.class,
-            () -> saga.executeOrderCreationSaga(userId, address, null)
-        );
-
-        assertTrue(exception.getMessage().contains("Cart is empty"));
-        verify(orderService, never()).createOrder(anyString(), anyList(), any(), any());
-        verify(eventPublisher, never()).publishOrderCreatedEvent(any());
-    }
-
-    @Test
-    void testOrderCreation_InsufficientStock_TriggersCompensation() {
-        // Arrange
-        String userId = "user123";
-        Address address = createMockAddress();
-
-        mockCartService.setCartItems(createMockCartItems());
-        mockInventoryService.setReservationSuccess(false);
-
-        // Act & Assert
-        OrderCreationSaga.SagaException exception = assertThrows(
-            OrderCreationSaga.SagaException.class,
-            () -> saga.executeOrderCreationSaga(userId, address, null)
-        );
-
-        assertTrue(exception.getMessage().contains("Failed to reserve stock"));
-
-        // Verify compensation - cart should NOT be cleared on failure
-        assertFalse(mockCartService.wasClearCartCalled());
-        verify(orderService, never()).createOrder(anyString(), anyList(), any(), any());
-        verify(eventPublisher, never()).publishOrderCreatedEvent(any());
-    }
-
-    @Test
-    void testOrderCreation_PaymentFails_TriggersCompensation() {
-        // Arrange
-        String userId = "user123";
+    void should_forwardRecipientToFinalize_when_enrichedCheckout() {
+        String userId = "user-with-email";
+        String userEmail = "buyer@example.com";
+        String userName = "Buyer Name";
         Address address = createMockAddress();
         String orderId = UUID.randomUUID().toString();
-        String orderNumber = "ORD-2025-00001";
+        String orderNumber = "ORD-2025-00099";
 
         mockCartService.setCartItems(createMockCartItems());
         mockInventoryService.setReservationSuccess(true);
-        mockPaymentService.setPaymentSuccess(false);
+        mockPaymentService.setPaymentSuccess(true);
 
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull()))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
             .thenReturn(mockOrder);
-        when(orderService.updateOrderStatus(eq(orderId), eq(OrderStatus.CANCELLED)))
+        when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), eq(userEmail), eq(userName)))
             .thenReturn(mockOrder);
 
-        // Act & Assert
-        OrderCreationSaga.SagaException exception = assertThrows(
-            OrderCreationSaga.SagaException.class,
-            () -> saga.executeOrderCreationSaga(userId, address, null)
-        );
+        Order result = saga.executeOrderCreationSaga(userId, address, null, userEmail, userName);
 
-        assertTrue(exception.getMessage().contains("Failed to create payment intent"));
+        assertNotNull(result);
+        verify(orderService).finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), eq(userEmail), eq(userName));
+    }
 
-        // Verify compensation was triggered
-        verify(orderService, times(1)).updateOrderStatus(orderId, OrderStatus.CANCELLED);
-        verify(eventPublisher, times(1)).publishOrderCancelledEvent(mockOrder);
-        assertTrue(mockInventoryService.wasReleaseReservationCalled());
+    @Test
+    @SuppressWarnings("unchecked")
+    void should_surfaceClientSecretAndRealCartItems_when_executeCheckout() {
+        // Proves the REST checkout path builds order items from the REAL cart
+        // (prod1 x2), not the retired hardcoded "Test Product", and surfaces the
+        // PaymentIntent client secret to the caller.
+        String userId = "user-checkout";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-CHK1";
 
-        // Cart should NOT be cleared on failure
-        assertFalse(mockCartService.wasClearCartCalled());
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockPaymentService.setPaymentSuccess(true);
+
+        Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
+        ArgumentCaptor<List<OrderItem>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        when(orderService.createOrder(eq(userId), itemsCaptor.capture(), eq(address), isNull(), isNull()))
+            .thenReturn(mockOrder);
+        when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
+            .thenReturn(mockOrder);
+
+        OrderCreationSaga.CheckoutResult result =
+            saga.executeCheckout(userId, address, null, null, null);
+
+        assertEquals("pi_test_secret", result.paymentClientSecret());
+        assertEquals("pi_test", result.paymentIntentId());
+        assertEquals("USD", result.currency());
+        assertSame(mockOrder, result.order());
+
+        List<OrderItem> capturedItems = itemsCaptor.getValue();
+        assertEquals(1, capturedItems.size());
+        assertEquals("prod1", capturedItems.get(0).getProductId());
+        assertEquals(2, capturedItems.get(0).getQuantity());
+    }
+
+    @Test
+    void should_threadGuestEmailIntoCreateOrder_when_guestCheckout() {
+        // The guest flag is set atomically inside createOrder: the saga must pass
+        // the normalized guest email through as the 5th createOrder argument.
+        String guestId = "guest:abc123";
+        String guestEmail = "guest@example.com";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-GST1";
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockPaymentService.setPaymentSuccess(true);
+
+        Order mockOrder = createMockOrder(orderId, orderNumber, guestId, address);
+        when(orderService.createOrder(eq(guestId), anyList(), eq(address), isNull(), eq(guestEmail)))
+            .thenReturn(mockOrder);
+        when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
+            .thenReturn(mockOrder);
+
+        OrderCreationSaga.CheckoutResult result =
+            saga.executeCheckout(guestId, address, null, guestEmail, "Guest", guestEmail);
+
+        assertSame(mockOrder, result.order());
+        verify(orderService).createOrder(eq(guestId), anyList(), eq(address), isNull(), eq(guestEmail));
     }
 
     @Test
     void testOrderCreation_WithPromotionCode() {
-        // Arrange
         String userId = "user123";
         Address address = createMockAddress();
         String promotionCode = "SAVE20";
@@ -277,20 +260,207 @@ class OrderCreationSagaTest {
         mockPaymentService.setPaymentSuccess(true);
 
         Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
-        when(orderService.createOrder(eq(userId), anyList(), eq(address), eq(promotionCode)))
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), eq(promotionCode), isNull()))
             .thenReturn(mockOrder);
-        when(orderService.setPaymentIntent(eq(orderId), anyString()))
+        when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
             .thenReturn(mockOrder);
 
-        // Act
         Order result = saga.executeOrderCreationSaga(userId, address, promotionCode);
 
-        // Assert
         assertNotNull(result);
-        verify(orderService, times(1)).createOrder(eq(userId), anyList(), eq(address), eq(promotionCode));
+        verify(orderService).createOrder(eq(userId), anyList(), eq(address), eq(promotionCode), isNull());
     }
 
-    // Helper methods
+    /**
+     * Step 4 redeems the code against the SAME pre-discount amount the code was
+     * validated with (the order subtotal); promotion-service re-validates the
+     * request before incrementing the usage counter.
+     */
+    @Test
+    void should_applyPromotionWithOrderSubtotal_when_orderCarriesDiscount() {
+        String userId = "user-apply";
+        Address address = createMockAddress();
+        String promotionCode = "SAVE20";
+        String orderId = UUID.randomUUID().toString();
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockPaymentService.setPaymentSuccess(true);
+
+        Order mockOrder = createMockOrder(orderId, "ORD-2025-00002", userId, address);
+        mockOrder.setPromotionCode(promotionCode);
+        mockOrder.setDiscountAmount(new BigDecimal("12.00"));
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), eq(promotionCode), isNull()))
+            .thenReturn(mockOrder);
+        when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
+            .thenReturn(mockOrder);
+        when(promotionServiceClient.applyPromotion(anyString(), any(BigDecimal.class)))
+            .thenReturn(DiscountResult.builder().valid(true).build());
+
+        saga.executeOrderCreationSaga(userId, address, promotionCode);
+
+        verify(promotionServiceClient).applyPromotion(promotionCode, mockOrder.getSubtotal());
+    }
+
+    @Test
+    void should_runReserveStockAndCreateOrderInParallel_when_bothStepsTakeSameTime() {
+        String userId = "user-parallel";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-PAR1";
+
+        long stepDelayMs = 120L;
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockInventoryService.setArtificialDelayMs(stepDelayMs);
+        mockPaymentService.setPaymentSuccess(true);
+
+        Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
+            .thenAnswer(invocation -> {
+                Thread.sleep(stepDelayMs);
+                return mockOrder;
+            });
+        when(orderService.finalizeSuccessfulOrder(eq(orderId), anyString(), anyString(), any(), any()))
+            .thenReturn(mockOrder);
+
+        long start = System.nanoTime();
+        Order result = saga.executeOrderCreationSaga(userId, address, null);
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
+
+        assertNotNull(result);
+        assertEquals(orderNumber, result.getOrderNumber());
+        assertTrue(mockInventoryService.wasReserveStockCalled());
+        verify(orderService).createOrder(eq(userId), anyList(), eq(address), isNull(), isNull());
+
+        assertTrue(
+            elapsedMs < 200L,
+            () -> "Expected parallel fan-out to finish under 200ms but took " + elapsedMs + "ms"
+        );
+    }
+
+    // ---- empty cart ---------------------------------------------------------
+
+    @Test
+    void should_throwEmptyCart_when_cartHasNoItems() {
+        String userId = "user123";
+        Address address = createMockAddress();
+        mockCartService.setCartItems(new ArrayList<>());
+
+        // Empty cart is a client condition (400), NOT a retryable saga failure.
+        assertThrows(EmptyCartException.class,
+            () -> saga.executeOrderCreationSaga(userId, address, null));
+
+        verify(orderService, never()).createOrder(anyString(), anyList(), any(), any(), any());
+        verify(orderService, never()).compensateCancelOrder(anyString());
+    }
+
+    // ---- compensation: downstream returns success=false --------------------
+
+    @Test
+    void testOrderCreation_InsufficientStock_TriggersCompensation() {
+        String userId = "user123";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-INV1";
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(false);
+
+        // Fan-out means createOrder may still run when reservation fails; the
+        // speculatively-persisted order must be compensated.
+        Order speculativeOrder = createMockOrder(orderId, orderNumber, userId, address);
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
+            .thenReturn(speculativeOrder);
+
+        OrderCreationSaga.SagaException exception = assertThrows(
+            OrderCreationSaga.SagaException.class,
+            () -> saga.executeOrderCreationSaga(userId, address, null));
+
+        assertTrue(exception.getMessage().contains("Failed to reserve stock"));
+        assertFalse(mockCartService.wasClearCartCalled());
+        // Compensation cancels the created order atomically (state + event).
+        verify(orderService).compensateCancelOrder(orderId);
+        // No live reservation existed, so nothing to release.
+        assertFalse(mockInventoryService.wasReleaseReservationCalled());
+    }
+
+    @Test
+    void testOrderCreation_PaymentFails_TriggersCompensation() {
+        String userId = "user123";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-00001";
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        mockPaymentService.setPaymentSuccess(false);
+
+        Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
+            .thenReturn(mockOrder);
+
+        OrderCreationSaga.SagaException exception = assertThrows(
+            OrderCreationSaga.SagaException.class,
+            () -> saga.executeOrderCreationSaga(userId, address, null));
+
+        assertTrue(exception.getMessage().contains("Failed to create payment intent"));
+        // Both resources undone: reservation released AND order cancelled.
+        verify(orderService).compensateCancelOrder(orderId);
+        assertTrue(mockInventoryService.wasReleaseReservationCalled());
+        assertFalse(mockCartService.wasClearCartCalled());
+    }
+
+    // ---- compensation: a parallel leg THROWS (not success=false) -----------
+
+    @Test
+    void should_releaseReservation_when_createOrderThrows() {
+        // createOrder throws while reserveStock succeeds — the live reservation
+        // must still be released even though `order` was never assigned.
+        String userId = "user123";
+        Address address = createMockAddress();
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setReservationSuccess(true);
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
+            .thenThrow(new RuntimeException("order DB write failed"));
+
+        assertThrows(OrderCreationSaga.SagaException.class,
+            () -> saga.executeOrderCreationSaga(userId, address, null));
+
+        assertTrue(mockInventoryService.wasReleaseReservationCalled(),
+            "reservation from the succeeded sibling must be released");
+        verify(orderService, never()).compensateCancelOrder(anyString());
+    }
+
+    @Test
+    void should_cancelOrder_when_reserveStockThrows() {
+        // reserveStock throws (gRPC UNAVAILABLE) while createOrder succeeds — the
+        // created order must still be cancelled even though reserveStock never
+        // returned a reservation id.
+        String userId = "user123";
+        Address address = createMockAddress();
+        String orderId = UUID.randomUUID().toString();
+        String orderNumber = "ORD-2025-THR1";
+
+        mockCartService.setCartItems(createMockCartItems());
+        mockInventoryService.setFailWithError(true);
+
+        Order mockOrder = createMockOrder(orderId, orderNumber, userId, address);
+        when(orderService.createOrder(eq(userId), anyList(), eq(address), isNull(), isNull()))
+            .thenReturn(mockOrder);
+
+        assertThrows(OrderCreationSaga.SagaException.class,
+            () -> saga.executeOrderCreationSaga(userId, address, null));
+
+        verify(orderService).compensateCancelOrder(orderId);
+        assertFalse(mockInventoryService.wasReleaseReservationCalled(),
+            "no reservation was acquired, so none should be released");
+        assertFalse(mockCartService.wasClearCartCalled());
+    }
+
+    // ---- helpers ------------------------------------------------------------
 
     private List<CartItem> createMockCartItems() {
         List<CartItem> items = new ArrayList<>();
@@ -337,7 +507,7 @@ class OrderCreationSagaTest {
             .build();
     }
 
-    // Mock gRPC Service Implementations
+    // ---- mock gRPC services -------------------------------------------------
 
     private static class MockCartService extends CartServiceGrpc.CartServiceImplBase {
         private List<CartItem> cartItems = new ArrayList<>();
@@ -387,9 +557,20 @@ class OrderCreationSagaTest {
         private boolean reservationSuccess = true;
         private boolean reserveStockCalled = false;
         private boolean releaseReservationCalled = false;
+        private boolean failWithError = false;
+        private long artificialDelayMs = 0L;
 
         public void setReservationSuccess(boolean success) {
             this.reservationSuccess = success;
+        }
+
+        public void setArtificialDelayMs(long delayMs) {
+            this.artificialDelayMs = delayMs;
+        }
+
+        /** Simulate a gRPC transport failure (server-side error) rather than a success=false body. */
+        public void setFailWithError(boolean failWithError) {
+            this.failWithError = failWithError;
         }
 
         public boolean wasReserveStockCalled() {
@@ -404,12 +585,24 @@ class OrderCreationSagaTest {
         public void reserveStock(com.ecommerce.orderservice.grpc.proto.inventory.ReserveStockRequest request,
                                 StreamObserver<ReserveStockResponse> responseObserver) {
             reserveStockCalled = true;
+            if (artificialDelayMs > 0) {
+                try {
+                    Thread.sleep(artificialDelayMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            if (failWithError) {
+                responseObserver.onError(
+                    Status.UNAVAILABLE.withDescription("inventory-service down").asRuntimeException());
+                return;
+            }
             ReserveStockResponse.Builder builder = ReserveStockResponse.newBuilder()
                 .setSuccess(reservationSuccess);
 
             if (reservationSuccess) {
                 builder.setMessage("Stock reserved")
-                    .setReservationId("res-" + UUID.randomUUID().toString());
+                    .setReservationId("res-" + UUID.randomUUID());
             } else {
                 builder.setMessage("Insufficient stock");
             }
@@ -453,7 +646,8 @@ class OrderCreationSagaTest {
 
             if (paymentSuccess) {
                 builder.setMessage("Payment intent created")
-                    .setPaymentIntentId("pi_" + UUID.randomUUID().toString());
+                    .setPaymentIntentId("pi_test")
+                    .setClientSecret("pi_test_secret");
             } else {
                 builder.setMessage("Payment processing failed");
             }

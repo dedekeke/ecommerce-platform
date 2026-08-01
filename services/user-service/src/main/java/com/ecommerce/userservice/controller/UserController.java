@@ -2,6 +2,7 @@ package com.ecommerce.userservice.controller;
 
 import com.ecommerce.userservice.domain.User;
 import com.ecommerce.userservice.dto.UpdateProfileRequest;
+import com.ecommerce.userservice.dto.UserContactResponse;
 import com.ecommerce.userservice.dto.UserProfileResponse;
 import com.ecommerce.userservice.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -77,12 +79,22 @@ public class UserController {
     }
 
     /**
-     * Create a new user (for testing/admin purposes)
+     * Create a new user (administrative provisioning).
+     *
+     * <p>This endpoint provisions a user row directly from a supplied
+     * {@code auth0Id}/{@code email}, bypassing the normal first-login Auth0 sync.
+     * Because {@code email} and {@code auth0Id} carry unique constraints, an
+     * unauthenticated-but-authorized caller could otherwise pre-create a row with
+     * a victim's real email and an arbitrary Auth0 id, blocking that victim's
+     * genuine first login (unique-constraint DoS). It is therefore restricted to
+     * {@code SCOPE_admin}, consistent with the other administrative endpoints in
+     * this controller ({@code GET /api/users/{id}}).
      *
      * POST /api/users
      */
     @PostMapping
-    @Operation(summary = "Create user", description = "Create a new user (for testing/admin purposes)")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
+    @Operation(summary = "Create user", description = "Provision a new user directly (admin scope only)")
     public ResponseEntity<UserProfileResponse> createUser(@Valid @RequestBody Map<String, Object> request) {
         log.debug("Creating user with email: {}", request.get("email"));
 
@@ -102,12 +114,48 @@ public class UserController {
     }
 
     /**
-     * Get user profile by ID (admin only - to be secured with @PreAuthorize later)
+     * Resolve a user's contact details by Auth0 {@code sub}.
+     *
+     * <p>Internal service-to-service endpoint used by promotion-service
+     * (per-user promotion targeting) and cart-service (abandoned-cart email
+     * resolution) to turn an Auth0 id into an email/name. Returns 404 when no
+     * user exists for the sub so callers can fall back gracefully.
+     *
+     * <p>Security: returns only a minimal {@link UserContactResponse}
+     * (email + display name) — never the full profile — and is restricted to
+     * privileged callers. There is no dedicated {@code internal:service} scope
+     * yet, so the guard accepts {@code SCOPE_admin} as well; replace with
+     * {@code SCOPE_internal:service} once an M2M scope is provisioned in Auth0.
+     *
+     * GET /api/users/by-auth0/{sub}
+     */
+    @GetMapping("/by-auth0/{sub}")
+    @PreAuthorize("hasAuthority('SCOPE_internal:service') or hasAuthority('SCOPE_admin')")
+    @Operation(summary = "Resolve user contact by Auth0 sub",
+            description = "Internal lookup of email/name by Auth0 sub for inter-service use (admin/service scope only)")
+    public ResponseEntity<UserContactResponse> getUserByAuth0Id(@PathVariable("sub") String sub) {
+        log.debug("Resolving user by auth0 sub: {}", sub);
+
+        return userService.findByAuth0Id(sub)
+                .map(UserContactResponse::from)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Get user profile by ID (admin only).
+     *
+     * <p>Lookup by internal numeric id is an administrative operation that
+     * exposes the full {@link UserProfileResponse} (PII included), so it is
+     * gated to {@code SCOPE_admin}. Regular users must read their own profile
+     * via {@code GET /api/users/me}; inter-service callers use
+     * {@code GET /api/users/by-auth0/{sub}}.
      *
      * GET /api/users/{id}
      */
     @GetMapping("/{id}")
-    @Operation(summary = "Get user by ID", description = "Get a user's profile by their ID (admin only)")
+    @PreAuthorize("hasAuthority('SCOPE_admin')")
+    @Operation(summary = "Get user by ID", description = "Get a user's full profile by their internal ID (admin scope only)")
     public ResponseEntity<UserProfileResponse> getUserById(@PathVariable Long id) {
         log.debug("Getting user by ID: {}", id);
 

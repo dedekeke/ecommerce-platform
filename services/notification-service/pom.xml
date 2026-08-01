@@ -17,6 +17,12 @@
     <description>Notification Service - Email and SMS notifications</description>
 
     <dependencies>
+        <!-- Shared logback base (single physical copy lives in common-logging) -->
+        <dependency>
+            <groupId>com.ecommerce</groupId>
+            <artifactId>common-logging</artifactId>
+        </dependency>
+
         <!-- Spring Boot Starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -54,6 +60,20 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
+        <!-- Twilio SDK — real SMS provider (env-gated: notification.sms.provider=twilio) -->
+        <dependency>
+            <groupId>com.twilio.sdk</groupId>
+            <artifactId>twilio</artifactId>
+            <version>${twilio.version}</version>
+        </dependency>
+
+        <!-- Firebase Admin SDK — real push provider (env-gated: notification.push.provider=fcm) -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>${firebase-admin.version}</version>
+        </dependency>
+
         <!-- Eureka Client -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
@@ -68,6 +88,12 @@
         <dependency>
             <groupId>io.zipkin.reporter2</groupId>
             <artifactId>zipkin-reporter-brave</artifactId>
+        </dependency>
+
+        <!-- Structured JSON logging (managed version in parent pom) -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
         </dependency>
 
         <!-- Swagger/OpenAPI -->

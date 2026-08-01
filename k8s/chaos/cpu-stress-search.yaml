@@ -1,0 +1,18 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cpu-stress-search-service
+  namespace: ecommerce-staging
+spec:
+  mode: all
+  duration: "5m"
+  selector:
+    namespaces:
+      - ecommerce-staging
+    labelSelectors:
+      app: search-service
+  stressors:
+    cpu:
+      workers: 2
+      load: 80
+  dryRun: true

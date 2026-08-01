@@ -1,0 +1,9 @@
+# Angular build artifacts
+dist/
+.angular/
+
+# Node modules
+node_modules/
+
+# Coverage
+coverage/

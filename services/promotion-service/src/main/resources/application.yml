@@ -8,15 +8,20 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 30000
+      # Env-overridable pool (docs/db-connection-budget.md); tune without rebuild.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 3000
       idle-timeout: 600000
       max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      pool-name: ${spring.application.name}-hikari
+      register-mbeans: true
+      validation-timeout: 1000
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     show-sql: false
     properties:
       hibernate:
@@ -62,8 +67,30 @@ spring:
     config:
       enabled: false
 
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # Producer tuning rationale (applied 2026-04-30, see SCALING_AND_IMPROVEMENTS.md §2.6):
+    #   - acks=all + enable.idempotence=true: exactly-once delivery semantics.
+    #   - compression-type=zstd: ~60–70% size reduction on JSON payloads.
+    #   - batch-size=64KB + linger-ms=5: improves throughput under burst load.
+    #   - buffer-memory=64MB: absorbs short broker stalls without back-pressure.
+    #   - max.in.flight.requests.per.connection=5: max allowed with idempotence on.
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      compression-type: zstd
+      batch-size: 65536
+      linger-ms: 5
+      buffer-memory: 67108864
+      properties:
+        spring.json.add.type.headers: false
+        max.in.flight.requests.per.connection: 5
+        enable.idempotence: true
+
 server:
-  port: ${SERVER_PORT}
+  port: 8091
   compression:
     enabled: true
   http2:
@@ -90,7 +117,7 @@ management:
       show-details: always
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   zipkin:
     tracing:
       endpoint: ${MANAGEMENT_ZIPKIN_TRACING_ENDPOINT}
@@ -116,6 +143,32 @@ springdoc:
 
 security:
   enabled: ${SECURITY_ENABLED}
+  # Shared secret proving a caller is a trusted platform service (currently only
+  # order-service's checkout saga). Guards POST /api/promotions/apply, which
+  # increments usage counters and must never be reachable from a browser.
+  # REQUIRED when security.enabled=true — the app fails fast at boot otherwise.
+  internal:
+    service-token: ${INTERNAL_SERVICE_TOKEN:}
+
+# Inter-service lookup of user contact details (per-user promotion targeting).
+user:
+  service:
+    url: ${USER_SERVICE_URL:http://user-service:8085}
+    connect-timeout-ms: ${USER_SERVICE_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${USER_SERVICE_READ_TIMEOUT_MS:3000}
+
+# Multi-currency rate refresh (§3.5). The job is feature-flagged OFF by default
+# (FEATURE_FLAG_CURRENCY_RATE_REFRESH); set the URL + flag to enable live refresh.
+currency:
+  rate:
+    api-url: ${CURRENCY_RATE_API_URL:}
+    refresh-cron: ${CURRENCY_RATE_REFRESH_CRON:0 0 * * * *}
+    connect-timeout-ms: ${CURRENCY_RATE_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${CURRENCY_RATE_READ_TIMEOUT_MS:5000}
+
+feature:
+  flag:
+    currency-rate-refresh: ${FEATURE_FLAG_CURRENCY_RATE_REFRESH:false}
 
 
 auth0:

@@ -50,11 +50,15 @@ class NotificationServiceTest {
     @Mock
     private SmsService smsService;
 
+    @Mock
+    private PushService pushService;
+
     @InjectMocks
     private NotificationService notificationService;
 
     private NotificationTemplate emailTemplate;
     private NotificationTemplate smsTemplate;
+    private NotificationTemplate pushTemplate;
     private Map<String, Object> variables;
 
     @BeforeEach
@@ -78,9 +82,23 @@ class NotificationServiceTest {
                 .active(true)
                 .build();
 
+        pushTemplate = NotificationTemplate.builder()
+                .id("template3")
+                .code("PUSH_NOTIFICATION")
+                .name("Push Notification")
+                .type(NotificationType.PUSH)
+                .subject("Order update")
+                .body("Your order ${orderNumber} has shipped")
+                .active(true)
+                .build();
+
         variables = new HashMap<>();
         variables.put("orderNumber", "ORD-12345");
         variables.put("userName", "John Doe");
+
+        // In production Spring injects the async proxy here; default to the real
+        // instance so non-retry tests exercise the actual send path.
+        notificationService.setSelf(notificationService);
     }
 
     @Test
@@ -151,6 +169,60 @@ class NotificationServiceTest {
 
         ArgumentCaptor<NotificationLog> logCaptor = ArgumentCaptor.forClass(NotificationLog.class);
         verify(logRepository, atLeast(2)).save(logCaptor.capture());
+    }
+
+    @Test
+    void should_dispatchPush_when_templateTypeIsPush() {
+        // Given
+        when(templateRepository.findByCode("PUSH_NOTIFICATION"))
+                .thenReturn(Optional.of(pushTemplate));
+        when(logRepository.save(any(NotificationLog.class)))
+                .thenAnswer(invocation -> {
+                    NotificationLog log = invocation.getArgument(0);
+                    log.setId("log123");
+                    return log;
+                });
+
+        // When
+        notificationService.sendNotification(
+                "user123", "device-token-abc", "PUSH_NOTIFICATION",
+                variables, "order123", "SHIPMENT");
+
+        // Then — title comes from the template subject, body is the rendered template.
+        verify(pushService, timeout(1000)).sendPush(
+                eq("device-token-abc"),
+                eq("Order update"),
+                eq("Your order ORD-12345 has shipped"),
+                eq(variables));
+    }
+
+    @Test
+    void should_markRetrying_when_smsProviderFails() {
+        // Given — a provider delivery failure must not lose the notification.
+        when(templateRepository.findByCode("SMS_NOTIFICATION"))
+                .thenReturn(Optional.of(smsTemplate));
+        when(logRepository.save(any(NotificationLog.class)))
+                .thenAnswer(invocation -> {
+                    NotificationLog log = invocation.getArgument(0);
+                    log.setId("log123");
+                    return log;
+                });
+        doThrow(new com.ecommerce.notificationservice.service.sms.SmsDeliveryException(
+                "gateway down", new RuntimeException()))
+                .when(smsService).sendSms(anyString(), anyString());
+
+        // When
+        notificationService.sendNotification(
+                "user123", "+1234567890", "SMS_NOTIFICATION",
+                variables, "order123", "ORDER");
+
+        // Then
+        ArgumentCaptor<NotificationLog> logCaptor = ArgumentCaptor.forClass(NotificationLog.class);
+        verify(logRepository, atLeast(2)).save(logCaptor.capture());
+
+        NotificationLog failedLog = logCaptor.getAllValues().get(logCaptor.getAllValues().size() - 1);
+        assertThat(failedLog.getStatus()).isEqualTo(NotificationStatus.RETRYING);
+        assertThat(failedLog.getNextRetryAt()).isNotNull();
     }
 
     @Test
@@ -249,19 +321,109 @@ class NotificationServiceTest {
                 .thenReturn(Optional.of(failedLog));
         when(templateRepository.findByCode("ORDER_CONFIRMATION"))
                 .thenReturn(Optional.of(emailTemplate));
-        when(logRepository.save(any(NotificationLog.class)))
-                .thenReturn(failedLog);
+
+        // Snapshot the retry-update save at capture time, since the same
+        // NotificationLog reference is mutated again by the subsequent
+        // sendNotification call and ArgumentCaptor records by reference.
+        java.util.concurrent.atomic.AtomicInteger capturedRetryCount = new java.util.concurrent.atomic.AtomicInteger(-1);
+        java.util.concurrent.atomic.AtomicReference<NotificationStatus> capturedStatus = new java.util.concurrent.atomic.AtomicReference<>();
+        when(logRepository.save(any(NotificationLog.class))).thenAnswer(invocation -> {
+            NotificationLog arg = invocation.getArgument(0);
+            if ("log123".equals(arg.getId()) && capturedRetryCount.get() == -1) {
+                capturedRetryCount.set(arg.getRetryCount());
+                capturedStatus.set(arg.getStatus());
+            }
+            return arg;
+        });
 
         // When
         notificationService.retryNotification("log123");
 
         // Then
-        ArgumentCaptor<NotificationLog> logCaptor = ArgumentCaptor.forClass(NotificationLog.class);
-        verify(logRepository, atLeastOnce()).save(logCaptor.capture());
+        // retryNotification must increment retry count and set status to RETRYING
+        // before delegating to sendNotification.
+        assertThat(capturedRetryCount.get()).isEqualTo(2);
+        assertThat(capturedStatus.get()).isEqualTo(NotificationStatus.RETRYING);
+    }
 
-        NotificationLog updatedLog = logCaptor.getValue();
-        assertThat(updatedLog.getRetryCount()).isEqualTo(2);
-        assertThat(updatedLog.getStatus()).isEqualTo(NotificationStatus.RETRYING);
+    @Test
+    void should_dispatch_retry_send_through_async_proxy_not_self_invocation() {
+        // Given — a distinct proxy stands in for the Spring async proxy.
+        NotificationService asyncProxy = mock(NotificationService.class);
+        notificationService.setSelf(asyncProxy);
+
+        NotificationLog failedLog = NotificationLog.builder()
+                .id("log123")
+                .userId("user123")
+                .recipient("test@example.com")
+                .templateCode("ORDER_CONFIRMATION")
+                .variables(variables)
+                .status(NotificationStatus.RETRYING)
+                .retryCount(1)
+                .relatedEntityId("order123")
+                .relatedEntityType("ORDER")
+                .build();
+        when(logRepository.findById("log123")).thenReturn(Optional.of(failedLog));
+        when(logRepository.save(any(NotificationLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // When
+        notificationService.retryNotification("log123");
+
+        // Then — the resend goes through the proxy (so @Async takes effect),
+        // NOT inline via this.resend. It re-sends the same row by id so the
+        // retryCount is carried forward across the chain.
+        verify(asyncProxy).resend("log123");
+        verify(emailService, never()).sendEmail(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void should_boundTotalAttempts_acrossRetryChain_when_notificationPermanentlyFails() {
+        // Given — an in-memory store so the SAME row is carried across the chain,
+        // and a permanently failing email channel.
+        Map<String, NotificationLog> store = new HashMap<>();
+        when(logRepository.save(any(NotificationLog.class))).thenAnswer(invocation -> {
+            NotificationLog log = invocation.getArgument(0);
+            if (log.getId() == null) {
+                log.setId("log-1");
+            }
+            store.put(log.getId(), log);
+            return log;
+        });
+        when(logRepository.findById(anyString()))
+                .thenAnswer(invocation -> Optional.ofNullable(store.get(invocation.getArgument(0))));
+        when(templateRepository.findByCode("ORDER_CONFIRMATION"))
+                .thenReturn(Optional.of(emailTemplate));
+        doThrow(new RuntimeException("smtp permanently down"))
+                .when(emailService).sendEmail(anyString(), anyString(), anyString(), any());
+
+        // self resolves to the real instance so resend runs synchronously here.
+        notificationService.setSelf(notificationService);
+
+        // When — initial send (attempt 1), then drive scheduler-style retries.
+        notificationService.sendNotification(
+                "user123", "test@example.com", "ORDER_CONFIRMATION",
+                variables, "order123", "ORDER");
+
+        int safetyGuard = 0;
+        while (store.get("log-1").getStatus() == NotificationStatus.RETRYING && safetyGuard++ < 100) {
+            notificationService.retryNotification("log-1");
+        }
+
+        // Then — attempts are bounded: 1 initial + MAX_RETRY_ATTEMPTS (3) retries.
+        verify(emailService, times(4)).sendEmail(anyString(), anyString(), anyString(), any());
+
+        // No fan-out: exactly one row exists (retry re-used it, never created new ones).
+        assertThat(store).hasSize(1);
+
+        NotificationLog finalRow = store.get("log-1");
+        assertThat(finalRow.getRetryCount()).isEqualTo(3);
+        assertThat(finalRow.getStatus()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(finalRow.getNextRetryAt()).isNull();
+
+        // And the cap is hard-enforced: a further retry is rejected.
+        assertThatThrownBy(() -> notificationService.retryNotification("log-1"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Max retry attempts reached");
     }
 
     @Test

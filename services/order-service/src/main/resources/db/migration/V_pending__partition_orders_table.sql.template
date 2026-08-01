@@ -1,0 +1,147 @@
+-- ============================================================================
+-- V_pending — Orders table → range partitioning by month (TEMPLATE, NOT LIVE)
+-- ============================================================================
+--
+-- WHY THIS IS A `.template` (NOT `.sql`)
+-- --------------------------------------
+-- Flyway scans `db/migration/` for `V<n>__*.sql` files and runs them in
+-- version order. Naming this file with the `.template` suffix keeps Flyway
+-- from picking it up automatically — partitioning a populated `orders`
+-- table is a one-shot, downtime-bearing change that MUST be planned by a
+-- DBA, not auto-applied on app startup.
+--
+-- Partitioning is the §1.2 scale lever for orders: see docs/PARTITIONING.md
+-- for the rationale and the 50M-row trigger we use to decide WHEN to
+-- promote this template. Until that threshold, Flyway V4 archival is the
+-- sole hot-table-trim mechanism.
+--
+-- HOW TO PROMOTE THIS FILE TO A LIVE MIGRATION
+-- --------------------------------------------
+-- 1. Schedule a maintenance window (≥30 minutes, see downtime estimate).
+-- 2. Take a logical backup: `pg_dump --table=orders --table=order_items > backup.sql`.
+-- 3. Run the partitioning verification dry-run on a staging clone with
+--    production-volume data.
+-- 4. Edit the partition date ranges (TEMPLATE: 12 months ahead of
+--    {{TODAY}}). Re-evaluate `current_date` references below — Flyway runs
+--    SQL deterministically so the ranges must be hard-coded at
+--    promotion time, not dynamic.
+-- 5. Rename to the next available version: `V<N>__Partition_orders_table.sql`.
+-- 6. Run via Flyway against staging, validate, then production.
+-- 7. Update OrderRepository: confirm @Query methods filter on `created_at`
+--    (the partition key) when possible to enable partition pruning.
+-- 8. Schedule a recurring job (or pg_partman) to roll new monthly partitions
+--    forward — this template only seeds 12 months.
+--
+-- DATA MIGRATION STEPS (run during the maintenance window)
+-- --------------------------------------------------------
+-- a) Create the partitioned parent + 12 monthly children (this file does
+--    that for `orders_partitioned`).
+-- b) Copy live data:
+--      INSERT INTO orders_partitioned SELECT * FROM orders;
+-- c) Verify row counts match:
+--      SELECT (SELECT COUNT(*) FROM orders) AS old,
+--             (SELECT COUNT(*) FROM orders_partitioned) AS new;
+-- d) In a single transaction, swap the table names:
+--      BEGIN;
+--      ALTER TABLE orders RENAME TO orders_legacy;
+--      ALTER TABLE orders_partitioned RENAME TO orders;
+--      COMMIT;
+-- e) Smoke-test the application against the renamed parent.
+-- f) Once confidence is high (recommend +24h soak), drop the legacy table:
+--      DROP TABLE orders_legacy CASCADE;
+--
+-- ROLLBACK STEPS (if step d–f fail)
+-- ---------------------------------
+-- Before step d, rollback is trivial: DROP TABLE orders_partitioned CASCADE;
+-- After step d, rollback requires reversing the rename:
+--      BEGIN;
+--      ALTER TABLE orders RENAME TO orders_partitioned;
+--      ALTER TABLE orders_legacy RENAME TO orders;
+--      COMMIT;
+-- After step f, rollback requires restoring from the backup taken in step 2.
+--
+-- DOWNTIME ESTIMATE
+-- -----------------
+-- - 10M rows: ≤5 minutes for INSERT…SELECT on a c5.4xlarge-class DB.
+-- - 50M rows: 20–30 minutes — recommend running INSERT…SELECT in batches
+--   of 1M with intermediate commits to avoid lock contention.
+-- - The rename swap itself is instantaneous (DDL holds AccessExclusiveLock
+--   for milliseconds), but in-flight transactions will be blocked.
+-- - Recommend full read-only mode during steps b–d.
+--
+-- POSTGRES DIALECT — PostgreSQL 12+ for declarative range partitioning.
+--
+-- NOTE ON {{ }} TOKENS: this template uses {{TODAY}} and {{NEXT_*}} as
+-- placeholders that the promoter MUST replace with concrete dates. Do not
+-- run this file as-is — it will fail at parse time.
+-- ============================================================================
+
+-- Step 1 — Parent table (range-partitioned by created_at).
+-- The partition key MUST be part of the primary key in declarative
+-- partitioning — hence the composite (id, created_at) PK. Application
+-- code already uses `id` as the lookup key, so the composite is invisible
+-- at the Hibernate layer.
+CREATE TABLE orders_partitioned (
+    id                 VARCHAR(36)   NOT NULL,
+    order_number       VARCHAR(255)  NOT NULL,
+    user_id            VARCHAR(255)  NOT NULL,
+    subtotal           NUMERIC(10,2) NOT NULL,
+    tax                NUMERIC(10,2) NOT NULL,
+    shipping_cost      NUMERIC(10,2) NOT NULL,
+    total              NUMERIC(10,2) NOT NULL,
+    status             VARCHAR(32)   NOT NULL,
+    payment_intent_id  VARCHAR(255),
+    promotion_code     VARCHAR(255),
+    discount_amount    NUMERIC(10,2),
+    street             VARCHAR(255),
+    city               VARCHAR(255),
+    state              VARCHAR(255),
+    zip_code           VARCHAR(255),
+    country            VARCHAR(255),
+    created_at         TIMESTAMP     NOT NULL,
+    updated_at         TIMESTAMP     NOT NULL,
+    PRIMARY KEY (id, created_at)
+) PARTITION BY RANGE (created_at);
+
+-- Indexes are inherited by partitions via CREATE INDEX … ON ONLY when the
+-- parent gets attached children. PostgreSQL 11+ propagates these.
+CREATE INDEX idx_orders_p_user             ON orders_partitioned (user_id);
+CREATE INDEX idx_orders_p_status           ON orders_partitioned (status);
+CREATE INDEX idx_orders_p_payment_intent   ON orders_partitioned (payment_intent_id);
+CREATE INDEX idx_orders_p_status_created   ON orders_partitioned (status, created_at);
+CREATE INDEX idx_orders_p_user_status_date ON orders_partitioned (user_id, status, created_at);
+CREATE UNIQUE INDEX uq_orders_p_order_number ON orders_partitioned (order_number, created_at);
+
+-- Step 2 — 12 monthly child partitions, starting at the first day of the
+-- month containing {{TODAY}}. Replace tokens at promotion time.
+-- Pattern: orders_p_YYYYMM, range [first-of-month, first-of-next-month).
+
+CREATE TABLE orders_p_{{YYYYMM_M0}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M0}}')  TO ('{{FIRST_OF_M1}}');
+CREATE TABLE orders_p_{{YYYYMM_M1}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M1}}')  TO ('{{FIRST_OF_M2}}');
+CREATE TABLE orders_p_{{YYYYMM_M2}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M2}}')  TO ('{{FIRST_OF_M3}}');
+CREATE TABLE orders_p_{{YYYYMM_M3}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M3}}')  TO ('{{FIRST_OF_M4}}');
+CREATE TABLE orders_p_{{YYYYMM_M4}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M4}}')  TO ('{{FIRST_OF_M5}}');
+CREATE TABLE orders_p_{{YYYYMM_M5}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M5}}')  TO ('{{FIRST_OF_M6}}');
+CREATE TABLE orders_p_{{YYYYMM_M6}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M6}}')  TO ('{{FIRST_OF_M7}}');
+CREATE TABLE orders_p_{{YYYYMM_M7}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M7}}')  TO ('{{FIRST_OF_M8}}');
+CREATE TABLE orders_p_{{YYYYMM_M8}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M8}}')  TO ('{{FIRST_OF_M9}}');
+CREATE TABLE orders_p_{{YYYYMM_M9}}  PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M9}}')  TO ('{{FIRST_OF_M10}}');
+CREATE TABLE orders_p_{{YYYYMM_M10}} PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M10}}') TO ('{{FIRST_OF_M11}}');
+CREATE TABLE orders_p_{{YYYYMM_M11}} PARTITION OF orders_partitioned
+    FOR VALUES FROM ('{{FIRST_OF_M11}}') TO ('{{FIRST_OF_M12}}');
+
+-- Default partition catches any rows that fall outside the 12-month window —
+-- protects against application clock skew. Roll new partitions BEFORE
+-- letting rows land here; default partitions cannot be efficiently pruned.
+CREATE TABLE orders_p_default PARTITION OF orders_partitioned DEFAULT;

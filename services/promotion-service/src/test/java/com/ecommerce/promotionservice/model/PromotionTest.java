@@ -343,45 +343,6 @@ class PromotionTest {
     }
 
     @Nested
-    @DisplayName("Usage Increment Tests")
-    class UsageIncrementTests {
-
-        @Test
-        @DisplayName("Should increment usage count")
-        void shouldIncrementUsageCount() {
-            Promotion promotion = createValidPromotion();
-            promotion.setCurrentUses(10);
-
-            promotion.incrementUsage();
-
-            assertThat(promotion.getCurrentUses()).isEqualTo(11);
-        }
-
-        @Test
-        @DisplayName("Should throw exception when incrementing beyond max uses")
-        void shouldThrowExceptionWhenIncrementingBeyondMaxUses() {
-            Promotion promotion = createValidPromotion();
-            promotion.setMaxUses(10);
-            promotion.setCurrentUses(10);
-
-            assertThatThrownBy(() -> promotion.incrementUsage())
-                    .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("maximum usage limit");
-        }
-
-        @Test
-        @DisplayName("Should allow increment when max uses is null")
-        void shouldAllowIncrementWhenMaxUsesIsNull() {
-            Promotion promotion = createValidPromotion();
-            promotion.setMaxUses(null);
-            promotion.setCurrentUses(1000);
-
-            assertThatCode(() -> promotion.incrementUsage()).doesNotThrowAnyException();
-            assertThat(promotion.getCurrentUses()).isEqualTo(1001);
-        }
-    }
-
-    @Nested
     @DisplayName("Category Applicability Tests")
     class CategoryApplicabilityTests {
 

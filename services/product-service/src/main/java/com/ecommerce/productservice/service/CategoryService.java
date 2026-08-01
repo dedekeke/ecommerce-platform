@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Service layer for Category management with hierarchical support.
@@ -41,6 +42,14 @@ public class CategoryService {
         log.debug("Fetching category by slug: {}", slug);
         return categoryRepository.findBySlug(slug)
             .orElseThrow(() -> new CategoryNotFoundException("Category not found with slug: " + slug));
+    }
+
+    /**
+     * Find category by slug, returning Optional.
+     */
+    public Optional<Category> findCategoryBySlug(String slug) {
+        log.debug("Finding category by slug: {}", slug);
+        return categoryRepository.findBySlug(slug);
     }
 
     /**

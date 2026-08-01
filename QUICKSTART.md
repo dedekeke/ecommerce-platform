@@ -10,9 +10,12 @@ Before you begin, ensure you have the following installed:
 |-------------|---------|---------------|
 | Java JDK | 21+ | `java -version` |
 | Maven | 3.8+ | `mvn -version` |
+| Node.js | 22.12+ (use `nvm use`) | `node --version` |
 | Docker | Latest | `docker --version` |
 | Docker Compose | Latest | `docker-compose --version` |
 | Git | Latest | `git --version` |
+
+The repo pins Node via `.nvmrc`. Run `nvm install && nvm use` from the repo root to match.
 
 ## Step 1: Clone and Configure
 

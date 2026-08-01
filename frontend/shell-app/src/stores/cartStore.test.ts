@@ -20,6 +20,31 @@ describe('cartStore', () => {
     useCartStore.getState().clearCart()
   })
 
+  describe('replaceItems', () => {
+    it('should replace items wholesale and recompute totals', () => {
+      useCartStore.getState().addItem(mockProduct)
+      useCartStore.getState().replaceItems([
+        { productId: 'p1', name: 'Widget', price: 10.0, quantity: 2, serverId: 'srv-1' },
+        { productId: 'p2', name: 'Gadget', price: 5.0, quantity: 1, serverId: 'srv-2' },
+      ])
+      const { items, total, itemCount } = useCartStore.getState()
+      expect(items.map((i) => i.productId)).toEqual(['p1', 'p2'])
+      expect(items[0]?.serverId).toBe('srv-1')
+      expect(total).toBe(25.0)
+      expect(itemCount).toBe(3)
+    })
+
+    it('should leave the applied promotion untouched', () => {
+      useCartStore
+        .getState()
+        .applyPromotion({ code: 'SAVE10', discountAmount: 3, promotionName: 'Save' })
+      useCartStore.getState().replaceItems([])
+      expect(useCartStore.getState().promotionCode).toBe('SAVE10')
+      expect(useCartStore.getState().items).toHaveLength(0)
+      useCartStore.getState().removePromotion()
+    })
+  })
+
   describe('initial state', () => {
     it('should have empty items array', () => {
       const { items } = useCartStore.getState()
@@ -156,6 +181,108 @@ describe('cartStore', () => {
 
       const { items } = useCartStore.getState()
       expect(items).toHaveLength(0)
+    })
+  })
+
+  describe('promotion fields', () => {
+    it('should default promotion fields to null', () => {
+      const { promotionCode, discountAmount, promotionName } = useCartStore.getState()
+      expect(promotionCode).toBeNull()
+      expect(discountAmount).toBeNull()
+      expect(promotionName).toBeNull()
+    })
+
+    it('should apply and remove a promotion', () => {
+      useCartStore.getState().applyPromotion({ code: 'SAVE10', discountAmount: 5, promotionName: '10 Off' })
+      expect(useCartStore.getState().promotionCode).toBe('SAVE10')
+
+      useCartStore.getState().removePromotion()
+      expect(useCartStore.getState().promotionCode).toBeNull()
+      expect(useCartStore.getState().discountAmount).toBeNull()
+      expect(useCartStore.getState().promotionName).toBeNull()
+    })
+
+    it('should persist promotion fields in the partialized cart-storage snapshot', () => {
+      useCartStore.getState().applyPromotion({ code: 'SAVE10', discountAmount: 5, promotionName: '10 Off' })
+      const persisted = JSON.parse(localStorage.getItem('cart-storage') ?? '{}')
+      expect(persisted.state.promotionCode).toBe('SAVE10')
+      expect(persisted.state.discountAmount).toBe(5)
+      expect(persisted.state.promotionName).toBe('10 Off')
+    })
+
+    // Regression: a pre-existing (version-less) cart-storage payload must survive rehydration
+    // rather than being wiped by the version:1 bump introduced alongside promo fields.
+    it('should rehydrate a legacy version-less payload without crashing, defaulting the new promo fields', async () => {
+      localStorage.setItem(
+        'cart-storage',
+        JSON.stringify({
+          state: {
+            items: [{ productId: 'p1', name: 'Widget', price: 10, quantity: 2 }],
+            total: 20,
+            itemCount: 2,
+          },
+        })
+      )
+
+      await expect(useCartStore.persist.rehydrate()).resolves.not.toThrow()
+
+      const state = useCartStore.getState()
+      expect(state.items).toEqual([{ productId: 'p1', name: 'Widget', price: 10, quantity: 2 }])
+      expect(state.promotionCode).toBeNull()
+      expect(state.discountAmount).toBeNull()
+      expect(state.promotionName).toBeNull()
+
+      localStorage.removeItem('cart-storage')
+    })
+
+    it('should rehydrate a v0 payload without crashing, defaulting the new promo fields', async () => {
+      localStorage.setItem(
+        'cart-storage',
+        JSON.stringify({
+          state: {
+            items: [{ productId: 'p1', name: 'Widget', price: 10, quantity: 1 }],
+            total: 10,
+            itemCount: 1,
+          },
+          version: 0,
+        })
+      )
+
+      await expect(useCartStore.persist.rehydrate()).resolves.not.toThrow()
+
+      const state = useCartStore.getState()
+      expect(state.items).toEqual([{ productId: 'p1', name: 'Widget', price: 10, quantity: 1 }])
+      expect(state.promotionCode).toBeNull()
+      expect(state.discountAmount).toBeNull()
+      expect(state.promotionName).toBeNull()
+
+      localStorage.removeItem('cart-storage')
+    })
+
+    it('should rehydrate promotion fields already persisted by cart-mfe under the shared cart-storage key', async () => {
+      localStorage.setItem(
+        'cart-storage',
+        JSON.stringify({
+          state: {
+            items: [],
+            total: 0,
+            itemCount: 0,
+            promotionCode: 'SAVE10',
+            discountAmount: 2.5,
+            promotionName: '10% off',
+          },
+          version: 1,
+        })
+      )
+
+      await useCartStore.persist.rehydrate()
+
+      const { promotionCode, discountAmount, promotionName } = useCartStore.getState()
+      expect(promotionCode).toBe('SAVE10')
+      expect(discountAmount).toBe(2.5)
+      expect(promotionName).toBe('10% off')
+
+      localStorage.removeItem('cart-storage')
     })
   })
 

@@ -42,6 +42,7 @@
         <!-- Observability -->
         <micrometer-tracing.version>1.2.0</micrometer-tracing.version>
         <zipkin-reporter.version>2.16.4</zipkin-reporter.version>
+        <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
 
         <!-- Utilities -->
         <lombok.version>1.18.30</lombok.version>
@@ -51,6 +52,10 @@
         <!-- Resilience -->
         <resilience4j.version>2.2.0</resilience4j.version>
 
+        <!-- Notification providers (notification-service) -->
+        <twilio.version>10.1.5</twilio.version>
+        <firebase-admin.version>9.2.0</firebase-admin.version>
+
         <!-- Testing -->
         <testcontainers.version>1.19.3</testcontainers.version>
         <rest-assured.version>5.3.2</rest-assured.version>
@@ -58,9 +63,14 @@
         <!-- Maven Plugins -->
         <protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
         <os-maven-plugin.version>1.7.1</os-maven-plugin.version>
+
+        <!-- Security: OWASP Dependency-Check (active only under -Psecurity) -->
+        <dependency-check-maven.version>9.2.0</dependency-check-maven.version>
+        <dependency-check.failBuildOnCVSS>7.0</dependency-check.failBuildOnCVSS>
     </properties>
 
     <modules>
+        <module>common-logging</module>
         <module>common-library</module>
         <module>infrastructure/eureka-server</module>
         <module>infrastructure/config-server</module>
@@ -77,6 +87,8 @@
         <module>services/search-service</module>
         <module>services/media-service</module>
         <module>services/promotion-service</module>
+        <module>services/recommendation-service</module>
+        <module>services/review-service</module>
 
         <!-- Integration Tests -->
         <!-- <module>integration-tests</module> -->
@@ -163,6 +175,13 @@
                 <scope>import</scope>
             </dependency>
 
+            <!-- Structured JSON logging (Loki) -->
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback-encoder.version}</version>
+            </dependency>
+
             <!-- Utilities -->
             <dependency>
                 <groupId>org.projectlombok</groupId>
@@ -233,6 +252,13 @@
             <dependency>
                 <groupId>com.ecommerce</groupId>
                 <artifactId>common-library</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Common Logging (shared logback base resource) -->
+            <dependency>
+                <groupId>com.ecommerce</groupId>
+                <artifactId>common-logging</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>
@@ -331,8 +357,66 @@
                         </execution>
                     </executions>
                 </plugin>
+
+                <!-- OWASP Dependency-Check — config centralized here, activated by the
+                     `security` profile so it never slows the default build. -->
+                <plugin>
+                    <groupId>org.owasp</groupId>
+                    <artifactId>dependency-check-maven</artifactId>
+                    <version>${dependency-check-maven.version}</version>
+                    <configuration>
+                        <failBuildOnCVSS>${dependency-check.failBuildOnCVSS}</failBuildOnCVSS>
+                        <!-- dependency-check 9.x stores the NVD DB here; pin it so CI can
+                             cache it deterministically instead of cold-downloading. -->
+                        <dataDirectory>${user.home}/.m2/dependency-check-data</dataDirectory>
+                        <suppressionFiles>
+                            <suppressionFile>${maven.multiModuleProjectDirectory}/dependency-check-suppressions.xml</suppressionFile>
+                        </suppressionFiles>
+                        <formats>
+                            <format>HTML</format>
+                            <format>SARIF</format>
+                        </formats>
+                        <!-- Skip Node/JS analyzers — frontend is scanned separately by npm. -->
+                        <nodeAnalyzerEnabled>false</nodeAnalyzerEnabled>
+                        <nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>
+                        <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+                    </configuration>
+                    <!-- No <executions> here: execution binding lives solely in the
+                         `security` profile so no child module triggers a per-module check. -->
+                </plugin>
             </plugins>
         </pluginManagement>
     </build>
+
+    <profiles>
+        <!-- Run with `mvn -Psecurity verify`. Binds dependency-check:check to the
+             verify phase. The NVD download can be slow on a cold cache; in CI we
+             pass an NVD API key via -Dnvd.api.key to speed up and avoid throttling. -->
+        <profile>
+            <id>security</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.owasp</groupId>
+                        <artifactId>dependency-check-maven</artifactId>
+                        <!-- Aggregate at the reactor root; skip leaf re-runs. -->
+                        <inherited>false</inherited>
+                        <configuration>
+                            <skipTestScope>true</skipTestScope>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>owasp-aggregate</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>aggregate</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

@@ -1,0 +1,17 @@
+# Production profile overrides.
+# Swagger / OpenAPI UI is disabled in production (kept enabled in dev/local/docker).
+# See k8s base ConfigMaps + helm values: SPRING_PROFILES_ACTIVE=prod.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+# Log-level hardening for production (Scalability P1).
+logging:
+  level:
+    root: WARN
+    com.ecommerce: INFO
+    # Exact-key override: base sets com.ecommerce.recommendationservice: DEBUG,
+    # which logback resolves independently of the com.ecommerce ancestor above.
+    com.ecommerce.recommendationservice: INFO

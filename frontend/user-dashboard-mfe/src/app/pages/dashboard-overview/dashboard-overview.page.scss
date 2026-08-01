@@ -1,0 +1,107 @@
+.overview-page {
+  padding: 40px 24px;
+
+  &__header {
+    margin-bottom: 32px;
+  }
+
+  &__greeting {
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: #0a0a0a;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px;
+  }
+
+  &__subtitle {
+    font-size: 1.125rem;
+    color: #71717a;
+    margin: 0;
+  }
+
+  &__quick-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 48px;
+  }
+
+  &__section {
+    margin-bottom: 40px;
+  }
+
+  &__section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #0a0a0a;
+    margin: 0 0 20px;
+  }
+
+  &__empty {
+    text-align: center;
+    padding: 64px 24px;
+    background: #fafafa;
+    border-radius: 16px;
+    border: 1px dashed #d4d4d8;
+  }
+
+  &__empty-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: #a1a1aa;
+    margin-bottom: 16px;
+  }
+}
+
+.quick-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.orders-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (min-width: 1024px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f4f4f5 0%, #e4e4e7 50%, #f4f4f5 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 16px;
+
+  &--heading {
+    height: 48px;
+    width: 300px;
+    margin-bottom: 8px;
+  }
+
+  &--text {
+    height: 24px;
+    width: 200px;
+  }
+
+  &--card {
+    height: 180px;
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+}

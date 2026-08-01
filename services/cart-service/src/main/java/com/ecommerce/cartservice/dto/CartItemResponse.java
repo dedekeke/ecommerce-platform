@@ -8,9 +8,6 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.Instant;
 
-/**
- * Cart item response DTO
- */
 @Data
 @Builder
 @NoArgsConstructor

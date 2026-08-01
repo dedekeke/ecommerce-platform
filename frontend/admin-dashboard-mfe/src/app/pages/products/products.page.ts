@@ -1,0 +1,529 @@
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Router, RouterModule } from '@angular/router';
+import { catchError, concatMap, map, of } from 'rxjs';
+import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatDialogModule, MatDialog } from '@angular/material/dialog';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { Sort } from '@angular/material/sort';
+import { PageEvent } from '@angular/material/paginator';
+import { DataTableComponent, TableColumn } from '../../shared/components/data-table/data-table.component';
+import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
+import { FormDrawerComponent } from '../../shared/components/form-drawer/form-drawer.component';
+import { ProductAdminService } from '../../core/services/product-admin.service';
+import { MediaService } from '../../core/services/media.service';
+import { ToastService } from '../../core/services/toast.service';
+import {
+  Product,
+  ProductDimensions,
+  ProductFilterParams,
+  ProductStatus,
+  ProductUpdatePayload,
+  productStatus,
+} from '../../core/models/product.model';
+import { ALLOWED_IMAGE_MIME_TYPES, MAX_IMAGE_FILE_SIZE_BYTES } from '../../core/models/media.model';
+import { BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
+
+type ProductRow = Record<string, unknown> & Product;
+
+/** Result of the optional second (stock) call in an edit save. */
+type StockOutcome = 'unchanged' | 'updated' | 'failed';
+
+@Component({
+  selector: 'app-products',
+  standalone: true,
+  imports: [
+    CommonModule,
+    RouterModule,
+    ReactiveFormsModule,
+    MatButtonModule,
+    MatIconModule,
+    MatDialogModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatProgressBarModule,
+    DataTableComponent,
+    StatusBadgeComponent,
+    ConfirmDialogComponent,
+    FormDrawerComponent,
+  ],
+  template: `
+    <div class="products-page container">
+      <header class="products-page__header">
+        <h1>Products</h1>
+        <button
+          mat-flat-button
+          color="primary"
+          (click)="openCreateDrawer()"
+          data-testid="create-product-btn"
+          aria-label="Create new product"
+        >
+          <mat-icon>add</mat-icon>
+          Add Product
+        </button>
+      </header>
+
+      <app-data-table
+        [columns]="columns"
+        [rows]="products()"
+        [loading]="loading()"
+        [totalElements]="totalElements()"
+        [pageSize]="pageSize()"
+        [pageIndex]="pageIndex()"
+        emptyMessage="No products found. Create your first product."
+        ariaLabel="Products table"
+        [cellTemplate]="cellTmpl"
+        [clickable]="true"
+        (sortChange)="onSort($event)"
+        (pageChange)="onPage($event)"
+        (rowClick)="onRowClick($event)"
+      />
+
+      <ng-template #cellTmpl let-row let-col="col">
+        @if (col.key === 'status') {
+          <app-status-badge [label]="statusOf(row)" [variant]="statusVariant(statusOf(row))" />
+        } @else if (col.key === 'price') {
+          {{ row['price'] | currency: row['currency'] || 'USD' }}
+        } @else if (col.key === 'category') {
+          {{ categoryName(row) }}
+        } @else if (col.key === 'actions') {
+          <div class="products-page__actions" (click)="$event.stopPropagation()">
+            <button
+              mat-icon-button
+              [attr.aria-label]="'Edit ' + row['name']"
+              (click)="onEdit(row)"
+              data-testid="edit-btn"
+            >
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button
+              mat-icon-button
+              color="warn"
+              [attr.aria-label]="'Delete ' + row['name']"
+              (click)="onDelete(row)"
+              data-testid="delete-btn"
+            >
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        } @else {
+          {{ row[col.key] }}
+        }
+      </ng-template>
+
+      <app-form-drawer
+        [title]="drawerTitle()"
+        [open]="drawerOpen()"
+        (drawerClose)="closeDrawer()"
+      >
+        <form [formGroup]="productForm" (ngSubmit)="onSaveProduct()" class="product-form" novalidate>
+          <mat-form-field appearance="outline">
+            <mat-label>Name</mat-label>
+            <input matInput formControlName="name" data-testid="product-name-input" />
+            @if (productForm.get('name')?.errors?.['required'] && productForm.get('name')?.touched) {
+              <mat-error>Name is required</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>SKU</mat-label>
+            <input matInput formControlName="sku" data-testid="product-sku-input" />
+            @if (productForm.get('sku')?.errors?.['required'] && productForm.get('sku')?.touched) {
+              <mat-error>SKU is required</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Price</mat-label>
+            <input matInput type="number" formControlName="price" data-testid="product-price-input" />
+            @if (productForm.get('price')?.errors?.['required'] && productForm.get('price')?.touched) {
+              <mat-error>Price is required</mat-error>
+            }
+            @if (productForm.get('price')?.errors?.['min'] && productForm.get('price')?.touched) {
+              <mat-error>Price must be greater than 0</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Currency</mat-label>
+            <input matInput formControlName="currency" maxlength="3" data-testid="product-currency-input" />
+            @if (productForm.get('currency')?.invalid && productForm.get('currency')?.touched) {
+              <mat-error>3-letter currency code is required</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Stock</mat-label>
+            <input matInput type="number" formControlName="stockQuantity" data-testid="product-stock-input" />
+            @if (isEditing()) {
+              <mat-hint>Saved as a separate stock update</mat-hint>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Category ID</mat-label>
+            <input matInput type="number" formControlName="categoryId" data-testid="product-category-input" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Description</mat-label>
+            <textarea matInput rows="3" formControlName="description" data-testid="product-description-input"></textarea>
+          </mat-form-field>
+
+          <div class="product-form__images">
+            <label class="product-form__images-label" for="product-image-input">Product Images</label>
+
+            @if (imageUrls().length > 0) {
+              <div class="product-form__thumbnails">
+                @for (url of imageUrls(); track url) {
+                  <div class="product-form__thumbnail" data-testid="image-thumbnail">
+                    <img [src]="url" alt="Product image preview" />
+                    <button
+                      type="button"
+                      mat-icon-button
+                      aria-label="Remove image"
+                      (click)="removeImage(url)"
+                      data-testid="remove-image-btn"
+                    >
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  </div>
+                }
+              </div>
+            }
+
+            <input
+              type="file"
+              id="product-image-input"
+              class="product-form__file-input"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              [disabled]="uploading()"
+              (change)="onFileSelected($event)"
+              data-testid="product-image-input"
+            />
+
+            @if (uploading()) {
+              <mat-progress-bar mode="determinate" [value]="uploadProgress()" data-testid="upload-progress" />
+            }
+
+            @if (uploadError()) {
+              <p class="product-form__upload-error" data-testid="upload-error">{{ uploadError() }}</p>
+            }
+          </div>
+
+          <div class="product-form__actions">
+            <button mat-stroked-button type="button" (click)="closeDrawer()">Cancel</button>
+            <button
+              mat-flat-button
+              color="primary"
+              type="submit"
+              data-testid="save-product-btn"
+              [disabled]="productForm.invalid || saving()"
+            >
+              {{ saving() ? 'Saving...' : 'Save' }}
+            </button>
+          </div>
+        </form>
+      </app-form-drawer>
+    </div>
+  `,
+  styleUrl: './products.page.scss',
+})
+export class ProductsPage implements OnInit {
+  private readonly productService = inject(ProductAdminService);
+  private readonly mediaService = inject(MediaService);
+  private readonly dialog = inject(MatDialog);
+  private readonly toast = inject(ToastService);
+  private readonly fb = inject(FormBuilder);
+  private readonly router = inject(Router);
+
+  readonly products = signal<ProductRow[]>([]);
+  readonly loading = signal(true);
+  readonly totalElements = signal(0);
+  readonly pageSize = signal(10);
+  readonly pageIndex = signal(0);
+  readonly drawerOpen = signal(false);
+  readonly drawerTitle = signal('Add Product');
+  readonly saving = signal(false);
+  readonly imageUrls = signal<string[]>([]);
+  readonly uploading = signal(false);
+  readonly uploadProgress = signal(0);
+  readonly uploadError = signal<string | null>(null);
+  readonly isEditing = signal(false);
+
+  private editingId: string | null = null;
+  private editingActive: boolean | null = null;
+  private editingDimensions: ProductDimensions | null = null;
+  /** Stock as loaded into the form, to detect an actual change on save. */
+  private editingStock = 0;
+
+  // Sortable keys must be in product-service's ALLOWED_SORT_FIELDS allowlist.
+  readonly columns: TableColumn[] = [
+    { key: 'name', label: 'Name', sortable: true },
+    { key: 'sku', label: 'SKU', sortable: true },
+    { key: 'category', label: 'Category' },
+    { key: 'price', label: 'Price', sortable: true },
+    { key: 'stockQuantity', label: 'Stock', sortable: true },
+    { key: 'status', label: 'Status' },
+    { key: 'actions', label: '' },
+  ];
+
+  productForm = this.fb.group({
+    name: ['', Validators.required],
+    sku: ['', Validators.required],
+    price: [0, [Validators.required, Validators.min(0.01)]],
+    currency: ['USD', [Validators.required, Validators.pattern(/^[A-Za-z]{3}$/)]],
+    stockQuantity: [0, Validators.min(0)],
+    categoryId: [null as number | null],
+    description: [''],
+  });
+
+  private currentParams: ProductFilterParams = { page: 0, size: 10 };
+
+  ngOnInit(): void {
+    this.loadProducts();
+  }
+
+  private loadProducts(): void {
+    this.loading.set(true);
+    this.productService.getProducts(this.currentParams).subscribe({
+      next: (paged) => {
+        this.products.set(paged.content as ProductRow[]);
+        this.totalElements.set(paged.totalElements);
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
+    });
+  }
+
+  onSort(sort: Sort): void {
+    this.currentParams = {
+      ...this.currentParams,
+      sortBy: sort.active,
+      sortDirection: sort.direction as 'asc' | 'desc',
+      page: 0,
+    };
+    this.loadProducts();
+  }
+
+  onPage(event: PageEvent): void {
+    this.currentParams = { ...this.currentParams, page: event.pageIndex, size: event.pageSize };
+    this.pageIndex.set(event.pageIndex);
+    this.pageSize.set(event.pageSize);
+    this.loadProducts();
+  }
+
+  onRowClick(row: ProductRow): void {
+    this.router.navigate(['/admin/products', row.id]);
+  }
+
+  openCreateDrawer(): void {
+    this.editingId = null;
+    this.editingActive = null;
+    this.editingDimensions = null;
+    this.editingStock = 0;
+    this.isEditing.set(false);
+    this.drawerTitle.set('Add Product');
+    this.productForm.reset({
+      name: '',
+      sku: '',
+      price: 0,
+      currency: 'USD',
+      stockQuantity: 0,
+      categoryId: null,
+      description: '',
+    });
+    this.resetImageUploadState([]);
+    this.drawerOpen.set(true);
+  }
+
+  onEdit(row: ProductRow): void {
+    this.editingId = row.id;
+    this.editingActive = row.active;
+    this.editingDimensions = row.dimensions ?? null;
+    this.editingStock = row.stockQuantity;
+    this.isEditing.set(true);
+    this.drawerTitle.set('Edit Product');
+    this.productForm.patchValue({
+      name: row.name,
+      sku: row.sku,
+      price: row.price,
+      currency: row.currency,
+      stockQuantity: row.stockQuantity,
+      categoryId: row.category?.id ?? null,
+      description: row.description ?? '',
+    });
+    this.resetImageUploadState(row.images ?? []);
+    this.drawerOpen.set(true);
+  }
+
+  private resetImageUploadState(imageUrls: string[]): void {
+    this.imageUrls.set(imageUrls);
+    this.uploading.set(false);
+    this.uploadProgress.set(0);
+    this.uploadError.set(null);
+  }
+
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = '';
+    if (!file) return;
+
+    const validationError = this.validateImageFile(file);
+    if (validationError) {
+      this.uploadError.set(validationError);
+      this.toast.error(validationError);
+      return;
+    }
+
+    this.uploadError.set(null);
+    this.uploading.set(true);
+    this.uploadProgress.set(0);
+
+    this.mediaService.upload(file).subscribe({
+      next: (uploadEvent) => {
+        if (uploadEvent.type === 'progress') {
+          this.uploadProgress.set(uploadEvent.progress);
+          return;
+        }
+        // contentUrl is the public read path — renders in a plain <img> without auth.
+        this.imageUrls.update((urls) => [...urls, uploadEvent.media.contentUrl]);
+        this.uploading.set(false);
+        this.uploadProgress.set(0);
+        this.toast.success('Image uploaded');
+      },
+      error: () => {
+        this.uploading.set(false);
+        this.uploadProgress.set(0);
+      },
+    });
+  }
+
+  removeImage(url: string): void {
+    this.imageUrls.update((urls) => urls.filter((u) => u !== url));
+  }
+
+  private validateImageFile(file: File): string | null {
+    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_MIME_TYPES)[number])) {
+      return 'Unsupported file type. Please upload a JPEG, PNG, GIF, or WEBP image.';
+    }
+    if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
+      return `File is too large. Maximum size is ${MAX_IMAGE_FILE_SIZE_BYTES / (1024 * 1024)}MB.`;
+    }
+    return null;
+  }
+
+  onDelete(row: ProductRow): void {
+    const data: ConfirmDialogData = {
+      title: 'Delete Product',
+      message: `Delete "${row['name']}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+    };
+    const ref = this.dialog.open(ConfirmDialogComponent, { data });
+    ref.afterClosed().subscribe((confirmed) => {
+      if (confirmed) {
+        this.productService.deleteProduct(row.id).subscribe({
+          next: () => {
+            this.toast.success('Product deleted');
+            this.loadProducts();
+          },
+          error: () => {},
+        });
+      }
+    });
+  }
+
+  closeDrawer(): void {
+    this.drawerOpen.set(false);
+  }
+
+  onSaveProduct(): void {
+    if (this.productForm.invalid) {
+      this.productForm.markAllAsTouched();
+      return;
+    }
+    this.saving.set(true);
+    const value = this.productForm.getRawValue();
+    const stockQuantity = value.stockQuantity ?? 0;
+
+    const base: ProductUpdatePayload = {
+      name: value.name!,
+      sku: value.sku!,
+      price: value.price!,
+      currency: value.currency!.toUpperCase(),
+      images: this.imageUrls(),
+      ...(value.categoryId != null ? { categoryId: value.categoryId } : {}),
+      ...(value.description ? { description: value.description } : {}),
+      ...(this.editingActive != null ? { active: this.editingActive } : {}),
+      ...(this.editingDimensions ? { dimensions: this.editingDimensions } : {}),
+    };
+
+    if (!this.editingId) {
+      // Create seeds the stock snapshot; ProductRequest.stockQuantity is create-only.
+      this.productService.createProduct({ ...base, stockQuantity }).subscribe({
+        next: () => this.onSaveSucceeded('Product created'),
+        error: () => this.saving.set(false),
+      });
+      return;
+    }
+
+    const editingId = this.editingId;
+    // PUT ignores stockQuantity server-side, so a changed Stock field is applied
+    // through the dedicated stock endpoint as a second, explicit call.
+    const stockChanged = stockQuantity !== this.editingStock;
+
+    this.productService
+      .updateProduct(editingId, base)
+      .pipe(
+        concatMap(() =>
+          stockChanged
+            ? this.productService.updateStock(editingId, stockQuantity).pipe(
+                map(() => 'updated' as StockOutcome),
+                catchError(() => of('failed' as StockOutcome))
+              )
+            : of('unchanged' as StockOutcome)
+        )
+      )
+      .subscribe({
+        next: (stockOutcome) => {
+          this.onSaveSucceeded('Product updated');
+          if (stockOutcome === 'updated') {
+            this.toast.success(`Stock set to ${stockQuantity}`);
+          } else if (stockOutcome === 'failed') {
+            this.toast.error('Product saved, but the stock update failed. Stock is unchanged.');
+          }
+        },
+        error: () => this.saving.set(false),
+      });
+  }
+
+  private onSaveSucceeded(message: string): void {
+    this.saving.set(false);
+    this.closeDrawer();
+    this.toast.success(message);
+    this.loadProducts();
+  }
+
+  statusOf(row: ProductRow): ProductStatus {
+    return productStatus(row);
+  }
+
+  categoryName(row: ProductRow): string {
+    return row.category?.name ?? '—';
+  }
+
+  statusVariant(status: string): BadgeVariant {
+    const map: Record<ProductStatus, BadgeVariant> = {
+      ACTIVE: 'success',
+      INACTIVE: 'neutral',
+      OUT_OF_STOCK: 'warning',
+    };
+    return map[status as ProductStatus] ?? 'neutral';
+  }
+}

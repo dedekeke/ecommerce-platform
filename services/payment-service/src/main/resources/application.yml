@@ -6,16 +6,21 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE}
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL}
-    username: ${SPRING_DATASOURCE_USERNAME}
-    password: ${SPRING_DATASOURCE_PASSWORD}
+    url: ${PAYMENT_DB_URL}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 20000
-      idle-timeout: 300000
-      max-lifetime: 1200000
+      # Env-overridable pool (docs/db-connection-budget.md); tune without rebuild.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 3000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      pool-name: ${spring.application.name}-hikari
+      register-mbeans: true
+      validation-timeout: 1000
 
   jpa:
     hibernate:
@@ -33,11 +38,29 @@ spring:
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}
+    # Producer tuning rationale (applied 2026-04-30, see SCALING_AND_IMPROVEMENTS.md §2.6):
+    #   - acks=all + enable.idempotence=true: exactly-once delivery semantics; required
+    #     for the transactional outbox so a retry never produces a duplicate event.
+    #   - compression-type=zstd: ~60–70% size reduction on JSON payloads, cheaper than
+    #     gzip on CPU; reduces broker disk I/O and replication bandwidth.
+    #   - batch-size=64KB + linger-ms=5: trades 5ms of latency for batched sends;
+    #     drastically improves throughput under burst load (default 16KB batches under-fill).
+    #   - buffer-memory=64MB: producer-side send buffer; absorbs short broker stalls
+    #     without back-pressuring the application thread.
+    #   - max.in.flight.requests.per.connection=5: maximum allowed when idempotence is
+    #     enabled; preserves per-partition order while permitting pipelining.
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
       retries: 3
+      compression-type: zstd
+      batch-size: 65536
+      linger-ms: 5
+      buffer-memory: 67108864
+      properties:
+        max.in.flight.requests.per.connection: 5
+        enable.idempotence: true
     consumer:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
@@ -50,9 +73,22 @@ spring:
     virtual:
       enabled: true
 
+# Payment provider selection: 'mock' (default) or 'stripe'
+payment:
+  provider: ${PAYMENT_PROVIDER:mock}
+
+# Stripe configuration (only used when payment.provider=stripe).
+# The secret key MUST be supplied via the STRIPE_SECRET_KEY env var; never hardcode or commit it.
+# The webhook signing secret (STRIPE_WEBHOOK_SECRET) authenticates inbound webhooks at
+# POST /api/payments/webhook — it is a distinct secret from the API key and equally never committed.
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
+  api-base: ${STRIPE_API_BASE:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
 # Server Configuration
 server:
-  port: ${SERVER_PORT}
+  port: 8085
   shutdown: graceful
   compression:
     enabled: true
@@ -72,7 +108,7 @@ eureka:
 # gRPC Server Configuration
 grpc:
   server:
-    port: ${GRPC_SERVER_PORT}
+    port: ${GRPC_PAYMENT_PORT:9192}
 
 # Actuator
 management:
@@ -85,7 +121,7 @@ management:
       show-details: always
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT}
@@ -103,6 +139,17 @@ security:
 auth0:
   domain: ${AUTH0_DOMAIN}
   audience: ${AUTH0_AUDIENCE}
+
+spring.security.oauth2.resourceserver.jwt:
+  issuer-uri: https://${AUTH0_DOMAIN}/
+  audiences: ${AUTH0_AUDIENCE}
+
+# Transactional Outbox (polling-based relay)
+outbox:
+  relay:
+    enabled: ${OUTBOX_RELAY_ENABLED:true}
+    poll-interval-ms: ${OUTBOX_RELAY_POLL_INTERVAL_MS:500}
+    batch-size: ${OUTBOX_RELAY_BATCH_SIZE:100}
 
 # Resilience4j Configuration for external payment gateway calls
 resilience4j:

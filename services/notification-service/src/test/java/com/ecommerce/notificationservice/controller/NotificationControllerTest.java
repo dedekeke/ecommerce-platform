@@ -64,7 +64,7 @@ class NotificationControllerTest {
     void shouldGetAllNotifications() throws Exception {
         // Given
         List<NotificationLog> logs = List.of(sampleLog);
-        Page<NotificationLog> page = new PageImpl<>(logs);
+        Page<NotificationLog> page = new PageImpl<>(logs, PageRequest.of(0, 20), logs.size());
 
         when(notificationLogRepository.findAll(any(Pageable.class)))
                 .thenReturn(page);
@@ -116,7 +116,7 @@ class NotificationControllerTest {
     void shouldGetNotificationsByUserId() throws Exception {
         // Given
         List<NotificationLog> logs = List.of(sampleLog);
-        Page<NotificationLog> page = new PageImpl<>(logs);
+        Page<NotificationLog> page = new PageImpl<>(logs, PageRequest.of(0, 20), logs.size());
 
         when(notificationLogRepository.findByUserId(eq("user123"), any(Pageable.class)))
                 .thenReturn(page);
@@ -147,7 +147,7 @@ class NotificationControllerTest {
                 .build();
 
         List<NotificationLog> failedLogs = List.of(failedLog);
-        Page<NotificationLog> page = new PageImpl<>(failedLogs);
+        Page<NotificationLog> page = new PageImpl<>(failedLogs, PageRequest.of(0, 20), failedLogs.size());
 
         when(notificationLogRepository.findByStatus(eq(NotificationStatus.FAILED), any(Pageable.class)))
                 .thenReturn(page);
@@ -280,7 +280,7 @@ class NotificationControllerTest {
     void shouldUseDefaultPaginationParameters() throws Exception {
         // Given
         List<NotificationLog> logs = List.of(sampleLog);
-        Page<NotificationLog> page = new PageImpl<>(logs);
+        Page<NotificationLog> page = new PageImpl<>(logs, PageRequest.of(0, 20), logs.size());
 
         when(notificationLogRepository.findAll(any(Pageable.class)))
                 .thenReturn(page);

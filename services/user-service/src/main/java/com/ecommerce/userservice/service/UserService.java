@@ -2,6 +2,7 @@ package com.ecommerce.userservice.service;
 
 import com.ecommerce.userservice.domain.User;
 import com.ecommerce.userservice.domain.UserRole;
+import com.ecommerce.userservice.exception.EmailAlreadyRegisteredException;
 import com.ecommerce.userservice.exception.UserNotFoundException;
 import com.ecommerce.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -61,9 +62,23 @@ public class UserService {
      * @return The newly created user
      */
     private User createUserFromAuth0Claims(String auth0Id, Map<String, Object> claims) {
+        String email = extractEmail(claims);
+
+        // Identity is keyed on auth0Id; email is a separate unique column. If the
+        // email is already owned by a different account, refuse to insert (which
+        // would otherwise hit the unique-email constraint and surface as an opaque
+        // 500, blocking a legitimate first login). We do NOT silently relink the
+        // Auth0 id to the existing row: doing so on an unverified email is an
+        // account-takeover vector. Fail with a controlled 409 instead.
+        userRepository.findByEmail(email).ifPresent(existing -> {
+            log.warn("Refusing to provision auth0Id={} — email already registered to userId={}",
+                    auth0Id, existing.getId());
+            throw EmailAlreadyRegisteredException.forEmail(email);
+        });
+
         User user = User.builder()
                 .auth0Id(auth0Id)
-                .email(extractEmail(claims))
+                .email(email)
                 .firstName(extractFirstName(claims))
                 .lastName(extractLastName(claims))
                 .emailVerified(extractEmailVerified(claims))
@@ -87,7 +102,7 @@ public class UserService {
      * @return Optional containing the user if found
      */
     @Transactional(readOnly = true)
-    @Cacheable(value = "users-by-auth0", key = "#auth0Id", unless = "#result == null || !#result.isPresent()")
+    @Cacheable(value = "users-by-auth0", key = "#auth0Id", unless = "#result == null")
     public Optional<User> findByAuth0Id(String auth0Id) {
         log.debug("Cache miss - fetching user from DB for auth0Id: {}", auth0Id);
         return userRepository.findByAuth0Id(auth0Id);
@@ -100,7 +115,7 @@ public class UserService {
      * @return Optional containing the user if found
      */
     @Transactional(readOnly = true)
-    @Cacheable(value = "users", key = "#id", unless = "#result == null || !#result.isPresent()")
+    @Cacheable(value = "users", key = "#id", unless = "#result == null")
     public Optional<User> findById(Long id) {
         log.debug("Cache miss - fetching user from DB for id: {}", id);
         return userRepository.findById(id);
@@ -113,7 +128,7 @@ public class UserService {
      * @return Optional containing the user if found
      */
     @Transactional(readOnly = true)
-    @Cacheable(value = "users-by-email", key = "#email", unless = "#result == null || !#result.isPresent()")
+    @Cacheable(value = "users-by-email", key = "#email", unless = "#result == null")
     public Optional<User> findByEmail(String email) {
         log.debug("Cache miss - fetching user from DB for email: {}", email);
         return userRepository.findByEmail(email);

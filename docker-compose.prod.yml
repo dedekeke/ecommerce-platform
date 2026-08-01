@@ -1,0 +1,817 @@
+# ============================================
+# PRODUCTION docker-compose
+# ============================================
+# Notes:
+# - Secrets are loaded from production.env (gitignored). NEVER commit production.env.
+# - Image tags are placeholders following SemVer; CI must publish images with these tags.
+# - Resource limits target a small/medium prod node; tune per environment.
+# - No source mounts; relies on pre-built images from a private registry.
+# - No MailHog. Production must use a real SMTP relay configured via production.env.
+# - Debug ports are NOT exposed; only the API gateway is reachable from the host.
+#
+# Tagging strategy:
+#   ecommerce/<service>:<MAJOR>.<MINOR>.<PATCH>     # immutable, e.g. 1.0.0
+#   ecommerce/<service>:<MAJOR>.<MINOR>             # rolling minor, e.g. 1.0
+#   ecommerce/<service>:sha-<git-sha>               # debug/rollback
+# Production deploys MUST pin to an immutable SemVer tag (no :latest).
+
+x-restart: &default-restart
+  restart: always
+
+# ============================================
+# JVM GC tuning (applied 2026-04-30, see docs/SCALING_AND_IMPROVEMENTS.md §2.4)
+# ============================================
+# G1GC for throughput-oriented services with moderate latency targets.
+# Region-size 16m + IHOP 70 keep mixed GCs short and predictable; string
+# deduplication trims heap on JSON-heavy workloads; parallel ref processing
+# avoids reference-queue stalls.
+x-g1gc-jvm: &g1gc-jvm
+  JAVA_TOOL_OPTIONS: >-
+    -XX:+UseG1GC
+    -XX:MaxGCPauseMillis=200
+    -XX:G1HeapRegionSize=16m
+    -XX:InitiatingHeapOccupancyPercent=70
+    -XX:+UseStringDeduplication
+    -XX:+ParallelRefProcEnabled
+
+# ZGC for latency-critical services (gateway / order / payment) where p99 GC
+# pauses must stay sub-millisecond. ZGenerational is a JDK 21 default but is
+# pinned explicitly so behaviour does not drift if the base image upgrades.
+x-zgc-jvm: &zgc-jvm
+  JAVA_TOOL_OPTIONS: >-
+    -XX:+UseZGC
+    -XX:+ZGenerational
+
+x-logging: &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+      labels: "service,environment"
+      env: "SPRING_PROFILES_ACTIVE"
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 5
+  start_period: 60s
+
+services:
+  # ============================================
+  # DATABASES
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecommerce-pg
+    <<: *default-restart
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # Explicit ceiling for the shared instance; must cover the sum of every
+    # co-tenant service's Hikari pool at max replicas + admin reserve.
+    # See docs/db-connection-budget.md. Value routed through .env (no hardcoding).
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS}"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      <<: *healthcheck-defaults
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.5"
+        reservations:
+          memory: 1G
+          cpus: "0.5"
+    mem_limit: 2g
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  mysql:
+    image: mysql:8.2
+    container_name: ecommerce-mysql
+    <<: *default-restart
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    # --max-connections caps the shared MySQL instance to fit the co-tenant pool
+    # budget + admin reserve (docs/db-connection-budget.md). Value routed through .env.
+    command: --default-authentication-plugin=mysql_native_password --max-connections=${MYSQL_MAX_CONNECTIONS}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
+      <<: *healthcheck-defaults
+    mem_limit: 2g
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  mongodb:
+    image: mongo:7-jammy
+    container_name: ecommerce-mongodb
+    <<: *default-restart
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      <<: *healthcheck-defaults
+    mem_limit: 2g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ecommerce-redis
+    <<: *default-restart
+    volumes:
+      - redis-data:/data
+    # AOF + RDB for durability. Tune save policy via mounted redis.conf in real prod.
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      <<: *healthcheck-defaults
+    mem_limit: 1g
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  # ============================================
+  # MESSAGE QUEUE
+  # ============================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: ecommerce-zookeeper
+    <<: *default-restart
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_AUTOPURGE_PURGEINTERVAL: 24
+      ZOOKEEPER_AUTOPURGE_SNAPRETAINCOUNT: 3
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      <<: *healthcheck-defaults
+    mem_limit: 1g
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: ecommerce-kafka
+    <<: *default-restart
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:29092"]
+      <<: *healthcheck-defaults
+    mem_limit: 2g
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  # ============================================
+  # SEARCH ENGINE
+  # ============================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: ecommerce-elasticsearch
+    <<: *default-restart
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - cluster.name=ecommerce-prod-cluster
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health || exit 1"]
+      <<: *healthcheck-defaults
+    mem_limit: 2g
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  # ============================================
+  # OBSERVABILITY (no MailHog in prod)
+  # ============================================
+  zipkin:
+    image: openzipkin/zipkin:3
+    container_name: ecommerce-zipkin
+    <<: *default-restart
+    environment:
+      STORAGE_TYPE: elasticsearch
+      ES_HOSTS: http://elasticsearch:9200
+      ES_USERNAME: elastic
+      ES_PASSWORD: ${ELASTIC_PASSWORD}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9411/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 512m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  # ============================================
+  # INFRASTRUCTURE
+  # ============================================
+  eureka-server:
+    image: ecommerce/eureka-server:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-eureka
+    <<: *default-restart
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8761/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 768m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  config-server:
+    image: ecommerce/config-server:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-config
+    <<: *default-restart
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      CONFIG_GIT_URI: ${CONFIG_GIT_URI}
+      CONFIG_GIT_USERNAME: ${CONFIG_GIT_USERNAME}
+      CONFIG_GIT_PASSWORD: ${CONFIG_GIT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8888/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 768m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  api-gateway:
+    image: ecommerce/api-gateway:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-gateway
+    <<: *default-restart
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "443:8080" # only the gateway is exposed; TLS terminated at LB in real prod
+    environment:
+      <<: *zgc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      ZIPKIN_URL: http://zipkin:9411/api/v2/spans
+      AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      SECURITY_ENABLED: "true"
+      # Trusted proxy CIDRs for X-Forwarded-For (see ClientIpResolver). MUST be
+      # set to the ingress/LB range in production, or guest-endpoint rate limits
+      # can be bypassed by spoofing X-Forwarded-For.
+      GATEWAY_TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8080/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  # ============================================
+  # BACKEND SERVICES
+  # ============================================
+  user-service:
+    image: ecommerce/user-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-user-service
+    <<: *default-restart
+    depends_on:
+      postgres: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    environment:
+      <<: *g1gc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/userdb
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      SECURITY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8081/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  product-service:
+    image: ecommerce/product-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-product-service
+    <<: *default-restart
+    depends_on:
+      mysql: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *g1gc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/productdb
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      SECURITY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8082/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1.5g
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  cart-service:
+    image: ecommerce/cart-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-cart-service
+    <<: *default-restart
+    depends_on:
+      postgres: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *g1gc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cartdb
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      SECURITY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8083/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  order-service:
+    image: ecommerce/order-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-order-service
+    <<: *default-restart
+    depends_on:
+      postgres: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    environment:
+      <<: *zgc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderdb
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      GRPC_SERVER_PORT: 9094
+      GRPC_CLIENT_CART_SERVICE: static://cart-service:8083
+      GRPC_CLIENT_PAYMENT_SERVICE: static://payment-service:9090
+      GRPC_CLIENT_INVENTORY_SERVICE: static://inventory-service:9091
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      # Service credential for POST /api/promotions/apply — must match
+      # promotion-service's value.
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      SECURITY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8084/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1.5g
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  payment-service:
+    image: ecommerce/payment-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-payment-service
+    <<: *default-restart
+    depends_on:
+      postgres: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    environment:
+      <<: *zgc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paymentdb
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      GRPC_SERVER_PORT: 9090
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      SECURITY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8085/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1.5g
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  inventory-service:
+    image: ecommerce/inventory-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-inventory-service
+    <<: *default-restart
+    depends_on:
+      postgres: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    environment:
+      <<: *g1gc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/inventorydb
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      GRPC_SERVER_PORT: 9091
+      SECURITY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8086/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  notification-service:
+    image: ecommerce/notification-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-notification-service
+    <<: *default-restart
+    depends_on:
+      mongodb: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    environment:
+      <<: *g1gc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/notificationdb?authSource=admin
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM}
+      SMS_PROVIDER: ${SMS_PROVIDER:-noop}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      PUSH_PROVIDER: ${PUSH_PROVIDER:-noop}
+      FCM_CREDENTIALS_PATH: ${FCM_CREDENTIALS_PATH:-}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      SECURITY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8087/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 768m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  search-service:
+    image: ecommerce/search-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-search-service
+    <<: *default-restart
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    environment:
+      <<: *g1gc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
+      SPRING_ELASTICSEARCH_USERNAME: elastic
+      SPRING_ELASTICSEARCH_PASSWORD: ${ELASTIC_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      SECURITY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8088/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  media-service:
+    image: ecommerce/media-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-media-service
+    <<: *default-restart
+    depends_on:
+      mongodb: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+    environment:
+      <<: *g1gc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/mediadb?authSource=admin
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      SECURITY_ENABLED: "true"
+    volumes:
+      - media-storage:/app/storage
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8089/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  promotion-service:
+    image: ecommerce/promotion-service:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-promotion-service
+    <<: *default-restart
+    depends_on:
+      mysql: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *g1gc-jvm
+      SPRING_PROFILES_ACTIVE: prod
+      # Distributed-trace sampling (Perf P2): routed from production.env,
+      # defaults to 10% so full-rate spans never flood Zipkin/ES under load.
+      TRACING_SAMPLING_PROBABILITY_PROD: ${TRACING_SAMPLING_PROBABILITY_PROD:-0.1}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/promotiondb
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      # REQUIRED with SECURITY_ENABLED=true: guards POST /api/promotions/apply.
+      # Boot fails fast if unset; must match order-service's value.
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      SECURITY_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8090/actuator/health"]
+      <<: *healthcheck-defaults
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+  # ============================================
+  # FRONTENDS (served by NGINX inside each image)
+  # ============================================
+  shell-app:
+    image: ecommerce/shell-app:${IMAGE_TAG:-1.0.0}
+    container_name: ecommerce-shell-app
+    <<: *default-restart
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost/ || exit 1"]
+      <<: *healthcheck-defaults
+    mem_limit: 256m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - ecommerce-prod-network
+
+volumes:
+  postgres-data:
+    driver: local
+  mysql-data:
+    driver: local
+  mongodb-data:
+    driver: local
+  redis-data:
+    driver: local
+  elasticsearch-data:
+    driver: local
+  media-storage:
+    driver: local
+  zookeeper-data:
+    driver: local
+  zookeeper-logs:
+    driver: local
+  kafka-data:
+    driver: local
+
+networks:
+  ecommerce-prod-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.30.0.0/16
+          gateway: 172.30.0.1

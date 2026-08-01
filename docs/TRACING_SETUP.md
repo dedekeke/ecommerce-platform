@@ -1,5 +1,7 @@
 # Distributed Tracing Setup Guide
 
+> Back to [README](../README.md).
+
 This document describes the distributed tracing infrastructure for the e-commerce platform.
 
 ## Architecture Overview
@@ -80,7 +82,8 @@ management:
   tracing:
     enabled: true
     sampling:
-      probability: 1.0  # 100% in dev, 0.1 (10%) in production
+      # Env-driven; 100% by default for dev, lowered to 0.1 in the prod profile.
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
@@ -95,12 +98,22 @@ logging:
 
 #### logback-spring.xml
 
-Copy the template from common-library:
+Add a thin `logback-spring.xml` that includes the shared base shipped in
+the `common-logging` module (single source of truth at
+`common-logging/src/main/resources/logback-includes/logging-base.xml`, placed on
+the classpath by depending on `common-logging`):
 
-```bash
-cp common-library/src/main/resources/logback-spring-template.xml \
-   your-service/src/main/resources/logback-spring.xml
+```xml
+<configuration>
+    <include resource="logback-includes/logging-base.xml"/>
+</configuration>
 ```
+
+The base emits a human-readable console for local/default and structured JSON
+(`service`, `level`, `traceId`, `spanId`, `@timestamp`, `message`, `logger`, `thread`)
+under the `docker`, `prod` or `json-logging` profile, ready for Promtail -> Loki ingestion.
+Services without a common-library dependency mirror `logging-base.xml` under the same
+resource path and add the managed `logstash-logback-encoder` dependency.
 
 #### Docker Environment Variables
 
@@ -233,14 +246,14 @@ All logs automatically include trace information:
 **Production (JSON)**:
 ```json
 {
-  "timestamp": "2025-01-15T10:30:45.123Z",
+  "@timestamp": "2025-01-15T10:30:45.123Z",
   "level": "INFO",
   "logger": "com.ecommerce.order.OrderService",
   "message": "Creating order for user 12345",
   "traceId": "abc123",
   "spanId": "def456",
   "correlationId": "xyz789",
-  "application": "order-service"
+  "service": "order-service"
 }
 ```
 
@@ -248,20 +261,33 @@ All logs automatically include trace information:
 
 ### Sampling Strategy
 
-Control how many traces are collected:
+Control how many traces are collected. The rate is env-driven, so it is tuned
+per environment without code changes — never hardcode `1.0` in a `prod` file.
+
+| Env var | Consumed by | Default | Where to set |
+|---------|-------------|---------|--------------|
+| `TRACING_SAMPLING_PROBABILITY` | base `application.yml` (dev/default) | `1.0` | `.env` / `.env.template` / `.env.example` |
+| `TRACING_SAMPLING_PROBABILITY_PROD` | every `application-prod.*` | `0.1` | `production.env` / `production.env.example` |
 
 ```yaml
-management:
-  tracing:
-    sampling:
-      probability: 0.1  # Sample 10% of traces
+# base application.yml — 100% in dev, env-overridable
+management.tracing.sampling.probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+
+# application-prod.yml — 10% in prod, ops-overridable without redeploy
+management.tracing.sampling.probability: ${TRACING_SAMPLING_PROBABILITY_PROD:0.1}
 ```
 
 **Recommendations**:
 - **Development**: 1.0 (100%) - trace everything
 - **Staging**: 0.3 (30%) - balance visibility and overhead
-- **Production (low traffic)**: 0.1 (10%)
+- **Production (low traffic)**: 0.1 (10%) — the default; the single Zipkin
+  collector + single-node Elasticsearch backend cannot absorb full-rate spans
+  under load
 - **Production (high traffic)**: 0.01 (1%)
+
+> The `scripts/check-prod-log-levels.sh` guard (CHECK 3) fails CI if any
+> `application-prod.*` pins sampling to 100%, or if a base config declares a
+> sampling probability without a matching prod override.
 
 ### Reducing Overhead
 

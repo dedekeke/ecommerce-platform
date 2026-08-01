@@ -6,21 +6,13 @@ spring:
       import-check:
         enabled: false
 
-  # Security Configuration for Docker
+  # Security Configuration for Docker — resource server only (no OAuth2 client;
+  # see application.yml for why, bug 1b8953dc).
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: ${AUTH0_ISSUER_URI}
-
-      client:
-        provider:
-          auth0:
-            issuer-uri: ${AUTH0_ISSUER_URI}
-        registration:
-          auth0:
-            client-id: ${AUTH0_CLIENT_ID}
-            client-secret: ${AUTH0_CLIENT_SECRET}
 
   # Redis configuration for Docker
   data:

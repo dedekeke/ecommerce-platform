@@ -1,0 +1,91 @@
+server:
+  port: 8093
+
+spring:
+  application:
+    name: review-service
+
+  data:
+    mongodb:
+      uri: ${MONGO_URI:mongodb://localhost:27017/review_db}
+      database: review_db
+      auto-index-creation: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      compression-type: zstd
+      properties:
+        enable.idempotence: true
+
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.value}
+
+logging:
+  level:
+    root: INFO
+    com.ecommerce.reviewservice: DEBUG
+    org.springframework.kafka: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    enabled: true
+  show-actuator: false
+
+# Security toggle (mirrors recommendation-service / product-service)
+security:
+  enabled: ${SECURITY_ENABLED:true}
+
+auth0:
+  domain: ${AUTH0_DOMAIN:}
+  audience: ${AUTH0_AUDIENCE:}
+
+# Order-service URL used for purchase verification when stamping reviews as
+# "verified". If unreachable, the review is created with verified=false.
+review:
+  order-service:
+    base-url: ${ORDER_SERVICE_URL:http://order-service}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      orderServiceClient:
+        registerHealthIndicator: true
+        slidingWindowSize: 20
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+  timelimiter:
+    instances:
+      orderServiceClient:
+        timeoutDuration: 2s

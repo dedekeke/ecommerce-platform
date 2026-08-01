@@ -1,0 +1,53 @@
+# Daily Postgres backup -> S3.
+# Runs at 02:00 UTC every day. Retention is enforced by S3 lifecycle policy.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: ecommerce
+spec:
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-dump
+              image: postgres:16-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  apk add --no-cache aws-cli
+                  TS=$(date -u +%Y%m%dT%H%M%SZ)
+                  for DB in userdb cartdb orderdb paymentdb inventorydb; do
+                    echo "Backing up $DB"
+                    PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -h postgres -U "$POSTGRES_USER" -d "$DB" -Fc \
+                      | gzip \
+                      | aws s3 cp - "s3://${S3_BUCKET}/backups/postgres/${DB}/${TS}.dump.gz"
+                  done
+              env:
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef: { name: ecommerce-secrets, key: POSTGRES_USER }
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef: { name: ecommerce-secrets, key: POSTGRES_PASSWORD }
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef: { name: backup-secrets, key: AWS_ACCESS_KEY_ID }
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: { name: backup-secrets, key: AWS_SECRET_ACCESS_KEY }
+                - name: S3_BUCKET
+                  valueFrom:
+                    secretKeyRef: { name: backup-secrets, key: S3_BUCKET }
+              resources:
+                requests: { memory: "256Mi", cpu: "100m" }
+                limits:   { memory: "512Mi", cpu: "500m" }

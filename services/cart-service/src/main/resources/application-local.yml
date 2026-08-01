@@ -15,9 +15,16 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 20000
+      # Env-overridable pool (docs/db-connection-budget.md); tune without rebuild.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 3000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      pool-name: ${spring.application.name}-hikari
+      register-mbeans: true
+      validation-timeout: 1000
 
   jpa:
     hibernate:
@@ -96,7 +103,7 @@ management:
       application: ${spring.application.name}
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   zipkin:
     tracing:
       endpoint: http://localhost:9411/api/v2/spans
@@ -130,6 +137,10 @@ security:
 auth0:
   domain: ${AUTH0_DOMAIN}
   audience: ${AUTH0_AUDIENCE}
+
+# OAuth2 Resource Server Configuration
+spring.security.oauth2.resourceserver.jwt:
+  issuer-uri: ${AUTH0_ISSUER_URI:https://${AUTH0_DOMAIN}/}
 
 # Custom Application Properties
 app:

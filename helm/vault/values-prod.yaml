@@ -1,0 +1,81 @@
+# Production values for the official hashicorp/vault Helm chart.
+#   helm repo add hashicorp https://helm.releases.hashicorp.com
+#   helm upgrade --install vault hashicorp/vault -n vault --create-namespace -f helm/vault/values-prod.yaml
+#
+# Hardening vs. the dev install:
+#   - HA with integrated Raft storage (3 replicas, anti-affinity)
+#   - TLS between ESO and Vault
+#   - file audit device enabled (streamed to stdout collector)
+#   - dev mode + root token disabled
+server:
+  dev:
+    enabled: false
+
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+        listener "tcp" {
+          address     = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+          tls_key_file  = "/vault/userconfig/vault-tls/tls.key"
+        }
+        storage "raft" {
+          path = "/vault/data"
+          retry_join {
+            leader_api_addr = "https://vault-0.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "https://vault-1.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "https://vault-2.vault-internal:8200"
+          }
+        }
+        service_registration "kubernetes" {}
+
+  # Spread the 3 Raft nodes across nodes for fault tolerance.
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ template "vault.name" . }}
+              component: server
+          topologyKey: kubernetes.io/hostname
+
+  # TLS material is provided out-of-band (cert-manager or pre-created Secret `vault-tls`).
+  extraVolumes:
+    - type: secret
+      name: vault-tls
+
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: null  # set per-environment via --set
+
+  resources:
+    requests: { memory: "256Mi", cpu: "250m" }
+    limits:   { memory: "512Mi", cpu: "500m" }
+
+  # Audit device cannot be enabled via values; it is turned on post-init (see vault-bootstrap.sh):
+  #   vault audit enable file file_path=/vault/audit/audit.log
+  auditStorage:
+    enabled: true
+    size: 10Gi
+
+ui:
+  enabled: true
+  serviceType: ClusterIP
+
+injector:
+  # ESO is the secret-delivery path for app pods; the Vault Agent injector is not required.
+  enabled: false
+
+csi:
+  enabled: false

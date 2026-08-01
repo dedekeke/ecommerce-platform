@@ -50,6 +50,16 @@
             <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
 
+        <!--
+            Caffeine — used as the L1 in-process cache layer in front of Redis (L2).
+            Version is managed by Spring Boot's BOM; Caffeine is curated by Spring Boot
+            (see spring-boot-dependencies caffeine.version), not a new third-party lib.
+        -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Spring Cloud -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
@@ -106,6 +116,12 @@
         </dependency>
 
         <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers</artifactId>
             <scope>test</scope>
@@ -120,6 +136,19 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            H2 — in-memory DB for Docker-free JPA slice tests (e.g. the images
+            batch-fetch / N+1 regression test). Testcontainers MySQL still covers
+            the real-dialect repository integration tests; H2 lets the query-count
+            guard run in CI/local without a Docker daemon. Version managed by the
+            Spring Boot BOM.
+        -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

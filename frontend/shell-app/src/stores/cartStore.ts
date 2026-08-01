@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { devtools } from 'zustand/middleware'
-import type { CartState, CartItem } from './types'
+import type { CartState, CartItem, AppliedPromotion } from './types'
 
 const calculateTotal = (items: CartItem[]): number => {
   return items.reduce((sum, item) => sum + item.price * item.quantity, 0)
@@ -15,6 +15,9 @@ const initialState = {
   items: [] as CartItem[],
   total: 0,
   itemCount: 0,
+  promotionCode: null as string | null,
+  discountAmount: null as number | null,
+  promotionName: null as string | null,
 }
 
 export const useCartStore = create<CartState>()(
@@ -105,14 +108,51 @@ export const useCartStore = create<CartState>()(
             false,
             'clearCart'
           ),
+
+        replaceItems: (items: CartItem[]) =>
+          set(
+            {
+              items,
+              total: calculateTotal(items),
+              itemCount: calculateItemCount(items),
+            },
+            false,
+            'replaceItems'
+          ),
+
+        applyPromotion: (promotion: AppliedPromotion) =>
+          set(
+            {
+              promotionCode: promotion.code,
+              discountAmount: promotion.discountAmount,
+              promotionName: promotion.promotionName,
+            },
+            false,
+            'applyPromotion'
+          ),
+
+        removePromotion: () =>
+          set(
+            { promotionCode: null, discountAmount: null, promotionName: null },
+            false,
+            'removePromotion'
+          ),
       }),
       {
         name: 'cart-storage',
         storage: createJSONStorage(() => localStorage),
+        version: 1,
+        // v0 payloads (pre-promotion fields) lack promotionCode/discountAmount/promotionName —
+        // pass them through as-is; zustand's default merge fills the missing keys from
+        // initialState so existing carts survive instead of being wiped.
+        migrate: (persistedState) => persistedState as CartState,
         partialize: (state) => ({
           items: state.items,
           total: state.total,
           itemCount: state.itemCount,
+          promotionCode: state.promotionCode,
+          discountAmount: state.discountAmount,
+          promotionName: state.promotionName,
         }),
       }
     ),
@@ -128,3 +168,6 @@ export const selectCartItem = (productId: string) => (state: CartState) =>
   state.items.find((item) => item.productId === productId)
 export const selectIsInCart = (productId: string) => (state: CartState) =>
   state.items.some((item) => item.productId === productId)
+export const selectPromotionCode = (state: CartState) => state.promotionCode
+export const selectDiscountAmount = (state: CartState) => state.discountAmount
+export const selectPromotionName = (state: CartState) => state.promotionName

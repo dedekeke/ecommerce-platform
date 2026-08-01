@@ -16,6 +16,9 @@ CREATE DATABASE IF NOT EXISTS promotiondb
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
+-- Admin user is created by the MySQL Docker entrypoint from MYSQL_USER /
+-- MYSQL_PASSWORD env vars before this script runs. Just grant DB access.
+
 -- Grant all privileges to admin user on Product database
 GRANT ALL PRIVILEGES ON productdb.* TO 'admin'@'%';
 

@@ -1,0 +1,52 @@
+# Minimal test profile used by SchemaValidationIntegrationTest.
+# Disables every external dependency the gateway normally talks to so the
+# context starts purely on the GraphQL + WebFlux stack.
+spring:
+  cloud:
+    config:
+      enabled: false
+      import-check:
+        enabled: false
+    discovery:
+      enabled: false
+    gateway:
+      enabled: true
+      discovery:
+        locator:
+          enabled: false
+      default-filters: []
+      # Wipe the production route table — the integration test boots the
+      # GraphQL stack only and any RequestRateLimiter route would require Redis.
+      routes: []
+  data:
+    redis:
+      repositories:
+        enabled: false
+  graphql:
+    schema:
+      locations: classpath:/graphql/
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+security:
+  enabled: false
+  ip-whitelist:
+    enabled: false
+
+request-logging:
+  enabled: false
+
+management:
+  tracing:
+    enabled: false
+
+server:
+  port: 0
+
+auth0:
+  domain: localhost
+  audience: test-audience

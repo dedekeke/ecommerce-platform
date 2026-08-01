@@ -1,163 +1,199 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Link } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
-import { Container, Typography, Box, Avatar, Paper, Grid } from '@mui/material'
+import { useTranslation } from 'react-i18next'
+import { Typography, Box, Paper, Grid } from '@mui/material'
 import { MainLayout } from './components/layout'
-import { ProtectedRoute } from './components/auth'
-import { PageSkeleton } from './components/common'
-import { useCartStore, selectCartItemCount } from './stores'
+import { ProtectedRoute, MFERouteGuard } from './components/auth'
+import { PageSkeleton, NotFound, RouteProgressBar, PageTransition } from './components/common'
+import { useCartStore, useNotificationStore, selectCartItemCount } from './stores'
+import { addItemWithServerSync } from './stores/cartSync'
+import { MicroFrontendLoader, MFEErrorBoundary, useMFEPreload, type MFEName } from './mfe'
+import { useExposeAuthToken, useCartBridge, useCartServerSync, useInventoryStream } from './hooks'
+import { productService } from './api/services'
+import { designTokens } from './theme'
+
+interface MFERouteProps {
+  mfeName: MFEName
+  protected?: boolean
+  componentProps?: Record<string, unknown>
+}
+
+function MFERoute({ mfeName, protected: isProtected = false, componentProps }: MFERouteProps) {
+  const content = (
+    <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
+      <MFEErrorBoundary mfeName={mfeName}>
+        <MicroFrontendLoader mfeName={mfeName} componentProps={componentProps} />
+      </MFEErrorBoundary>
+    </Box>
+  )
+
+  if (isProtected) {
+    return <ProtectedRoute>{content}</ProtectedRoute>
+  }
+
+  return content
+}
+
+interface PreloadLinkProps {
+  to: string
+  mfeName: MFEName
+  children: React.ReactNode
+}
+
+function PreloadLink({ to, mfeName, children }: PreloadLinkProps) {
+  const { onMouseEnter, onMouseLeave, onFocus, onBlur } = useMFEPreload(mfeName)
+
+  return (
+    <Link
+      to={to}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      style={{ textDecoration: 'none', color: 'inherit' }}
+    >
+      {children}
+    </Link>
+  )
+}
 
 function Home() {
+  const { t } = useTranslation()
+  const categories = [
+    { key: 'categoryElectronics', path: '/products?category=electronics', emoji: '💻' },
+    { key: 'categoryFashion', path: '/products?category=fashion', emoji: '👗' },
+    { key: 'categoryHomeGarden', path: '/products?category=home-garden', emoji: '🏡' },
+  ] as const
+
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ textAlign: 'center', py: 8 }}>
-        <Typography variant="h2" component="h1" gutterBottom fontWeight={700}>
-          Welcome to E-Commerce
+    <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
+      <Box sx={{ textAlign: 'center', py: { xs: 6, md: 10 } }}>
+        <Typography
+          variant="h2"
+          component="h1"
+          gutterBottom
+          fontWeight={700}
+          sx={{
+            letterSpacing: '-0.02em',
+            background: designTokens.gradients.hero,
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}
+        >
+          {t('home.title')}
         </Typography>
-        <Typography variant="h5" color="text.secondary" sx={{ mb: 4 }}>
-          Discover amazing products at great prices
+        <Typography variant="h5" color="text.secondary" sx={{ mb: 6 }}>
+          {t('home.subtitle')}
         </Typography>
-        <Grid container spacing={3} sx={{ mt: 4 }}>
-          {['Electronics', 'Fashion', 'Home & Garden'].map((category) => (
-            <Grid size={{ xs: 12, md: 4 }} key={category}>
-              <Paper
-                sx={{
-                  p: 4,
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  '&:hover': {
-                    transform: 'translateY(-4px)',
-                    boxShadow: 4,
-                  },
-                }}
-              >
-                <Typography variant="h6">{category}</Typography>
-              </Paper>
+        <Grid container spacing={3} sx={{ mt: 2 }}>
+          {categories.map((category) => (
+            <Grid size={{ xs: 12, md: 4 }} key={category.key}>
+              <PreloadLink to={category.path} mfeName="productCatalog">
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 5,
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    transition: `all ${designTokens.duration.normal} ${designTokens.easing.out}`,
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: designTokens.shadows.cardHover,
+                      borderColor: 'primary.main',
+                    },
+                    '@media (prefers-reduced-motion: reduce)': {
+                      '&:hover': { transform: 'none' },
+                    },
+                  }}
+                >
+                  <Typography variant="h2" component="span" sx={{ display: 'block', mb: 1 }}>
+                    {category.emoji}
+                  </Typography>
+                  <Typography variant="h6" fontWeight={600}>{t(`home.${category.key}`)}</Typography>
+                </Paper>
+              </PreloadLink>
             </Grid>
           ))}
         </Grid>
       </Box>
-    </Container>
-  )
-}
-
-function Profile() {
-  const { user } = useAuth0()
-
-  return (
-    <Container maxWidth="md">
-      <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
-        My Profile
-      </Typography>
-      {user && (
-        <Paper sx={{ p: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 4 }}>
-            <Avatar
-              src={user.picture}
-              alt={user.name}
-              sx={{ width: 100, height: 100 }}
-            />
-            <Box>
-              <Typography variant="h5" fontWeight={600}>
-                {user.name}
-              </Typography>
-              <Typography variant="body1" color="text.secondary">
-                {user.email}
-              </Typography>
-            </Box>
-          </Box>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Email Verified
-              </Typography>
-              <Typography variant="body1">
-                {user.email_verified ? 'Yes' : 'No'}
-              </Typography>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Last Updated
-              </Typography>
-              <Typography variant="body1">
-                {user.updated_at
-                  ? new Date(user.updated_at).toLocaleDateString()
-                  : 'N/A'}
-              </Typography>
-            </Grid>
-          </Grid>
-        </Paper>
-      )}
-    </Container>
-  )
-}
-
-function Products() {
-  return (
-    <Container maxWidth="lg">
-      <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
-        Products
-      </Typography>
-      <Typography color="text.secondary">
-        Product listing will be loaded from the Product Catalog micro-frontend.
-      </Typography>
-    </Container>
-  )
-}
-
-function Cart() {
-  return (
-    <Container maxWidth="lg">
-      <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
-        Shopping Cart
-      </Typography>
-      <Typography color="text.secondary">
-        Cart contents will be loaded from the Cart micro-frontend.
-      </Typography>
-    </Container>
+    </Box>
   )
 }
 
 function App() {
   const { isLoading } = useAuth0()
   const cartItemCount = useCartStore(selectCartItemCount)
+  const addNotification = useNotificationStore((state) => state.addNotification)
+  useExposeAuthToken()
+  useCartBridge()
+  useCartServerSync()
+  useInventoryStream()
+
+  // The catalog MFE's `onAddToCart` only carries productId/quantity, so the shell fetches the
+  // product details it needs to build a cart line item, then adds optimistically and writes
+  // through to cart-service when authenticated (addItemWithServerSync handles rollback + toast).
+  const handleAddToCart = async (productId: string, quantity: number) => {
+    try {
+      const product = await productService.getProductById(productId)
+      await addItemWithServerSync(
+        { productId: product.id, name: product.name, price: product.price, image: product.images?.[0] },
+        quantity
+      )
+    } catch {
+      addNotification({ type: 'error', message: 'Could not add this item to your cart. Please try again.' })
+    }
+  }
 
   return (
     <MainLayout cartItemCount={cartItemCount}>
+      <RouteProgressBar />
       {isLoading ? (
-        <Container maxWidth="lg">
+        <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
           <PageSkeleton />
-        </Container>
+        </Box>
       ) : (
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/products" element={<Products />} />
-          <Route path="/categories" element={<Products />} />
-          <Route path="/cart" element={<Cart />} />
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/orders"
-            element={
-              <ProtectedRoute>
-                <Container maxWidth="lg">
-                  <Typography variant="h4" gutterBottom fontWeight={600}>
-                    My Orders
-                  </Typography>
-                  <Typography color="text.secondary">
-                    Order history will be displayed here.
-                  </Typography>
-                </Container>
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+        <PageTransition>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route
+              path="/products/*"
+              element={<MFERoute mfeName="productCatalog" componentProps={{ onAddToCart: handleAddToCart }} />}
+            />
+            <Route
+              path="/categories/*"
+              element={<MFERoute mfeName="productCatalog" componentProps={{ onAddToCart: handleAddToCart }} />}
+            />
+            <Route path="/cart" element={<MFERoute mfeName="cart" />} />
+            <Route
+              path="/checkout/*"
+              element={<MFERoute mfeName="checkout" protected />}
+            />
+            <Route
+              path="/profile/*"
+              element={<MFERoute mfeName="userDashboard" protected />}
+            />
+            <Route
+              path="/orders/*"
+              element={<MFERoute mfeName="userDashboard" protected />}
+            />
+            <Route
+              path="/admin/*"
+              element={
+                <MFERouteGuard mfeName="adminDashboard">
+                  <Box sx={{ width: '100%', px: { xs: 2, md: 4 } }}>
+                    <MFEErrorBoundary mfeName="adminDashboard">
+                      <MicroFrontendLoader mfeName="adminDashboard" />
+                    </MFEErrorBoundary>
+                  </Box>
+                </MFERouteGuard>
+              }
+            />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </PageTransition>
       )}
     </MainLayout>
   )

@@ -1,5 +1,7 @@
 # Integration Patterns and API Contracts
 
+> Back to [README](../README.md).
+
 ## Table of Contents
 1. [Overview](#overview)
 2. [Service Communication Patterns](#service-communication-patterns)
@@ -761,6 +763,6 @@ docker-compose up -d
 ---
 
 For more information, see:
-- [Architecture Documentation](../docs/ARCHITECTURE.md)
-- [API Reference](../docs/API_REFERENCE.md)
-- [Deployment Guide](../docs/DEPLOYMENT.md)
+- [Architecture Documentation](ARCHITECTURE.md)
+- [API Reference](API_DOCUMENTATION.md)
+- [Deployment Guide](DEPLOYMENT.md)

@@ -1,0 +1,55 @@
+.sidenav-container {
+  height: 100vh;
+}
+
+.sidenav {
+  width: 240px;
+  border-right: 1px solid #e4e4e7;
+  background: #fafafa;
+
+  &__logo {
+    padding: 24px 20px;
+    border-bottom: 1px solid #e4e4e7;
+  }
+
+  &__brand {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #0a0a0a;
+    letter-spacing: -0.01em;
+  }
+}
+
+.main-content {
+  background: #f4f4f5;
+  overflow-y: auto;
+}
+
+::ng-deep .active-link {
+  background: rgba(99, 102, 241, 0.08) !important;
+  color: #6366f1 !important;
+  border-radius: 8px;
+
+  mat-icon {
+    color: #6366f1 !important;
+  }
+}
+
+::ng-deep mat-nav-list {
+  padding: 12px 8px;
+
+  a[mat-list-item] {
+    border-radius: 8px;
+    margin-bottom: 2px;
+    transition: background 0.15s ease-out;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    &:focus-visible {
+      outline: 2px solid #6366f1;
+      outline-offset: 2px;
+    }
+  }
+}

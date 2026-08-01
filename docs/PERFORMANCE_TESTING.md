@@ -1,5 +1,7 @@
 # Virtual Threads Performance Testing Guide
 
+> Back to [README](../README.md).
+
 ## Overview
 
 This guide covers performance testing for virtual threads in the e-commerce platform. The tests compare virtual threads against platform threads to measure improvements in throughput, latency, and resource utilization.
@@ -205,6 +207,11 @@ jfr print --events jdk.VirtualThreadStart,jdk.VirtualThreadEnd recording.jfr
 - Example: 1000 concurrent requests = ~1000 virtual threads on ~16 platform threads
 
 ## Load Testing with JMeter
+
+> **Note (2026-07-14).** The maintained load-test suite for the platform golden
+> path (browse → cart → checkout) is now the **k6 suite** at
+> [`performance-tests/k6/`](../performance-tests/k6/README.md) (PR #106). The
+> JMeter plan below is kept for the virtual-threads comparison scenario only.
 
 ### Test Plan Configuration
 

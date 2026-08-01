@@ -18,6 +18,7 @@ public class MediaResponse {
     private String contentType;
     private Long size;
     private String downloadUrl;
+    private String contentUrl;
     private String thumbnailUrl;
     private ImageDimensions dimensions;
     private String uploadedBy;

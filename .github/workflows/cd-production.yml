@@ -1,0 +1,159 @@
+name: CD - Production
+
+# Triggered on tag push v*.*.* — builds + pushes images at the SemVer tag and
+# helm-upgrades the production release. Manual approval gate via GitHub Environment.
+
+on:
+  push:
+    tags: [ "v*.*.*" ]
+
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io                       # placeholder
+  IMAGE_PREFIX: ${{ github.repository_owner }}/ecommerce
+  K8S_NAMESPACE: ecommerce-prod
+
+jobs:
+  build-and-push-backend:
+    name: Build & push backend ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # `path` is the module dir relative to repo root; it drives BOTH the Maven
+      # reactor target (-pl) and the Docker `file:`, so infrastructure services
+      # (which live under infrastructure/, not services/) build correctly.
+      matrix:
+        include:
+          - { service: eureka-server,        path: infrastructure/eureka-server }
+          - { service: config-server,        path: infrastructure/config-server }
+          - { service: api-gateway,          path: infrastructure/api-gateway }
+          - { service: user-service,         path: services/user-service }
+          - { service: product-service,      path: services/product-service }
+          - { service: cart-service,         path: services/cart-service }
+          - { service: order-service,        path: services/order-service }
+          - { service: payment-service,      path: services/payment-service }
+          - { service: inventory-service,    path: services/inventory-service }
+          - { service: notification-service, path: services/notification-service }
+          - { service: search-service,       path: services/search-service }
+          - { service: media-service,        path: services/media-service }
+          - { service: promotion-service,    path: services/promotion-service }
+          - { service: review-service,       path: services/review-service }
+          - { service: recommendation-service, path: services/recommendation-service }
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { java-version: "21", distribution: temurin, cache: maven }
+      - name: Set version
+        id: ver
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+      - name: Maven package
+        run: mvn -B -ntp clean package -DskipTests -pl ${{ matrix.path }} -am
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.path }}/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ steps.ver.outputs.VERSION }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:sha-${{ github.sha }}
+
+  build-and-push-frontend:
+    name: Build & push frontend ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app:
+          - shell-app
+          - admin-dashboard-mfe
+          - cart-mfe
+          - checkout-mfe
+          - product-catalog-mfe
+          - user-dashboard-mfe
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set version
+        id: ver
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: npm
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
+      - run: npm ci || npm install
+        working-directory: frontend/${{ matrix.app }}
+      - run: npm run build
+        working-directory: frontend/${{ matrix.app }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: frontend/${{ matrix.app }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.app }}:${{ steps.ver.outputs.VERSION }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.app }}:sha-${{ github.sha }}
+
+  deploy:
+    name: Helm upgrade (production)
+    needs: [ build-and-push-backend, build-and-push-frontend ]
+    runs-on: ubuntu-latest
+    environment: production    # requires manual approval
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set version
+        id: ver
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+      - uses: azure/setup-helm@v4
+      - uses: azure/setup-kubectl@v4
+      - uses: imranismail/setup-kustomize@2ba527d4d055ab63514ba50a99456fc35684947f # v2.1.0
+      - name: Helm lint (prod values)
+        run: |
+          helm lint ./helm/ecommerce \
+            -f helm/ecommerce/values-prod.yaml \
+            --set global.imageRegistry=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
+            --set global.imageTag=${{ steps.ver.outputs.VERSION }} \
+            --set global.ingress.host=${{ secrets.BASE_DOMAIN }}
+      - name: Kustomize build (production overlay)
+        env:
+          IMAGE_REGISTRY: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}
+          BASE_DOMAIN: ${{ secrets.BASE_DOMAIN }}
+        run: |
+          mkdir -p /tmp/kz && cp -r k8s/. /tmp/kz/
+          envsubst < k8s/overlays/production/kustomization.yaml > /tmp/kz/overlays/production/kustomization.yaml
+          kustomize build /tmp/kz/overlays/production > /dev/null
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_PROD }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install ecommerce ./helm/ecommerce \
+            -f helm/ecommerce/values-prod.yaml \
+            --set global.imageRegistry=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
+            --set global.imageTag=${{ steps.ver.outputs.VERSION }} \
+            --set global.ingress.host=${{ secrets.BASE_DOMAIN }} \
+            -n ${{ env.K8S_NAMESPACE }} --create-namespace \
+            --wait --timeout 15m
+      - name: Smoke test
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deploy/api-gateway --timeout=10m

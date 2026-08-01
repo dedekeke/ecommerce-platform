@@ -1,9 +1,11 @@
 package com.ecommerce.productservice.controller;
 
+import com.ecommerce.productservice.dto.PageResponse;
 import com.ecommerce.productservice.dto.ProductRequest;
 import com.ecommerce.productservice.dto.ProductResponse;
 import com.ecommerce.productservice.mapper.ProductMapper;
 import com.ecommerce.productservice.model.Product;
+import com.ecommerce.productservice.service.CategoryService;
 import com.ecommerce.productservice.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -20,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.Set;
 
 /**
  * REST controller for Product management.
@@ -33,15 +36,26 @@ public class ProductController {
 
     private final ProductService productService;
     private final ProductMapper productMapper;
+    private final CategoryService categoryService;
+
+    /**
+     * Allowlist of entity property names permitted as sort fields.
+     * Prevents JPA property-path injection where an attacker could supply arbitrary
+     * property paths (e.g. "category.name") to probe schema structure.
+     */
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "name", "price", "createdAt", "updatedAt", "stockQuantity", "sku"
+    );
+    private static final String DEFAULT_SORT_FIELD = "createdAt";
 
     @GetMapping
     @Operation(summary = "Get all products", description = "Get all products with pagination, search, and filters")
-    public ResponseEntity<Page<ProductResponse>> getAllProducts(
+    public ResponseEntity<PageResponse<ProductResponse>> getAllProducts(
             @Parameter(description = "Search term for name/description")
             @RequestParam(required = false) String search,
 
-            @Parameter(description = "Category ID filter")
-            @RequestParam(required = false) Long categoryId,
+            @Parameter(description = "Category ID or slug filter")
+            @RequestParam(required = false) String categoryId,
 
             @Parameter(description = "Minimum price filter")
             @RequestParam(required = false) BigDecimal minPrice,
@@ -67,17 +81,22 @@ public class ProductController {
             @Parameter(description = "Sort direction (asc/desc)")
             @RequestParam(defaultValue = "desc") String sortDirection
     ) {
-        log.info("GET /api/v1/products - search: {}, categoryId: {}, priceRange: {}-{}, activeOnly: {}, inStockOnly: {}",
+        log.info("GET /api/products - search: {}, categoryId: {}, priceRange: {}-{}, activeOnly: {}, inStockOnly: {}",
             search, categoryId, minPrice, maxPrice, activeOnly, inStockOnly);
 
-        Sort sort = Sort.by(sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC, sortBy);
+        // Resolve categoryId - can be numeric ID or slug
+        Long resolvedCategoryId = resolveCategoryId(categoryId);
+
+        // SECURITY: Validate sortBy against an allowlist to prevent JPA property-path injection.
+        String safeSortBy = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : DEFAULT_SORT_FIELD;
+        Sort sort = Sort.by(sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC, safeSortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<Product> products;
+        Page<ProductResponse> products;
 
-        if (search != null || categoryId != null || minPrice != null || maxPrice != null) {
+        if (search != null || resolvedCategoryId != null || minPrice != null || maxPrice != null) {
             // Advanced search
-            products = productService.advancedSearch(search, categoryId, minPrice, maxPrice,
+            products = productService.advancedSearch(search, resolvedCategoryId, minPrice, maxPrice,
                 activeOnly, inStockOnly, pageable);
         } else if (activeOnly && inStockOnly) {
             products = productService.getAvailableProducts(pageable);
@@ -87,8 +106,21 @@ public class ProductController {
             products = productService.getAllProducts(pageable);
         }
 
-        Page<ProductResponse> response = products.map(productMapper::toResponse);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(PageResponse.from(products));
+    }
+
+    private Long resolveCategoryId(String categoryId) {
+        if (categoryId == null || categoryId.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(categoryId);
+        } catch (NumberFormatException e) {
+            // Not a number, try to resolve as slug
+            return categoryService.findCategoryBySlug(categoryId)
+                .map(category -> category.getId())
+                .orElse(null);
+        }
     }
 
     @GetMapping("/{id}")
@@ -119,16 +151,15 @@ public class ProductController {
 
     @GetMapping("/featured")
     @Operation(summary = "Get featured products")
-    public ResponseEntity<Page<ProductResponse>> getFeaturedProducts(
+    public ResponseEntity<PageResponse<ProductResponse>> getFeaturedProducts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
         log.info("GET /api/v1/products/featured");
 
         Pageable pageable = PageRequest.of(page, size);
-        Page<Product> products = productService.getFeaturedProducts(pageable);
-        Page<ProductResponse> response = products.map(productMapper::toResponse);
-        return ResponseEntity.ok(response);
+        Page<ProductResponse> products = productService.getFeaturedProducts(pageable);
+        return ResponseEntity.ok(PageResponse.from(products));
     }
 
     @PostMapping
@@ -146,13 +177,23 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update a product")
+    @Operation(
+            summary = "Update a product",
+            description = "Updates catalog attributes. stockQuantity is create-only and is IGNORED here — "
+                    + "use PATCH /api/products/{id}/stock to change stock."
+    )
     public ResponseEntity<ProductResponse> updateProduct(
             @Parameter(description = "Product ID")
             @PathVariable Long id,
             @Valid @RequestBody ProductRequest request
     ) {
         log.info("PUT /api/v1/products/{}", id);
+
+        // Makes the deliberate ignore observable instead of silent (PR#155 review).
+        if (request.getStockQuantity() != null) {
+            log.warn("PUT /api/products/{} carried stockQuantity={} — ignored; "
+                    + "stock changes must use PATCH /api/products/{}/stock", id, request.getStockQuantity(), id);
+        }
 
         Product product = productMapper.toEntity(request);
         Product updated = productService.updateProduct(id, product);
@@ -162,7 +203,11 @@ public class ProductController {
     }
 
     @PatchMapping("/{id}/stock")
-    @Operation(summary = "Update product stock quantity")
+    @Operation(
+            summary = "Update product stock quantity",
+            description = "The only write path for the catalog stock snapshot after creation (admin scope). "
+                    + "Authoritative stock movement (reservations, restock) lives in inventory-service."
+    )
     public ResponseEntity<ProductResponse> updateStock(
             @Parameter(description = "Product ID")
             @PathVariable Long id,

@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ecommerce
+
+# Disaster-recovery manifests. Apply after exporting the env vars they reference:
+#   export ES_SNAPSHOT_BUCKET=... AWS_S3_REGION=... \
+#          KAFKA_SOURCE_BOOTSTRAP=... KAFKA_DR_BOOTSTRAP=...
+#   for f in elasticsearch-snapshot.yaml kafka-mirrormaker2.yaml; do envsubst < $f; done | kubectl apply -f -
+#
+# kafka-mirrormaker2.yaml requires the Strimzi operator (KafkaMirrorMaker2 CRD).
+
+resources:
+  - elasticsearch-snapshot.yaml
+  - kafka-mirrormaker2.yaml

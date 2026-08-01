@@ -1,5 +1,6 @@
 package com.ecommerce.userservice.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
@@ -27,7 +28,11 @@ import java.util.Map;
 @EnableCaching
 public class CacheConfig {
 
+    // Redis-backed cache manager. Gated on spring.cache.type=redis (the
+    // production default) so tests can opt out via spring.cache.type=none and
+    // get Boot's no-op cache manager instead of hitting a live Redis.
     @Bean
+    @ConditionalOnProperty(name = "spring.cache.type", havingValue = "redis", matchIfMissing = true)
     public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
         // Default cache configuration
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()

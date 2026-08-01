@@ -1,0 +1,298 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "SLOs / Error Budgets",
+  "uid": "slos-error-budgets",
+  "schemaVersion": 39,
+  "tags": ["slo", "reliability"],
+  "time": { "from": "now-30d", "to": "now" },
+  "timezone": "browser",
+  "refresh": "1m",
+  "templating": {
+    "list": [
+      {
+        "type": "datasource",
+        "name": "DS_PROMETHEUS",
+        "label": "Prometheus",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Error budget remaining (30d window)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "api-gateway",
+      "id": 1,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"api-gateway\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"api-gateway\"}[30d]))) / 0.001)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.25 },
+              { "color": "green", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "product-service",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"product-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"product-service\"}[30d]))) / 0.0005)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "order-service",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"order-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"order-service\"}[30d]))) / 0.001)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "payment-service",
+      "id": 4,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"payment-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"payment-service\"}[30d]))) / 0.0005)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "cart-service",
+      "id": 5,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"cart-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"cart-service\"}[30d]))) / 0.001)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "inventory-service",
+      "id": 6,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"inventory-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"inventory-service\"}[30d]))) / 0.001)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "search-service",
+      "id": 7,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"search-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"search-service\"}[30d]))) / 0.005)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "notification-service",
+      "id": 8,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"notification-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"notification-service\"}[30d]))) / 0.01)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "promotion-service",
+      "id": 9,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"promotion-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"promotion-service\"}[30d]))) / 0.001)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "user-service",
+      "id": 10,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"user-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"user-service\"}[30d]))) / 0.001)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "stat",
+      "title": "media-service",
+      "id": 11,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - ((sum(rate(http_server_requests_seconds_count{application=\"media-service\",outcome!=\"SUCCESS\"}[30d])) / sum(rate(http_server_requests_seconds_count{application=\"media-service\"}[30d]))) / 0.01)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" }
+    },
+    {
+      "type": "row",
+      "title": "Burn rate (1h vs 6h)",
+      "id": 200,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "api-gateway burn rate",
+      "id": 21,
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "1h", "expr": "(sum(rate(http_server_requests_seconds_count{application=\"api-gateway\",outcome!=\"SUCCESS\"}[1h])) / sum(rate(http_server_requests_seconds_count{application=\"api-gateway\"}[1h]))) / 0.001" },
+        { "refId": "B", "legendFormat": "6h", "expr": "(sum(rate(http_server_requests_seconds_count{application=\"api-gateway\",outcome!=\"SUCCESS\"}[6h])) / sum(rate(http_server_requests_seconds_count{application=\"api-gateway\"}[6h]))) / 0.001" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "product-service burn rate",
+      "id": 22,
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "1h", "expr": "(sum(rate(http_server_requests_seconds_count{application=\"product-service\",outcome!=\"SUCCESS\"}[1h])) / sum(rate(http_server_requests_seconds_count{application=\"product-service\"}[1h]))) / 0.0005" },
+        { "refId": "B", "legendFormat": "6h", "expr": "(sum(rate(http_server_requests_seconds_count{application=\"product-service\",outcome!=\"SUCCESS\"}[6h])) / sum(rate(http_server_requests_seconds_count{application=\"product-service\"}[6h]))) / 0.0005" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "order-service burn rate",
+      "id": 23,
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "1h", "expr": "(sum(rate(http_server_requests_seconds_count{application=\"order-service\",outcome!=\"SUCCESS\"}[1h])) / sum(rate(http_server_requests_seconds_count{application=\"order-service\"}[1h]))) / 0.001" },
+        { "refId": "B", "legendFormat": "6h", "expr": "(sum(rate(http_server_requests_seconds_count{application=\"order-service\",outcome!=\"SUCCESS\"}[6h])) / sum(rate(http_server_requests_seconds_count{application=\"order-service\"}[6h]))) / 0.001" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "payment-service burn rate",
+      "id": 24,
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "1h", "expr": "(sum(rate(http_server_requests_seconds_count{application=\"payment-service\",outcome!=\"SUCCESS\"}[1h])) / sum(rate(http_server_requests_seconds_count{application=\"payment-service\"}[1h]))) / 0.0005" },
+        { "refId": "B", "legendFormat": "6h", "expr": "(sum(rate(http_server_requests_seconds_count{application=\"payment-service\",outcome!=\"SUCCESS\"}[6h])) / sum(rate(http_server_requests_seconds_count{application=\"payment-service\"}[6h]))) / 0.0005" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5 } } }
+    },
+    {
+      "type": "row",
+      "title": "Recent SLI violations (last 24h)",
+      "id": 300,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Top services by error rate (last 24h)",
+      "id": 31,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "expr": "topk(11, sum by (application) (rate(http_server_requests_seconds_count{application=~\"api-gateway|product-service|order-service|payment-service|cart-service|inventory-service|search-service|notification-service|promotion-service|user-service|media-service\",outcome!=\"SUCCESS\"}[24h])) / sum by (application) (rate(http_server_requests_seconds_count{application=~\"api-gateway|product-service|order-service|payment-service|cart-service|inventory-service|search-service|notification-service|promotion-service|user-service|media-service\"}[24h])))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "align": "left" }
+        }
+      },
+      "options": { "showHeader": true }
+    }
+  ]
+}

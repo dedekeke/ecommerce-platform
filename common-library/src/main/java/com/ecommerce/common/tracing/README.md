@@ -35,7 +35,21 @@ spring:
 
 ### 2. Logback Configuration
 
-Copy `logback-spring-template.xml` from common-library resources to your service's `src/main/resources/logback-spring.xml`.
+Add a thin `src/main/resources/logback-spring.xml` that includes the shared base
+shipped in common-library (`logback-includes/logging-base.xml`):
+
+```xml
+<configuration>
+    <include resource="logback-includes/logging-base.xml"/>
+</configuration>
+```
+
+The base provides a human-readable console for local/default profiles and structured
+JSON (LogstashEncoder, with `service`/`traceId`/`spanId` fields for Loki) under the
+`docker`, `prod` or `json-logging` profile. The base lives in exactly one physical
+file in the dedicated `common-logging` module; every service and infra module gets it
+on the classpath (and the required `logstash-logback-encoder`) by depending on
+`common-logging` - there are no per-module mirrored copies.
 
 ## Usage
 
@@ -198,12 +212,12 @@ These headers are:
 
 ```json
 {
-  "timestamp": "2025-01-15T10:30:45.123Z",
+  "@timestamp": "2025-01-15T10:30:45.123Z",
   "level": "INFO",
   "thread": "http-nio-8080-exec-1",
   "logger": "com.ecommerce.order.OrderService",
   "message": "Creating order for user 12345",
-  "application": "order-service",
+  "service": "order-service",
   "traceId": "abc123",
   "spanId": "def456",
   "correlationId": "xyz789",

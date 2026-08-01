@@ -9,9 +9,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * Cart response DTO
- */
 @Data
 @Builder
 @NoArgsConstructor

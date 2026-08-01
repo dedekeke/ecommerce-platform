@@ -47,10 +47,12 @@ public class PaymentGrpcServiceImpl extends PaymentServiceGrpc.PaymentServiceImp
             log.info("gRPC: Payment intent created successfully: {}", payment.getPaymentIntentId());
 
         } catch (Exception e) {
-            log.error("gRPC: Error creating payment intent", e);
+            // Full detail (incl. any Stripe decline codes / request ids / card metadata in
+            // e.getMessage()) goes to logs only — never into the gRPC response to the caller.
+            log.error("gRPC: Error creating payment intent for order: {}", request.getOrderId(), e);
             CreatePaymentIntentResponse response = CreatePaymentIntentResponse.newBuilder()
                     .setSuccess(false)
-                    .setMessage("Failed to create payment intent: " + e.getMessage())
+                    .setMessage("Payment service temporarily unavailable.")
                     .build();
 
             responseObserver.onNext(response);
@@ -79,8 +81,10 @@ public class PaymentGrpcServiceImpl extends PaymentServiceGrpc.PaymentServiceImp
                 responseBuilder.setMessage("Payment confirmed successfully");
                 responseBuilder.setTransactionId(payment.getTransactionId());
             } else {
-                responseBuilder.setMessage("Payment failed: " +
-                    (payment.getFailureReason() != null ? payment.getFailureReason() : "Unknown error"));
+                // Never echo the raw gateway/Stripe detail (held in payment.failureReason) back to the
+                // caller — it can carry decline codes, request ids and other internal context. The full
+                // reason stays on the entity/DB for operator debugging; clients get a generic message.
+                responseBuilder.setMessage("Payment could not be completed.");
             }
 
             ConfirmPaymentResponse response = responseBuilder.build();
@@ -91,10 +95,10 @@ public class PaymentGrpcServiceImpl extends PaymentServiceGrpc.PaymentServiceImp
             log.info("gRPC: Payment confirmation completed with status: {}", payment.getStatus());
 
         } catch (Exception e) {
-            log.error("gRPC: Error confirming payment", e);
+            log.error("gRPC: Error confirming payment for intent: {}", request.getPaymentIntentId(), e);
             ConfirmPaymentResponse response = ConfirmPaymentResponse.newBuilder()
                     .setSuccess(false)
-                    .setMessage("Failed to confirm payment: " + e.getMessage())
+                    .setMessage("Payment service temporarily unavailable.")
                     .setStatus(com.ecommerce.paymentservice.grpc.proto.PaymentStatus.FAILED)
                     .build();
 
@@ -127,10 +131,10 @@ public class PaymentGrpcServiceImpl extends PaymentServiceGrpc.PaymentServiceImp
             log.info("gRPC: Payment refunded successfully: {}", payment.getPaymentIntentId());
 
         } catch (Exception e) {
-            log.error("gRPC: Error refunding payment", e);
+            log.error("gRPC: Error refunding payment for intent: {}", request.getPaymentIntentId(), e);
             RefundPaymentResponse response = RefundPaymentResponse.newBuilder()
                     .setSuccess(false)
-                    .setMessage("Failed to refund payment: " + e.getMessage())
+                    .setMessage("Payment service temporarily unavailable.")
                     .build();
 
             responseObserver.onNext(response);

@@ -1,0 +1,404 @@
+# SLO burn-rate alerts.
+#
+# Fast burn = 14.4 x (1 - SLO) over 1h, severity=page.
+# Slow burn =  6   x (1 - SLO) over 6h, severity=ticket.
+#
+# Thresholds derived from monitoring/slos/slos.md. Keep this file in sync
+# with that matrix when SLO targets change.
+#
+# SLI: sum(rate(http_server_requests_seconds_count{application=svc,outcome!="SUCCESS"}[w]))
+#      / sum(rate(http_server_requests_seconds_count{application=svc}[w]))
+#
+# 'application' is the Spring Boot Actuator metric tag (defaults to
+# spring.application.name); the Prometheus scrape job also adds 'service'
+# but we use 'application' so the same expression works regardless of
+# scrape topology.
+
+groups:
+  - name: slo-burn-rate
+    interval: 30s
+    rules:
+      # ------- api-gateway (SLO 99.9%, budget 0.001) -------
+      - alert: ApiGatewayFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="api-gateway",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="api-gateway"}[1h]))
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: page
+          service: api-gateway
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "api-gateway burning error budget at 14.4x — 30d budget in <2d"
+          runbook: docs/OPERATIONS_RUNBOOK.md#api-gateway
+
+      - alert: ApiGatewaySlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="api-gateway",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="api-gateway"}[6h]))
+          ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: ticket
+          service: api-gateway
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "api-gateway chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#api-gateway
+
+      # ------- product-service (SLO 99.95%, budget 0.0005) -------
+      - alert: ProductServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="product-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="product-service"}[1h]))
+          ) > (14.4 * 0.0005)
+        for: 2m
+        labels:
+          severity: page
+          service: product-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "product-service burning error budget at 14.4x — 30d budget in <2d"
+          runbook: docs/OPERATIONS_RUNBOOK.md#product-service
+
+      - alert: ProductServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="product-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="product-service"}[6h]))
+          ) > (6 * 0.0005)
+        for: 15m
+        labels:
+          severity: ticket
+          service: product-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "product-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#product-service
+
+      # ------- order-service (SLO 99.9%, budget 0.001) -------
+      - alert: OrderServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="order-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="order-service"}[1h]))
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: page
+          service: order-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "order-service burning error budget at 14.4x — 30d budget in <2d"
+          runbook: docs/OPERATIONS_RUNBOOK.md#order-service
+
+      - alert: OrderServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="order-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="order-service"}[6h]))
+          ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: ticket
+          service: order-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "order-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#order-service
+
+      # ------- payment-service (SLO 99.95%, budget 0.0005) -------
+      - alert: PaymentServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="payment-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="payment-service"}[1h]))
+          ) > (14.4 * 0.0005)
+        for: 2m
+        labels:
+          severity: page
+          service: payment-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "payment-service burning error budget at 14.4x — revenue-critical"
+          runbook: docs/OPERATIONS_RUNBOOK.md#payment-service
+
+      - alert: PaymentServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="payment-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="payment-service"}[6h]))
+          ) > (6 * 0.0005)
+        for: 15m
+        labels:
+          severity: ticket
+          service: payment-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "payment-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#payment-service
+
+      # ------- cart-service (SLO 99.9%, budget 0.001) -------
+      - alert: CartServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="cart-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="cart-service"}[1h]))
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: page
+          service: cart-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "cart-service burning error budget at 14.4x — 30d budget in <2d"
+          runbook: docs/OPERATIONS_RUNBOOK.md#cart-service
+
+      - alert: CartServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="cart-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="cart-service"}[6h]))
+          ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: ticket
+          service: cart-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "cart-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#cart-service
+
+      # ------- inventory-service (SLO 99.9%, budget 0.001) -------
+      - alert: InventoryServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="inventory-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="inventory-service"}[1h]))
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: page
+          service: inventory-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "inventory-service burning error budget at 14.4x — 30d budget in <2d"
+          runbook: docs/OPERATIONS_RUNBOOK.md#inventory-service
+
+      - alert: InventoryServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="inventory-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="inventory-service"}[6h]))
+          ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: ticket
+          service: inventory-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "inventory-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#inventory-service
+
+      # ------- search-service (SLO 99.5%, budget 0.005) -------
+      - alert: SearchServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="search-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="search-service"}[1h]))
+          ) > (14.4 * 0.005)
+        for: 2m
+        labels:
+          severity: page
+          service: search-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "search-service burning error budget at 14.4x — 30d budget in <2d"
+          runbook: docs/OPERATIONS_RUNBOOK.md#search-service
+
+      - alert: SearchServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="search-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="search-service"}[6h]))
+          ) > (6 * 0.005)
+        for: 15m
+        labels:
+          severity: ticket
+          service: search-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "search-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#search-service
+
+      # ------- notification-service (SLO 99.0%, budget 0.01) -------
+      - alert: NotificationServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="notification-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="notification-service"}[1h]))
+          ) > (14.4 * 0.01)
+        for: 2m
+        labels:
+          severity: page
+          service: notification-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "notification-service burning error budget at 14.4x"
+          runbook: docs/OPERATIONS_RUNBOOK.md#notification-service
+
+      - alert: NotificationServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="notification-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="notification-service"}[6h]))
+          ) > (6 * 0.01)
+        for: 15m
+        labels:
+          severity: ticket
+          service: notification-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "notification-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#notification-service
+
+      # ------- promotion-service (SLO 99.9%, budget 0.001) -------
+      - alert: PromotionServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="promotion-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="promotion-service"}[1h]))
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: page
+          service: promotion-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "promotion-service burning error budget at 14.4x — 30d budget in <2d"
+          runbook: docs/OPERATIONS_RUNBOOK.md#promotion-service
+
+      - alert: PromotionServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="promotion-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="promotion-service"}[6h]))
+          ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: ticket
+          service: promotion-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "promotion-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#promotion-service
+
+      # ------- user-service (SLO 99.9%, budget 0.001) -------
+      - alert: UserServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="user-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="user-service"}[1h]))
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: page
+          service: user-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "user-service burning error budget at 14.4x — 30d budget in <2d"
+          runbook: docs/OPERATIONS_RUNBOOK.md#user-service
+
+      - alert: UserServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="user-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="user-service"}[6h]))
+          ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: ticket
+          service: user-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "user-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#user-service
+
+      # ------- media-service (SLO 99.0%, budget 0.01) -------
+      - alert: MediaServiceFastBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="media-service",outcome!="SUCCESS"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="media-service"}[1h]))
+          ) > (14.4 * 0.01)
+        for: 2m
+        labels:
+          severity: page
+          service: media-service
+          slo: availability
+          burn_rate: fast
+        annotations:
+          summary: "media-service burning error budget at 14.4x"
+          runbook: docs/OPERATIONS_RUNBOOK.md#media-service
+
+      - alert: MediaServiceSlowBurn
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{application="media-service",outcome!="SUCCESS"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{application="media-service"}[6h]))
+          ) > (6 * 0.01)
+        for: 15m
+        labels:
+          severity: ticket
+          service: media-service
+          slo: availability
+          burn_rate: slow
+        annotations:
+          summary: "media-service chronic budget burn at 6x — open ticket"
+          runbook: docs/OPERATIONS_RUNBOOK.md#media-service

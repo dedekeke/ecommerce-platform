@@ -1,0 +1,69 @@
+# KEDA ScaledObject for notification-service.
+# Scales 1->6 when aggregated Kafka consumer lag across the four critical
+# notification topics exceeds 50 messages on any single trigger.
+# KEDA evaluates the maximum lag across triggers; whichever topic is most
+# backed up drives the desired replica count.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: notification-service-kafka-lag
+  namespace: ecommerce
+  labels:
+    app: notification-service
+    tier: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: notification-service
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 6
+  fallback:
+    failureThreshold: 3
+    replicas: 2
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 60
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 30
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka:9092
+        consumerGroup: notification-service
+        topic: order.created
+        lagThreshold: "50"
+        offsetResetPolicy: latest
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka:9092
+        consumerGroup: notification-service
+        topic: payment.completed
+        lagThreshold: "50"
+        offsetResetPolicy: latest
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka:9092
+        consumerGroup: notification-service-refund
+        topic: refund.completed
+        lagThreshold: "50"
+        offsetResetPolicy: latest
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka:9092
+        consumerGroup: notification-service
+        topic: promotion.created
+        lagThreshold: "50"
+        offsetResetPolicy: latest

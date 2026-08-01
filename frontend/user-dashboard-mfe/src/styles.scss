@@ -1,0 +1,189 @@
+@use '@angular/material' as mat;
+
+// Design tokens aligned to frontend-design-brief.md
+:root {
+  --color-primary: #0a0a0a;
+  --color-secondary: #fafafa;
+  --color-accent: #6366f1;
+  --color-accent-hover: #4f46e5;
+
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+
+  --color-gray-50: #fafafa;
+  --color-gray-100: #f4f4f5;
+  --color-gray-200: #e4e4e7;
+  --color-gray-300: #d4d4d8;
+  --color-gray-400: #a1a1aa;
+  --color-gray-500: #71717a;
+  --color-gray-600: #52525b;
+  --color-gray-700: #3f3f46;
+  --color-gray-800: #27272a;
+  --color-gray-900: #18181b;
+
+  --gradient-cta: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+  --gradient-success: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-card-hover: 0 20px 40px -10px rgba(0, 0, 0, 0.15);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.3);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 0.15s;
+  --duration-normal: 0.2s;
+  --duration-slow: 0.3s;
+
+  // Semantic surface tokens
+  --surface-bg: var(--color-gray-100);
+  --surface-paper: #ffffff;
+  --text-primary: var(--color-primary);
+  --text-secondary: var(--color-gray-500);
+  --border-color: var(--color-gray-200);
+}
+
+// Dark mode — shell sets class="dark" on <html>
+html.dark {
+  --color-primary: #fafafa;
+  --surface-bg: #18181b;
+  --surface-paper: #27272a;
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --border-color: rgba(255, 255, 255, 0.08);
+}
+
+// Angular Material custom theme — Indigo primary, Teal accent
+$ud-primary: mat.m2-define-palette(mat.$m2-indigo-palette, 500, 400, 600);
+$ud-accent: mat.m2-define-palette(mat.$m2-teal-palette, 500);
+$ud-warn: mat.m2-define-palette(mat.$m2-red-palette, 500);
+
+$ud-theme: mat.m2-define-light-theme(
+  (
+    color: (
+      primary: $ud-primary,
+      accent: $ud-accent,
+      warn: $ud-warn,
+    ),
+    typography: mat.m2-define-typography-config(
+      $font-family: var(--font-primary),
+    ),
+    density: 0,
+  )
+);
+
+@include mat.all-component-themes($ud-theme);
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: var(--font-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  transition: background-color var(--duration-normal) var(--ease-out),
+    color var(--duration-normal) var(--ease-out);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.mat-mdc-raised-button.mat-primary,
+.mat-mdc-flat-button.mat-primary {
+  background: var(--gradient-cta) !important;
+  transition: all var(--duration-fast) var(--ease-out);
+
+  &:hover {
+    transform: scale(1.02);
+    box-shadow: var(--shadow-lg) !important;
+
+    @media (prefers-reduced-motion: reduce) {
+      transform: none;
+    }
+  }
+
+  &:active {
+    transform: scale(0.97);
+
+    @media (prefers-reduced-motion: reduce) {
+      transform: none;
+    }
+  }
+}
+
+.mat-mdc-card {
+  transition: all var(--duration-normal) var(--ease-out);
+
+  &:hover {
+    box-shadow: var(--shadow-card-hover) !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+router-outlet + * {
+  animation: fadeInUp 0.3s var(--ease-out);
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: fadeIn 0.1s ease;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

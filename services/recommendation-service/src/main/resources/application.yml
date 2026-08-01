@@ -1,0 +1,86 @@
+server:
+  port: 8092
+
+spring:
+  application:
+    name: recommendation-service
+
+  data:
+    mongodb:
+      uri: ${MONGO_URI}
+      database: recommendation_db
+      auto-index-creation: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    consumer:
+      group-id: recommendation-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.fail-on-unknown-properties: false
+
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+
+  cache:
+    cache-names: productRecommendations,userRecommendations
+    caffeine:
+      spec: maximumSize=10000,expireAfterWrite=60s
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.value}
+
+logging:
+  level:
+    root: INFO
+    com.ecommerce.recommendationservice: DEBUG
+    org.springframework.kafka: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    enabled: true
+  show-actuator: false
+
+# Security toggle (mirrors notification-service / product-service pattern)
+security:
+  enabled: ${SECURITY_ENABLED:true}
+
+auth0:
+  domain: ${AUTH0_DOMAIN:}
+  audience: ${AUTH0_AUDIENCE:}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      mongoOps:
+        registerHealthIndicator: true
+        slidingWindowSize: 20
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s

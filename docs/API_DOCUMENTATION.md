@@ -1,5 +1,7 @@
 # E-Commerce Platform API Documentation
 
+> Back to [README](../README.md).
+
 ## Overview
 
 This document provides comprehensive documentation for all API endpoints across the e-commerce microservices platform. All services are accessible through the API Gateway at `http://localhost:8080`.
@@ -9,6 +11,10 @@ This document provides comprehensive documentation for all API endpoints across 
 ### Base URL
 - **Gateway**: `http://localhost:8080`
 - **Swagger UI**: `http://localhost:8080/swagger-ui.html`
+- **GraphQL BFF**: `POST http://localhost:8080/graphql` — single-round-trip
+  aggregation for the MFEs. See [`GRAPHQL_BFF.md`](./GRAPHQL_BFF.md) for the
+  schema, sample queries, DataLoader behaviour and auth surface. GraphiQL
+  is exposed at `http://localhost:8080/graphiql` outside production.
 
 ### Authentication
 All endpoints (except public ones) require JWT authentication via Auth0.
@@ -124,6 +130,20 @@ POST /api/products
 PUT /api/products/{productId}
 ```
 **Authentication**: Required (Admin)
+
+> `stockQuantity` is **create-only**. It is accepted (and ignored) on this PUT:
+> inventory-service owns stock movement, and a general update echoing back a
+> snapshot read at form-open time would clobber concurrent stock changes. Use
+> the stock endpoint below.
+
+#### Update Product Stock
+```
+PATCH /api/products/{productId}/stock?quantity={n}
+```
+**Authentication**: Required (Admin)
+The only write path for the catalog stock snapshot after creation. Authoritative
+stock movement (reservations, restock, refund restoration) lives in
+inventory-service — see `PUT /api/inventory/product/{productId}/stock`.
 
 #### Delete Product
 ```
@@ -246,19 +266,25 @@ GET /api/promotions/public/active
 **Authentication**: Not required
 **Response**: List of currently active promotions
 
-### Protected Endpoints
+### Public Endpoints
 
 #### Validate Promotion
 ```
 POST /api/promotions/validate
 ```
-**Authentication**: Required
+**Authentication**: None — a guest checks a promo code before logging in.
+
+**Rate limit**: per client IP at the gateway, `GATEWAY_PROMO_VALIDATE_RATE`/
+`GATEWAY_PROMO_VALIDATE_BURST` (default 2 req/s, burst 5). Deliberately tight:
+a public validate endpoint is a promo-code enumeration oracle. Exceeding it
+returns `429 Too Many Requests`.
+
 **Request Body**:
 ```json
 {
   "code": "string",
-  "orderTotal": "number",
-  "userId": "string"
+  "purchaseAmount": "number",
+  "categoryId": "number (optional)"
 }
 ```
 **Response**:
@@ -270,17 +296,28 @@ POST /api/promotions/validate
 }
 ```
 
+### Service-to-Service Endpoints
+
 #### Apply Promotion
 ```
 POST /api/promotions/apply
 ```
-**Authentication**: Required
-**Request Body**:
+**Authentication**: Internal service credential — the request MUST carry
+`X-Internal-Service-Token` matching the deployment's `INTERNAL_SERVICE_TOKEN`.
+A user JWT (including `SCOPE_admin`) is NOT sufficient: this call increments the
+promotion usage counter and is issued only by order-service's checkout saga,
+on both the authenticated and the guest path.
+
+Not callable from a browser: the API gateway strips any client-supplied
+`X-Internal-Service-Token` and does not exempt this path from authentication.
+Unauthorized callers get `401` (no/invalid token) or `403` (user JWT).
+
+**Request Body**: same shape as `/validate`.
 ```json
 {
   "code": "string",
-  "orderId": "string",
-  "orderTotal": "number"
+  "purchaseAmount": "number",
+  "categoryId": "number (optional)"
 }
 ```
 

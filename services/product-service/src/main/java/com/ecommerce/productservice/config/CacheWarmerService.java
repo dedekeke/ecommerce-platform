@@ -67,7 +67,7 @@ public class CacheWarmerService {
             // Optionally: Load individual products to populate by-id cache
             products.getContent().forEach(product -> {
                 try {
-                    productService.getProductById(product.getId());
+                    productService.getProductById(Long.valueOf(product.getId()));
                 } catch (Exception e) {
                     log.debug("Failed to cache product {}: {}", product.getId(), e.getMessage());
                 }

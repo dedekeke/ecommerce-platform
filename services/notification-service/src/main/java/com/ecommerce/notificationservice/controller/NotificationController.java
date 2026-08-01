@@ -2,6 +2,7 @@ package com.ecommerce.notificationservice.controller;
 
 import com.ecommerce.notificationservice.domain.NotificationLog;
 import com.ecommerce.notificationservice.domain.NotificationStatus;
+import com.ecommerce.notificationservice.dto.PageResponse;
 import com.ecommerce.notificationservice.repository.NotificationLogRepository;
 import com.ecommerce.notificationservice.service.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +32,7 @@ public class NotificationController {
      * Get all notifications with pagination
      */
     @GetMapping
-    public ResponseEntity<Page<NotificationLog>> getAllNotifications(
+    public ResponseEntity<PageResponse<NotificationLog>> getAllNotifications(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
@@ -39,7 +40,7 @@ public class NotificationController {
         Pageable pageable = PageRequest.of(page, size);
         Page<NotificationLog> notifications = notificationLogRepository.findAll(pageable);
 
-        return ResponseEntity.ok(notifications);
+        return ResponseEntity.ok(PageResponse.from(notifications));
     }
 
     /**

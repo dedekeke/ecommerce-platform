@@ -1,10 +1,10 @@
-// Stores
 export { useAuthStore } from './authStore'
 export { useCartStore } from './cartStore'
 export { useNotificationStore } from './notificationStore'
 export { useUserPreferencesStore } from './userPreferencesStore'
+export { useInventoryStore, selectInventoryFor } from './inventoryStore'
+export type { InventoryUpdate } from './inventoryStore'
 
-// Selectors - Auth
 export {
   selectToken,
   selectUser,
@@ -13,16 +13,17 @@ export {
   selectUserName,
 } from './authStore'
 
-// Selectors - Cart
 export {
   selectCartItems,
   selectCartTotal,
   selectCartItemCount,
   selectCartItem,
   selectIsInCart,
+  selectPromotionCode,
+  selectDiscountAmount,
+  selectPromotionName,
 } from './cartStore'
 
-// Selectors - Notifications
 export {
   selectNotifications,
   selectNotificationById,
@@ -30,7 +31,6 @@ export {
   selectHasNotifications,
 } from './notificationStore'
 
-// Selectors - User Preferences
 export {
   selectTheme,
   selectLanguage,
@@ -39,12 +39,12 @@ export {
   selectIsSystemTheme,
 } from './userPreferencesStore'
 
-// Types
 export type {
   User,
   AuthState,
   CartItem,
   CartState,
+  AppliedPromotion,
   Notification,
   NotificationType,
   NotificationState,

@@ -1,0 +1,257 @@
+name: Quality
+
+# Pre-merge quality gate for the develop integration branch.
+# Backend build + tests (JaCoCo), OWASP dependency-check gate, and every
+# micro-frontend test suite. Mirror this locally with `scripts/ci-local.sh`.
+
+on:
+  pull_request:
+    branches: [ develop ]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'k8s/**'
+      - 'helm/**'
+      - 'monitoring/**'
+  push:
+    branches: [ develop ]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'k8s/**'
+      - 'helm/**'
+      - 'monitoring/**'
+  workflow_dispatch:
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: "21"
+  NODE_VERSION: "22.12.0"
+
+jobs:
+  # ---- Fast config guard: no DEBUG/TRACE log levels in production profiles ----
+  # Verbose SQL / parameter-binding logging in prod is a scalability + security
+  # risk. Pure bash, no build — fails fast, ahead of the heavier jobs.
+  prod-log-levels:
+    name: Prod log-level guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard against DEBUG/TRACE in production profiles
+        run: bash scripts/check-prod-log-levels.sh
+
+  # ---- Fast build-pipeline guard: reactor Dockerfiles vs root pom <modules> ----
+  # A hermetic multi-stage Dockerfile that COPYs the aggregator root pom.xml must
+  # stage a pom for every reactor module, or the in-container build aborts with
+  # "Child module ... does not exist". This drift is invisible to `mvn` (all
+  # module dirs exist on disk) and only bites in the Docker build. Pure bash,
+  # no build — fails fast, ahead of the heavier jobs.
+  dockerfile-reactor-poms:
+    name: Dockerfile reactor-pom guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard reactor Dockerfiles against root pom.xml module drift
+        run: bash scripts/check-dockerfile-reactor-poms.sh
+
+  # ---- Backend: build + unit tests with JaCoCo coverage ----
+  backend:
+    name: Backend build, test & coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+      # Single pass: compile, run tests, and emit JaCoCo reports. JaCoCo
+      # prepare-agent + report are bound in the parent pom pluginManagement,
+      # so `install` already produces target/site/jacoco per module.
+      - name: Build, test & JaCoCo
+        run: mvn -B -ntp clean install
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-coverage
+          path: '**/target/site/jacoco/'
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ---- Preflight: detect whether the NVD API key secret is configured ----
+  # The OWASP gate downloads the NVD database. Since ~2023 the NVD API rejects
+  # unauthenticated/throttled clients with HTTP 403, so without an NVD_API_KEY the
+  # update step fails outright (NoDataException) — that's an infrastructure
+  # failure, not a vulnerability finding, and must not red-wall every PR. We
+  # therefore run the gate ONLY when the key is present (it runs for real on the
+  # canonical pipeline once the secret is set), and otherwise skip it loudly.
+  secrets-preflight:
+    name: Secrets preflight
+    runs-on: ubuntu-latest
+    outputs:
+      has_nvd_key: ${{ steps.check.outputs.has_nvd_key }}
+    steps:
+      - id: check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -n "$NVD_API_KEY" ]; then
+            echo "has_nvd_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_nvd_key=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=OWASP dependency-check skipped::NVD_API_KEY secret is not set. The OWASP gate is skipped because the NVD API rejects unauthenticated requests (HTTP 403). Add NVD_API_KEY under Settings > Secrets and variables > Actions to enable the security gate."
+          fi
+
+  # ---- Security: OWASP dependency-check gate (failBuildOnCVSS=7.0 from pom) ----
+  dependency-check:
+    name: OWASP dependency-check
+    needs: secrets-preflight
+    if: needs.secrets-preflight.outputs.has_nvd_key == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+      # Cache the NVD database between runs so the gate stays fast.
+      # Path must match <dataDirectory> pinned in pom.xml (dependency-check 9.x).
+      # Key is scoped to the plugin version (DB schema changes across majors),
+      # not pom hashes, so dependency edits don't invalidate the NVD cache.
+      - name: Cache NVD data
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/dependency-check-data
+          key: nvd-${{ runner.os }}-dc9.2.0
+          restore-keys: |
+            nvd-${{ runner.os }}-
+      - name: Run dependency-check (-Psecurity verify, CVSS >= 7.0 fails)
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          mvn -B -ntp -Psecurity -DskipTests verify \
+            -Dnvd.api.key=$NVD_API_KEY
+      - name: Upload dependency-check report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: |
+            **/target/dependency-check-report.html
+            **/target/dependency-check-report.sarif
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---- Frontend: run every MFE's test suite (matrix per app) ----
+  # React/Vite MFEs use vitest; Angular MFEs use ng test (ChromeHeadless).
+  frontend:
+    name: Frontend ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { app: shell-app,            framework: react }
+          - { app: product-catalog-mfe,  framework: react }
+          - { app: cart-mfe,             framework: react }
+          - { app: checkout-mfe,         framework: react }
+          - { app: user-dashboard-mfe,   framework: angular }
+          - { app: admin-dashboard-mfe,  framework: angular }
+    defaults:
+      run:
+        working-directory: frontend/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
+      # Angular MFEs run Karma against a real headless Chrome; install one and
+      # expose it to Karma via CHROME_BIN. React MFEs use jsdom/happy-dom and
+      # don't need a browser.
+      - name: Set up Chrome (Angular)
+        if: matrix.framework == 'angular'
+        uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+      - name: Export CHROME_BIN (Angular)
+        if: matrix.framework == 'angular'
+        run: echo "CHROME_BIN=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
+      # Lockfiles are now committed; use `npm ci` for a byte-for-byte reproducible install.
+      - name: Install
+        run: npm ci
+      # ── Dependency audit ──────────────────────────────────────────────────────
+      # Gate level: --audit-level=critical (BLOCKING for all packages).
+      #
+      # Why not --audit-level=high?
+      # React MFEs (shell-app, product-catalog-mfe, cart-mfe, checkout-mfe):
+      #   Two HIGH advisories remain in build-only tooling (esbuild via vite,
+      #   locked at 0.27.7 via vite@7.3.5):
+      #   - GHSA-gv7w-rqvm-qjhr: esbuild Deno module binary integrity bypass
+      #     (only affects npm scripts that invoke esbuild via Deno; not triggered
+      #     by standard `vite build` or `vite dev` usage).
+      #   - GHSA-g7r4-m6w7-qqqr: esbuild dev-server arbitrary file read on
+      #     Windows (dev-server only, Windows-specific, not shipped code).
+      #   Fix requires esbuild ≥0.28.0 via vite@8 (semver-major); tracked as a
+      #   follow-up upgrade. Previously cited GHSA-67mh-4wv8-2f99 and
+      #   GHSA-vg6x-rcgg-rjx6 are patched in the current locked versions.
+      # Angular MFEs (user-dashboard-mfe, admin-dashboard-mfe):
+      #   30 HIGH advisories — all transitive through @angular-devkit/build-angular
+      #   @18.x (webpack 5, rollup, serialize-javascript, sockjs, etc.). None are
+      #   in runtime code. Fix requires Angular 18→21+ major upgrade; tracked as
+      #   a separate migration task. Zero CRITICAL advisories confirmed.
+      #
+      # The CRITICAL gate blocks any new critical-severity finding immediately.
+      - name: Audit dependencies (blocking at critical)
+        run: npm audit --audit-level=critical
+      # ── Lint ──────────────────────────────────────────────────────────────────
+      # All React MFEs and Angular MFEs: BLOCKING (0 violations).
+      # react-hooks violations in shell-app, product-catalog-mfe, and checkout-mfe
+      # have been fixed (useReducer, useMemo derivation, module-level lazy components).
+      - name: Lint
+        run: npm run lint --if-present
+      - name: Test (React / vitest)
+        if: matrix.framework == 'react'
+        run: npm test --if-present -- --run
+      - name: Test (Angular / ng)
+        if: matrix.framework == 'angular'
+        run: npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox --no-progress
+
+  # ---- Aggregate gate: single required check that fans in all MFE suites ----
+  # Provides one status to make required without listing every matrix leg.
+  frontend-all:
+    name: Frontend all suites
+    needs: frontend
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Verify every MFE suite passed
+        run: |
+          if [ "${{ needs.frontend.result }}" != "success" ]; then
+            echo "One or more MFE test suites failed."
+            exit 1
+          fi
+          echo "All MFE test suites passed."

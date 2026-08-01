@@ -6,14 +6,21 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE}
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL}
-    username: ${SPRING_DATASOURCE_USERNAME}
-    password: ${SPRING_DATASOURCE_PASSWORD}
+    url: ${INVENTORY_DB_URL}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 30000
+      # Env-overridable pool (docs/db-connection-budget.md); tune without rebuild.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 3000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      pool-name: ${spring.application.name}-hikari
+      register-mbeans: true
+      validation-timeout: 1000
 
   jpa:
     hibernate:
@@ -28,11 +35,30 @@ spring:
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}
+    # Producer tuning rationale (applied 2026-04-30, see SCALING_AND_IMPROVEMENTS.md §2.6):
+    #   - acks=all + enable.idempotence=true: exactly-once delivery semantics; required
+    #     for the transactional outbox so a retry never produces a duplicate event.
+    #   - compression-type=zstd: ~60–70% size reduction on JSON payloads, cheaper than
+    #     gzip on CPU; reduces broker disk I/O and replication bandwidth.
+    #   - batch-size=64KB + linger-ms=5: trades 5ms of latency for batched sends;
+    #     drastically improves throughput under burst load (default 16KB batches under-fill).
+    #   - buffer-memory=64MB: producer-side send buffer; absorbs short broker stalls
+    #     without back-pressuring the application thread.
+    #   - max.in.flight.requests.per.connection=5: maximum allowed when idempotence is
+    #     enabled; preserves per-partition order while permitting pipelining.
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      compression-type: zstd
+      batch-size: 65536
+      linger-ms: 5
+      buffer-memory: 67108864
       properties:
         spring.json.add.type.headers: false
+        max.in.flight.requests.per.connection: 5
+        enable.idempotence: true
     consumer:
       group-id: inventory-service-group
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -56,11 +82,11 @@ auth0:
   audience: ${AUTH0_AUDIENCE}
 
 server:
-  port: ${SERVER_PORT}
+  port: 8086
 
 grpc:
   server:
-    port: ${GRPC_SERVER_PORT}
+    port: ${GRPC_INVENTORY_PORT:9193}
 
 eureka:
   client:
@@ -90,7 +116,7 @@ management:
         enabled: true
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT}
@@ -118,3 +144,16 @@ inventory:
     cleanup-old-reservations-cron: "0 0 2 * * *"  # Daily at 2 AM
     cleanup-days-threshold: 90  # Delete reservations older than 90 days
     restock-alert-cron: "0 0 6 * * ?"  # Daily at 6 AM
+  sse:
+    timeout-ms: ${INVENTORY_SSE_TIMEOUT_MS:30000}
+    heartbeat-interval-ms: ${INVENTORY_SSE_HEARTBEAT_MS:15000}
+
+# Transactional Outbox (polling-based relay)
+# - enabled: master switch for the @Scheduled relay; disabled in tests
+# - poll-interval-ms: how often the relay claims a batch
+# - batch-size: max rows pulled per poll (caps blast radius of stuck events)
+outbox:
+  relay:
+    enabled: ${OUTBOX_RELAY_ENABLED:true}
+    poll-interval-ms: ${OUTBOX_RELAY_POLL_INTERVAL_MS:500}
+    batch-size: ${OUTBOX_RELAY_BATCH_SIZE:100}

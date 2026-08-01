@@ -1,16 +1,70 @@
-name: CI/CD Pipeline
+name: CI
+
+# Final safety net — runs only on push to master (post-merge from develop).
+# Day-to-day verification is done locally via `scripts/ci-local.sh`.
 
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+    branches: [ master ]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'k8s/**'
+      - 'helm/**'
+      - 'monitoring/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: "21"
+  NODE_VERSION: "22.12.0"
 
 jobs:
-  build-and-test:
-    name: Build and Test
+  # Fast config guard: no DEBUG/TRACE log levels in production profiles.
+  prod-log-levels:
+    name: Prod log-level guard
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard against DEBUG/TRACE in production profiles
+        run: bash scripts/check-prod-log-levels.sh
 
+  # Detect which areas changed so we can skip backend/frontend selectively.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'services/**'
+              - 'common-library/**'
+              - 'infrastructure/**'
+              - 'pom.xml'
+            frontend:
+              - 'frontend/**'
+            infra:
+              - 'k8s/**'
+              - 'helm/**'
+              - 'docker-compose*.yml'
+              - 'Dockerfile*'
+
+  backend-build-test:
+    name: Backend build & test
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16-alpine
@@ -18,140 +72,100 @@ jobs:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
           POSTGRES_DB: testdb
-        ports:
-          - 5432:5432
+        ports: [ "5432:5432" ]
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
           cache: maven
+      - name: Build (skip tests)
+        run: mvn -B -ntp clean install -DskipTests
+      - name: Unit tests
+        run: mvn -B -ntp test
 
-      - name: Cache Maven packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-
-      - name: Build with Maven
-        run: mvn clean install -DskipTests
-
-      - name: Run Unit Tests
-        run: mvn test
-
-      - name: Run Integration Tests
-        run: mvn verify
-
-      - name: Generate Code Coverage Report
-        run: mvn jacoco:report
-
-      - name: Upload Coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./target/site/jacoco/jacoco.xml
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-
-      - name: SonarCloud Scan
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          mvn sonar:sonar \
-            -Dsonar.projectKey=ecommerce-platform \
-            -Dsonar.organization=your-org \
-            -Dsonar.host.url=https://sonarcloud.io
-        continue-on-error: true
-
-  build-api-gateway:
-    name: Build API Gateway
+  frontend:
+    name: Frontend ${{ matrix.app }}
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
-    needs: build-and-test
-
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - shell-app
+          - product-catalog-mfe
+          - cart-mfe
+          - checkout-mfe
+    defaults:
+      run:
+        working-directory: frontend/${{ matrix.app }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: maven
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
+      - run: npm ci
+      # Lint: cart-mfe is clean (blocking); the other 3 React MFEs carry
+      # pre-existing react-hooks violations — non-blocking here, quality.yml is the gate.
+      - name: Lint (blocking — cart-mfe)
+        if: matrix.app == 'cart-mfe'
+        run: npm run lint --if-present
+      - name: Lint (non-blocking — pre-existing violations)
+        if: matrix.app != 'cart-mfe'
+        run: npm run lint --if-present || echo "::warning title=Lint ${{ matrix.app }}::pre-existing violations; non-blocking in ci.yml (quality.yml gates lint per PR)"
+      - run: npm test --if-present -- --run
 
-      - name: Build API Gateway
-        run: mvn clean package -pl infrastructure/api-gateway -am -DskipTests
-
-      - name: Build Docker Image
-        run: |
-          docker build -f infrastructure/api-gateway/Dockerfile -t ecommerce-api-gateway:${{ github.sha }} .
-
-  dependency-check:
-    name: Security Dependency Check
+  angular-frontend:
+    name: Angular ${{ matrix.app }}
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - user-dashboard-mfe
+          - admin-dashboard-mfe
+    defaults:
+      run:
+        working-directory: frontend/${{ matrix.app }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: maven
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
+      # Karma needs a real headless Chrome; install one and expose CHROME_BIN.
+      - uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+      - run: echo "CHROME_BIN=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
+      - run: npm ci
+      # ChromeHeadlessNoSandbox launcher (karma.conf.js) — CI runs as root, so
+      # Chrome's sandbox must be disabled.
+      - run: npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox --no-progress
 
-      - name: OWASP Dependency Check
-        run: |
-          mvn org.owasp:dependency-check-maven:check \
-            -DfailBuildOnCVSS=7 \
-            -DsuppressionFile=dependency-check-suppressions.xml
-        continue-on-error: true
-
-      - name: Upload Dependency Check Report
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: dependency-check-report
-          path: target/dependency-check-report.html
-
-  code-quality:
-    name: Code Quality Check
+  lint-infra:
+    name: Lint infra
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Run Checkstyle
-        run: mvn checkstyle:check
-        continue-on-error: true
-
-      - name: Run PMD
-        run: mvn pmd:check
-        continue-on-error: true
-
-      - name: Run SpotBugs
-        run: mvn spotbugs:check
-        continue-on-error: true
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-helm@v4
+      - name: Kustomize render
+        run: |
+          kubectl kustomize k8s/base > /tmp/base.yaml
+          kubectl kustomize k8s/overlays/staging > /tmp/staging.yaml
+          kubectl kustomize k8s/overlays/production > /tmp/prod.yaml
+      - run: helm lint ./helm/ecommerce

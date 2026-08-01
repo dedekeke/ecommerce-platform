@@ -1,5 +1,6 @@
 package com.ecommerce.productservice.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -31,7 +32,10 @@ import java.util.Set;
     @Index(name = "idx_product_name", columnList = "name"),
     @Index(name = "idx_product_category", columnList = "category_id"),
     @Index(name = "idx_product_active", columnList = "active"),
-    @Index(name = "idx_product_price", columnList = "price")
+    @Index(name = "idx_product_price", columnList = "price"),
+    // V3__Add_perf_indexes — see docs/DB_INDEX_AUDIT.md
+    @Index(name = "idx_product_active_category", columnList = "active, category_id"),
+    @Index(name = "idx_product_active_created",  columnList = "active, created_at")
 })
 @Data
 @NoArgsConstructor

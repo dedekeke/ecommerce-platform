@@ -3,18 +3,13 @@ package com.ecommerce.orderservice;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.kafka.annotation.EnableKafka;
-import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.EnableAsync;
 
-/**
- * Main application class for Order Service
- */
+// JPA repositories, Kafka and scheduling are enabled in PersistenceConfig so
+// that @WebMvcTest slices don't eagerly bootstrap the persistence layer.
 @SpringBootApplication
 @EnableDiscoveryClient
-@EnableJpaRepositories
-@EnableKafka
-@EnableScheduling
+@EnableAsync
 public class OrderServiceApplication {
 
     public static void main(String[] args) {

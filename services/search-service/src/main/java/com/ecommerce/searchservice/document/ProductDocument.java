@@ -39,8 +39,22 @@ public class ProductDocument {
     @Field(type = FieldType.Keyword)
     private String category;
 
+    /**
+     * Brand keyword, used by the faceted-search aggregation (§3.12).
+     */
+    @Field(type = FieldType.Keyword)
+    private String brand;
+
     @Field(type = FieldType.Double)
     private BigDecimal price;
+
+    /**
+     * Average review rating (0.0–5.0). Drives the {@code rating} facet's
+     * range buckets. Optional — products without ratings are excluded from
+     * the {@code 4+} / {@code 3+} buckets.
+     */
+    @Field(type = FieldType.Double)
+    private Double rating;
 
     @Field(type = FieldType.Keyword)
     private String currency;
@@ -60,6 +74,14 @@ public class ProductDocument {
     @Field(type = FieldType.Text, analyzer = "autocomplete_analyzer", searchAnalyzer = "standard")
     private String nameAutocomplete;
 
+    /**
+     * Search-as-you-type field used by {@code GET /api/search/suggest}. ES
+     * automatically generates the {@code _2gram}, {@code _3gram} and
+     * {@code _index_prefix} sub-fields used by the multi_match query.
+     */
+    @Field(type = FieldType.Search_As_You_Type, maxShingleSize = 3)
+    private String nameSuggest;
+
     @Field(type = FieldType.Date, format = DateFormat.date_time)
     private Instant createdAt;
 
@@ -71,4 +93,12 @@ public class ProductDocument {
      */
     @Field(type = FieldType.Double)
     private Double searchScore;
+
+    /**
+     * Set by the replenishment saga when a product runs low. The relevance
+     * query multiplies the base score by ~0.5 for documents flagged true so
+     * unfulfillable items rank lower until stock returns.
+     */
+    @Field(type = FieldType.Boolean)
+    private Boolean lowStockPenalty;
 }

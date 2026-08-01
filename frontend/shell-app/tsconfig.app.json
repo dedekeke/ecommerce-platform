@@ -22,7 +22,12 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@ecommerce/shared-ui": ["../shared-ui/src/index.ts"],
+      "@ecommerce/shared-ui/*": ["../shared-ui/src/*"]
+    }
   },
   "include": ["src"]
 }

@@ -6,12 +6,18 @@ This directory contains shell scripts to help with local development and testing
 
 | Script | Description | Usage |
 |--------|-------------|-------|
+| `ci-local.sh` | Local CI replacement (backend + frontend + infra lint) | `./ci-local.sh [--backend\|--frontend\|--infra] [--quick]` |
+| `check-prod-log-levels.sh` | CI guard: no DEBUG/TRACE or 100% trace sampling in prod profiles | `./check-prod-log-levels.sh` |
+| `check-dockerfile-reactor-poms.sh` | CI guard: reactor Dockerfiles stage every root-pom module pom | `./check-dockerfile-reactor-poms.sh` |
+| `test-frontend-all.sh` | Run every micro-frontend's test suite (auto-detects React/Angular) | `./test-frontend-all.sh [--affected] [--lint]` |
 | `setup-local-dev.sh` | Setup local development environment | `./setup-local-dev.sh` |
 | `build-all.sh` | Build all services | `./build-all.sh [--test] [--deploy]` |
 | `run-service.sh` | Run a single service | `./run-service.sh <service-name>` |
 | `run-all-services.sh` | Run all services | `./run-all-services.sh` |
+| `run-frontend.sh` | Build + serve all MFEs and the shell app | `./run-frontend.sh` |
 | `stop-all-services.sh` | Stop all running services | `./stop-all-services.sh` |
-| `check-services.sh` | Check service health | `./check-services.sh` |
+| `check-services.sh` | Check service health (auto-detects port mode) | `./check-services.sh [--maven\|--docker]` |
+| `security-scan.sh` | OWASP ZAP passive baseline scan against the gateway | `./security-scan.sh` (needs Docker + running gateway) |
 | `test-kafka-events.sh` | Test Kafka event infrastructure | `./test-kafka-events.sh` |
 | `test-tracing.sh` | Test distributed tracing | `./test-tracing.sh` |
 
@@ -33,9 +39,12 @@ cp .env.example .env
 ```
 
 This will:
-- Start infrastructure services (PostgreSQL, MySQL, MongoDB, Redis, Kafka, Zipkin, Eureka)
-- Create required databases
+- Start infrastructure services (PostgreSQL, MySQL, MongoDB, Redis, Kafka, Elasticsearch, MailHog, Zipkin, Eureka)
 - Verify service health
+
+Databases are created automatically on first container boot by the init scripts
+mounted in `docker-compose.yml` (`docker/init-postgres.sql`, `docker/init-mysql.sql`);
+schema migrations run via each service's Flyway.
 
 ### 2. Build the Project
 
@@ -76,12 +85,14 @@ tail -f logs/*.log
 
 Available services:
 - Infrastructure: `eureka-server`, `config-server`, `api-gateway`
-- Microservices: `user-service`, `product-service`, `cart-service`, `order-service`, `payment-service`, `inventory-service`, `notification-service`, `search-service`, `media-service`, `promotion-service`
+- Microservices: `user-service`, `product-service`, `cart-service`, `order-service`, `payment-service`, `inventory-service`, `notification-service`, `search-service`, `media-service`, `promotion-service`, `recommendation-service`, `review-service`
 
 ### 4. Check Services
 
 ```bash
-./scripts/check-services.sh
+./scripts/check-services.sh            # auto-detects port mode
+./scripts/check-services.sh --maven    # services started via Maven (run-all-services.sh)
+./scripts/check-services.sh --docker   # services started via docker-compose
 ```
 
 This will check the health of all services and display:
@@ -109,24 +120,34 @@ This will check the health of all services and display:
 
 ### Microservices
 
-| Service | Port | Swagger UI | Description |
-|---------|------|------------|-------------|
-| User Service | 8081 | http://localhost:8081/swagger-ui.html | User management |
-| Product Service | 8082 | http://localhost:8082/swagger-ui.html | Product catalog |
-| Cart Service | 8083 | http://localhost:8083/swagger-ui.html | Shopping cart |
-| Order Service | 8084 | http://localhost:8084/swagger-ui.html | Order processing |
-| Payment Service | 8085 | http://localhost:8085/swagger-ui.html | Payment processing |
-| Inventory Service | 8086 | http://localhost:8086/swagger-ui.html | Inventory management |
-| Notification Service | 8087 | http://localhost:8087/swagger-ui.html | Email/SMS notifications |
-| Search Service | 8089 | http://localhost:8089/swagger-ui.html | Product search (Elasticsearch) |
-| Media Service | 8090 | http://localhost:8090/swagger-ui.html | File upload/storage |
-| Promotion Service | 8091 | http://localhost:8091/swagger-ui.html | Discounts & promotions |
+Ports differ per run mode: the Maven port is the service's `server.port`
+(used by `run-service.sh` / `run-all-services.sh`); the Docker port is the one
+published by `docker-compose.yml`. `notification-service`, `recommendation-service`
+and `review-service` are not part of the local compose stack (Maven only;
+notification-service is compose-managed in prod only).
+
+| Service | Maven Port | Docker Port | Description |
+|---------|------------|-------------|-------------|
+| User Service | 8081 | 8081 | User management |
+| Product Service | 8082 | 8082 | Product catalog |
+| Cart Service | 8083 | 8083 | Shopping cart |
+| Order Service | 8084 | 8084 (gRPC 9094) | Order processing |
+| Payment Service | 8085 | 8085 (gRPC 9090) | Payment processing |
+| Inventory Service | 8086 | 8086 (gRPC 9091) | Inventory management |
+| Notification Service | 8087 | — | Email/SMS notifications |
+| Search Service | 8089 | 8088 | Product search (Elasticsearch) |
+| Media Service | 8090 | 8089 | File upload/storage |
+| Promotion Service | 8091 | 8090 | Discounts & promotions |
+| Recommendation Service | 8092 | — | Product recommendations |
+| Review Service | 8093 | — | Product reviews |
+
+Swagger UI per service: `http://localhost:<port>/swagger-ui.html`
 
 ### Consolidated API Documentation
 
 **Swagger UI (All Services)**: http://localhost:8080/swagger-ui.html
 
-The API Gateway provides a single interface to access documentation for all 10 microservices.
+The API Gateway provides a single interface to access documentation for all 12 microservices.
 
 ### Monitoring & Observability
 
@@ -135,6 +156,12 @@ The API Gateway provides a single interface to access documentation for all 10 m
 | Zipkin | 9411 | http://localhost:9411 | - |
 | Grafana | 3000 | http://localhost:3000 | admin/admin |
 | Prometheus | 9090 | http://localhost:9090 | - |
+| MailHog | 8025 | http://localhost:8025 | - |
+
+Grafana, Prometheus and kafka-ui come from `docker-compose.monitoring.yml`.
+Note: kafka-ui publishes host port 8080 (clashes with the API gateway) and
+Prometheus publishes 9090 (clashes with payment-service's published gRPC port),
+so the full monitoring stack cannot run alongside the full base compose stack.
 
 ---
 
@@ -151,9 +178,11 @@ Sets up the local development environment by starting infrastructure services.
 **What it does:**
 1. Checks for required `.env` file
 2. Verifies Docker is running
-3. Creates required databases
-4. Starts infrastructure services (PostgreSQL, MySQL, MongoDB, Redis, Kafka, Zipkin, Eureka)
-5. Verifies service health
+3. Starts infrastructure services (PostgreSQL, MySQL, MongoDB, Redis, Kafka, Elasticsearch, MailHog, Zipkin, Eureka)
+4. Verifies service health
+
+Databases are created on first container boot by `docker/init-postgres.sql` and
+`docker/init-mysql.sql` (mounted in `docker-compose.yml`).
 
 **Example:**
 ```bash
@@ -240,7 +269,10 @@ Runs all microservices in background mode.
 10. Search Service (8089)
 11. Media Service (8090)
 12. Promotion Service (8091)
-13. API Gateway (8080)
+13. Recommendation Service (8092)
+14. Review Service (8093)
+15. API Gateway (8080)
+16. Product Catalog MFE (5001), Shell App (5173)
 
 ---
 
@@ -266,14 +298,15 @@ Checks the health status of all services.
 
 **Usage:**
 ```bash
-./scripts/check-services.sh
+./scripts/check-services.sh [--maven|--docker]
 ```
 
 **What it does:**
-1. Pings health endpoints of all services
-2. Displays status for each service
-3. Shows summary (total, running, down)
-4. Returns exit code 1 if any service is down
+1. Picks the port set for the run mode (`--maven` = server.port values,
+   `--docker` = compose published ports; auto-detected when omitted)
+2. Pings health endpoints of all services
+3. Shows summary (total, running, down); Grafana/Prometheus are optional and never fail the check
+4. Returns exit code 1 if any required service is down
 
 ---
 
@@ -356,6 +389,49 @@ Runs integration tests with menu interface.
 - `performance` - Performance tests
 - `load` - Load tests
 
+#### test-frontend-all.sh
+```bash
+./scripts/test-frontend-all.sh            # run every MFE's test suite
+./scripts/test-frontend-all.sh --affected # only MFEs with staged changes (pre-commit)
+./scripts/test-frontend-all.sh --lint     # also run lint where a lint script exists
+```
+Auto-discovers each `frontend/*` package and runs the right runner per framework
+(React/Vite -> `vitest --run`, Angular -> `ng test` headless). This is the same set
+of suites the `Quality` GitHub Actions workflow runs.
+
+---
+
+## Optional pre-commit hook
+
+A husky-style pre-commit hook lives at `.husky/pre-commit`. It is **opt-in** and not
+installed automatically. It runs `test-frontend-all.sh --affected`, so backend-only
+commits are a fast no-op.
+
+Enable it with plain git (no extra tooling):
+```bash
+git config core.hooksPath .husky
+```
+Or, once a root `package.json` with husky is added: `npx husky install`.
+
+Bypass for a single commit with `git commit --no-verify`; disable with
+`git config --unset core.hooksPath`.
+
+---
+
+## Security: OWASP dependency-check
+
+The OWASP `dependency-check-maven` plugin is wired in the parent `pom.xml` under the
+`security` profile (it does **not** run on a normal build). It fails the build on any
+dependency with CVSS >= 7.0; false positives go in `dependency-check-suppressions.xml`
+at the repo root (with justification).
+
+```bash
+mvn -Psecurity verify                       # full scan (cold NVD download is slow)
+mvn -Psecurity verify -Dnvd.api.key=$KEY     # faster + avoids NVD rate limiting
+```
+In CI the gate runs in the `Quality` workflow; provide an `NVD_API_KEY` Actions secret
+to speed up the NVD feed download. HTML/SARIF reports land in `target/`.
+
 ---
 
 ## Environment Variables
@@ -392,8 +468,8 @@ export $(cat .env | grep -v '^#' | xargs)
 # Find and kill process using port 8083
 lsof -ti:8083 | xargs kill -9
 
-# Or use different port
-./scripts/run-service.sh cart-service -Dserver.port=8084
+# Or run on a different port (run-service.sh takes no extra args)
+mvn spring-boot:run -pl services/cart-service -Dspring-boot.run.arguments=--server.port=8094
 ```
 
 ### Database Connection Failed

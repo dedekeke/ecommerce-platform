@@ -189,19 +189,61 @@ See [docs/CACHING_STRATEGY.md](docs/CACHING_STRATEGY.md) for implementation deta
 
 See [docs/SCHEDULED_TASKS.md](docs/SCHEDULED_TASKS.md) for the complete list.
 
-## Documentation
+## Documentation Map
 
-| Document | Description |
-|----------|-------------|
-| [QUICKSTART.md](QUICKSTART.md) | Getting started guide |
-| [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) | API reference |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
-| [docs/VIRTUAL_THREADS.md](docs/VIRTUAL_THREADS.md) | Virtual threads guide |
-| [docs/RESILIENCE_PATTERNS.md](docs/RESILIENCE_PATTERNS.md) | Resilience patterns |
-| [docs/CACHING_STRATEGY.md](docs/CACHING_STRATEGY.md) | Caching implementation |
-| [docs/SECURITY.md](docs/SECURITY.md) | Security architecture |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues |
-| [scripts/README.md](scripts/README.md) | Development scripts |
+All docs live in [`docs/`](docs/) with a back-link to this README. Organized by audience.
+
+### Getting Started
+| Doc | Description |
+|-----|-------------|
+| [QUICKSTART.md](QUICKSTART.md) | Five-minute clone-to-running setup |
+| [docs/ONBOARDING.md](docs/ONBOARDING.md) | 1–2 hour onboarding flow for new engineers |
+| [docs/LOCAL_DEV_PROFILE.md](docs/LOCAL_DEV_PROFILE.md) | Per-service `personal` profile setup |
+| [docs/IDEA_RUN_CONFIGURATIONS.md](docs/IDEA_RUN_CONFIGURATIONS.md) | IntelliJ IDEA run configurations |
+| [docs/AUTH0_SETUP.md](docs/AUTH0_SETUP.md) | Configure Auth0 tenant and apps |
+
+### Architecture & Patterns
+| Doc | Description |
+|-----|-------------|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture overview (C4) |
+| [docs/INTEGRATION_PATTERNS.md](docs/INTEGRATION_PATTERNS.md) | Service-to-service patterns and contracts |
+| [docs/VIRTUAL_THREADS.md](docs/VIRTUAL_THREADS.md) | Java 21 virtual threads usage |
+| [docs/RESILIENCE_PATTERNS.md](docs/RESILIENCE_PATTERNS.md) | Resilience4j circuit breakers, retry, bulkhead |
+| [docs/CACHING_STRATEGY.md](docs/CACHING_STRATEGY.md) | Redis caching layer and TTLs |
+| [docs/SCHEDULED_TASKS.md](docs/SCHEDULED_TASKS.md) | Cron jobs and batch processing |
+| [docs/TRACING_SETUP.md](docs/TRACING_SETUP.md) | Distributed tracing with Zipkin |
+
+### API & Frontend
+| Doc | Description |
+|-----|-------------|
+| [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) | REST API reference (also at `/swagger-ui.html`) |
+| [docs/EMAIL_NOTIFICATIONS.md](docs/EMAIL_NOTIFICATIONS.md) | Notification flow and MailHog wiring |
+| [docs/MFE_INTEGRATION_TEST.md](docs/MFE_INTEGRATION_TEST.md) | Manual smoke test playbook for MFEs |
+| [docs/COVERAGE_REPORT.md](docs/COVERAGE_REPORT.md) | Frontend test coverage snapshot |
+| [docs/frontend-design-brief.md](docs/frontend-design-brief.md) | Design system, tokens, UI/UX guidelines |
+
+### Operations & Production
+| Doc | Description |
+|-----|-------------|
+| [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) | On-call playbook: alerts, rollback, restart, DR |
+| [docs/BACKUP_AND_DR.md](docs/BACKUP_AND_DR.md) | RTO/RPO targets, restore runbooks per datastore |
+| [docs/PERFORMANCE_TESTING.md](docs/PERFORMANCE_TESTING.md) | Load and performance test methodology |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues and fixes |
+
+### Security
+| Doc | Description |
+|-----|-------------|
+| [docs/SECURITY.md](docs/SECURITY.md) | Security architecture (auth, headers, rate limits) |
+| [docs/SECURITY_SCAN.md](docs/SECURITY_SCAN.md) | OWASP ZAP scan procedure |
+
+### Other
+| Doc | Description |
+|-----|-------------|
+| [scripts/README.md](scripts/README.md) | Development scripts reference |
+| [k8s/README.md](k8s/README.md) | Kubernetes manifests and Kustomize overlays |
+| [monitoring/README.md](monitoring/README.md) | Loki/Promtail/Grafana stack |
+| [todo.md](todo.md) | Progress tracker |
+| [plan.md](plan.md) | Long-term development plan |
 
 ## Service Ports
 
@@ -244,6 +286,48 @@ mvn jacoco:report
 ```bash
 ./scripts/check-services.sh
 ```
+
+## Deployment
+
+Production-readiness artifacts live alongside the source for the same workflow used in dev.
+
+### Production Docker Compose
+```bash
+cp production.env.example production.env   # then fill in real values
+docker compose -f docker-compose.prod.yml --env-file production.env up -d
+```
+- Resource limits, restart policies, json-file log rotation, no debug ports.
+- Image tags pin immutable SemVer (`ecommerce/<svc>:1.0.0`); see file header for tagging strategy.
+
+### Kubernetes (Kustomize)
+```bash
+kubectl apply -k k8s/overlays/staging
+kubectl apply -k k8s/overlays/production
+```
+- Manifests for 11 backends + 6 frontends.
+- HPA on `product-service`, `order-service`, `payment-service`.
+- Default-deny `NetworkPolicy` plus explicit allow rules.
+- See [k8s/README.md](k8s/README.md) for secret-management (sealed-secrets recommended).
+
+### Helm umbrella chart
+```bash
+helm upgrade --install ecommerce ./helm/ecommerce \
+  -f helm/ecommerce/values-prod.yaml \
+  -n ecommerce-prod --create-namespace
+```
+- 11 backend subcharts in `helm/ecommerce/charts/`.
+- `values.yaml`, `values-staging.yaml`, `values-prod.yaml`.
+
+### CI/CD
+- `.github/workflows/ci.yml` — PR build + test + lint + dependency scan.
+- `.github/workflows/cd-staging.yml` — push to `develop` → build/push images → helm-upgrade staging.
+- `.github/workflows/cd-production.yml` — `v*.*.*` tag → build/push → helm-upgrade prod (manual approval).
+
+### Centralized logging
+Loki + Promtail + Grafana — see [monitoring/README.md](monitoring/README.md) for install instructions and the bundled `services-logs` dashboard.
+
+### Backup & DR
+[docs/BACKUP_AND_DR.md](docs/BACKUP_AND_DR.md) — RTO 4h / RPO 1h, restore runbooks for every datastore, DR table-top template.
 
 ## Upcoming
 - Frontend Shell and React Micro-Frontends

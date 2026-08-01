@@ -1,5 +1,7 @@
 # Frontend Design System & UI/UX Guidelines
 
+> Back to [README](../README.md).
+>
 > **Purpose**: This document defines the design language, visual standards, and UI/UX patterns for all frontend applications and micro-frontends in the e-commerce platform.
 >
 > **Last Updated**: 2025-12-30

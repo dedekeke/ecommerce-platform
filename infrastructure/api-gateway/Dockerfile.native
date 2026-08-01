@@ -1,0 +1,65 @@
+# =============================================================================
+# §2.5 GraalVM Native Image Dockerfile for API Gateway (proof-of-concept)
+# Build:   docker build -f infrastructure/api-gateway/Dockerfile.native -t api-gateway:native .
+# Runtime: ~50-80 MB image, <1s startup, ~80-120 MB RSS.
+# Trade-off: 5-10 min build time vs ~30s for the JVM image.
+# =============================================================================
+
+ARG GRAALVM_VERSION=21
+ARG ALPINE_VERSION=3.19
+
+# -----------------------------------------------------------------------------
+# Build Stage — GraalVM Community + Maven
+# Using the official ghcr.io/graalvm/native-image-community image which
+# already has native-image installed; we add Maven on top.
+# -----------------------------------------------------------------------------
+FROM ghcr.io/graalvm/native-image-community:${GRAALVM_VERSION} AS builder
+
+RUN microdnf install -y maven gzip tar && microdnf clean all
+
+WORKDIR /build
+
+COPY pom.xml ./
+COPY common-library/pom.xml ./common-library/
+COPY infrastructure/api-gateway/pom.xml ./infrastructure/api-gateway/
+
+# Warm the dependency cache. Failure here is non-fatal because some modules
+# resolve only after sources are copied (the parent pom has aggregation).
+RUN mvn dependency:go-offline -pl infrastructure/api-gateway -am -DskipTests || true
+
+COPY common-library ./common-library
+COPY infrastructure/api-gateway ./infrastructure/api-gateway
+
+# native:compile runs the AOT processor first, then native-image. Use
+# -DskipTests because integration tests need other services running.
+RUN mvn -Pnative -pl infrastructure/api-gateway -am -DskipTests native:compile && \
+    mkdir -p /build/output && \
+    cp infrastructure/api-gateway/target/api-gateway /build/output/api-gateway
+
+# -----------------------------------------------------------------------------
+# Runtime Stage — distroless-style minimal base
+# Native binaries are statically linked enough to run on alpine/glibc-compat
+# images. We use a minimal image to keep the final size small.
+# -----------------------------------------------------------------------------
+FROM alpine:${ALPINE_VERSION}
+
+RUN apk add --no-cache libstdc++ gcompat wget && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    mkdir -p /app && chown -R appuser:appgroup /app
+
+LABEL org.opencontainers.image.title="API Gateway (native)" \
+      org.opencontainers.image.description="GraalVM native image build of the API Gateway" \
+      org.opencontainers.image.vendor="E-Commerce Platform"
+
+WORKDIR /app
+
+COPY --from=builder --chown=appuser:appgroup /build/output/api-gateway ./api-gateway
+
+USER appuser
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
+
+ENTRYPOINT ["./api-gateway"]

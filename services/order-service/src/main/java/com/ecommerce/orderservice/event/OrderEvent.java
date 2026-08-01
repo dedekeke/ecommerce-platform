@@ -37,6 +37,19 @@ public class OrderEvent {
     private String paymentIntentId;
     private String reservationId;
 
+    // Shipping context — populated on ORDER_SHIPPED so the notification-service
+    // shipping template can render the tracking details.
+    private String carrier;
+    private String trackingNumber;
+
+    // Notification-service contract: flat fields needed by the email consumer.
+    // Kept alongside `total` (kept for backward compat) and the structured
+    // shipping address on Order — notification-service expects a single string.
+    private String userEmail;
+    private String userName;
+    private BigDecimal totalAmount;
+    private String shippingAddress;
+
     @Data
     @Builder
     @NoArgsConstructor

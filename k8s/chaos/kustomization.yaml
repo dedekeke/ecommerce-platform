@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Chaos manifests are NOT included in the main k8s/base build because they
+# target a specific namespace (ecommerce-staging) and ship with dryRun=true.
+# Apply manually after Chaos Mesh is installed:
+#   kubectl apply -k k8s/chaos
+
+resources:
+  - pod-kill-product-service.yaml
+  - network-delay-payment.yaml
+  - cpu-stress-search.yaml
+  - network-partition-kafka.yaml

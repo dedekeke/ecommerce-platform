@@ -12,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +28,8 @@ import java.util.List;
 public class MediaController {
 
     private static final Logger logger = LoggerFactory.getLogger(MediaController.class);
+
+    private static final String ADMIN_AUTHORITY = "SCOPE_admin";
 
     private final MediaService mediaService;
 
@@ -51,24 +54,50 @@ public class MediaController {
     @Operation(summary = "Get media metadata by ID")
     public ResponseEntity<MediaResponse> getMedia(
             @PathVariable String id,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication) {
 
         logger.debug("Get media request for id: {}", id);
 
-        MediaResponse response = mediaService.getMediaById(id);
+        MediaResponse response = mediaService.getMediaById(id, jwt.getSubject(), isAdmin(authentication));
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}/content")
+    @Operation(summary = "Serve media content publicly (product imagery read path)")
+    public ResponseEntity<Resource> getContent(@PathVariable String id) {
+        logger.debug("Public content request for media id: {}", id);
+
+        MediaResponse media = mediaService.getPublicMediaById(id);
+        Resource resource = mediaService.loadPublicMediaFile(id);
+
+        // Immutable cache: media documents are never rewritten in place, a new
+        // upload gets a new id. nosniff pins the declared type, and CSP sandbox
+        // neuters direct navigation to any served document type — costs nothing
+        // for <img> embedding (SVG uploads are rejected outright; ADR PR#155).
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(media.getContentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + media.getFilename() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000, immutable")
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "sandbox")
+                .body(resource);
     }
 
     @GetMapping("/{id}/download")
     @Operation(summary = "Download media file")
     public ResponseEntity<Resource> downloadFile(
             @PathVariable String id,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication) {
 
         logger.debug("Download request for media id: {}", id);
 
-        MediaResponse media = mediaService.getMediaById(id);
-        Resource resource = mediaService.loadMediaFile(id);
+        String userId = jwt.getSubject();
+        boolean admin = isAdmin(authentication);
+        MediaResponse media = mediaService.getMediaById(id, userId, admin);
+        Resource resource = mediaService.loadMediaFile(id, userId, admin);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(media.getContentType()))
@@ -81,12 +110,13 @@ public class MediaController {
     @Operation(summary = "Delete media file")
     public ResponseEntity<Void> deleteMedia(
             @PathVariable String id,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication) {
 
         String userId = jwt.getSubject();
         logger.info("Delete request from user: {} for media: {}", userId, id);
 
-        mediaService.deleteMedia(id, userId);
+        mediaService.deleteMedia(id, userId, isAdmin(authentication));
         return ResponseEntity.noContent().build();
     }
 
@@ -94,11 +124,18 @@ public class MediaController {
     @Operation(summary = "Get all media for a user")
     public ResponseEntity<List<MediaResponse>> getUserMedia(
             @PathVariable String userId,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication) {
 
         logger.debug("Get user media request for userId: {}", userId);
 
-        List<MediaResponse> mediaList = mediaService.getMediaByUser(userId);
+        List<MediaResponse> mediaList =
+                mediaService.getMediaByUser(userId, jwt.getSubject(), isAdmin(authentication));
         return ResponseEntity.ok(mediaList);
+    }
+
+    private boolean isAdmin(Authentication authentication) {
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> ADMIN_AUTHORITY.equals(a.getAuthority()));
     }
 }

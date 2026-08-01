@@ -1,0 +1,54 @@
+# Helm values for `grafana/promtail` chart.
+# Install:
+#   helm upgrade --install promtail grafana/promtail -f monitoring/promtail/promtail-values.yaml -n monitoring
+
+config:
+  clients:
+    - url: http://loki-gateway/loki/api/v1/push
+
+  snippets:
+    pipelineStages:
+      - cri: {}
+      - json:
+          expressions:
+            level: level
+            traceId: traceId
+            service: service
+            ts: "@timestamp"
+      - labels:
+          level:
+          service:
+      - timestamp:
+          source: ts
+          format: RFC3339Nano
+          fallback_formats:
+            - UnixMs
+
+    extraScrapeConfigs: |
+      # Scrape Docker container logs by default (when running on Docker hosts, not k8s).
+      - job_name: docker
+        docker_sd_configs:
+          - host: unix:///var/run/docker.sock
+            refresh_interval: 5s
+        relabel_configs:
+          - source_labels: ["__meta_docker_container_name"]
+            regex: "/(.*)"
+            target_label: container
+          - source_labels: ["__meta_docker_container_log_stream"]
+            target_label: stream
+          - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+            target_label: service
+
+# When deployed in k8s the default DaemonSet config already tails /var/log/pods/*.log;
+# nothing extra required.
+serviceMonitor:
+  enabled: false
+
+# Reasonable resource defaults
+resources:
+  requests:
+    memory: 128Mi
+    cpu: 50m
+  limits:
+    memory: 256Mi
+    cpu: 200m

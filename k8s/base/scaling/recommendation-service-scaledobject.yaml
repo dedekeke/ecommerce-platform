@@ -1,0 +1,23 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: recommendation-service-kafka-lag
+  namespace: ecommerce
+spec:
+  scaleTargetRef:
+    name: recommendation-service
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  fallback:
+    failureThreshold: 3
+    replicas: 1
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka:9092
+        consumerGroup: recommendation-service
+        topic: order.created
+        lagThreshold: "100"
+        offsetResetPolicy: latest

@@ -8,21 +8,24 @@ spring:
       enabled: true
 
   # Security Configuration
+  #
+  # The gateway is a JWT RESOURCE SERVER only — it validates inbound bearer
+  # tokens and forwards them downstream (Spring Cloud Gateway relays the
+  # Authorization header by default). It is NOT an OAuth2 login client, so there
+  # is deliberately no spring.security.oauth2.client block: a client
+  # registration with a provider issuer-uri makes Spring perform blocking OIDC
+  # discovery at boot, which crashed the gateway whenever Auth0 was briefly
+  # unreachable at startup (Lore bug 1b8953dc). The resource-server decoder is
+  # built lazily from the JWK Set URI (see SecurityConfig#jwtDecoder) so the
+  # JWKS fetch only happens on first request, never at boot. issuer-uri stays
+  # for request-time issuer-claim validation; jwk-set-uri may be set explicitly
+  # to skip URL derivation.
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: ${AUTH0_ISSUER_URI}
-
-      client:
-        provider:
-          auth0:
-            issuer-uri: ${AUTH0_ISSUER_URI}
-        registration:
-          auth0:
-            client-id: ${AUTH0_CLIENT_ID}
-            client-secret: ${AUTH0_CLIENT_SECRET}
-            scope: openid,profile,email
+          jwk-set-uri: ${AUTH0_JWK_SET_URI:}
 
   # Cloud Configuration
   cloud:
@@ -40,23 +43,95 @@ spring:
           enabled: true
           lower-case-service-id: true
 
-      # Default filters applied to all routes
+      # Outbound HTTP client (gateway -> downstream services).
+      # response-timeout caps how long the gateway waits for a downstream
+      # response before returning 504 GATEWAY_TIMEOUT. Without it a hung
+      # downstream holds the gateway connection open indefinitely (only the
+      # Netty connect-phase was bounded via server.netty.connection-timeout).
+      # Env-overridable; individual routes may raise it via
+      # metadata.response-timeout (see payment-service).
+      httpclient:
+        response-timeout: ${GATEWAY_RESPONSE_TIMEOUT:5s}
+
+      # Global CORS configuration
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:5173"
+              - "http://localhost:5000"
+              - "http://localhost:5001"
+              - "http://localhost:5002"
+              - "http://localhost:5003"
+              - "http://localhost:4200"
+              - "http://localhost:4201"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+
+      # Default filters applied to all routes.
+      # No TokenRelay: it relays a token from an OAuth2AuthorizedClient, which a
+      # resource-server (JwtAuthenticationToken) principal never has — it was a
+      # no-op here, and the gateway forwards the inbound Authorization header to
+      # downstreams by default. Requiring it also dragged in the OAuth2 client
+      # auto-config that crashed boot when Auth0 was unreachable (bug 1b8953dc).
+      # Retry is scoped to GET only. POST/PUT/PATCH/DELETE are not idempotent
+      # here (no idempotency-key support downstream), so retrying them on a
+      # partial failure risks duplicate side-effects (e.g. double order/payment
+      # creation) and amplifies load 4x during an outage. See PR notes.
+      #
+      # exceptions is pinned to IOException only, dropping the RetryConfig
+      # default TimeoutException. A response-timeout surfaces as a
+      # TimeoutException that NettyRoutingFilter maps to 504; leaving it
+      # retryable would re-hit a hung downstream up to (retries+1)x, turning one
+      # bounded 5s wait into ~20s and quadrupling load on an already-failing
+      # service. Retry now covers only fast-fail cases: connect/IO errors
+      # (IOException) and the 502/503 statuses below.
+      #
+      # RemoveRequestHeader strips the inter-service credential
+      # (X-Internal-Service-Token) from EVERY inbound request. That header
+      # authorizes service-only endpoints downstream (e.g. POST
+      # /api/promotions/apply, which increments promotion usage counters); it is
+      # minted by services calling each other directly over the internal
+      # network, never by a client. Dropping it at the edge means a browser
+      # cannot forge or replay it even if the secret leaks into a frontend.
       default-filters:
-        - TokenRelay
         - name: Retry
           args:
             retries: 3
             statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE
-            methods: GET,POST
+            methods: GET
+            exceptions:
+              - java.io.IOException
             backoff:
               firstBackoff: 50ms
               maxBackoff: 500ms
               factor: 2
               basedOnPreviousValue: false
+        - RemoveRequestHeader=X-Internal-Service-Token
 
-      # Explicit route configurations for fine-grained control
+      # ------------------------------------------------------------------
+      # Route configuration policy (see docs/API_VERSIONING.md):
+      #   - Unversioned routes (`/api/<resource>/**`) remain active for legacy
+      #     clients. They are stamped with a `Deprecation: true` and a
+      #     `Sunset:` response header so callers can migrate at their own pace.
+      #   - Versioned routes (`/api/v1/<resource>/**`) carry no deprecation
+      #     header and are the canonical entry-point for new integrations.
+      #     They strip the `/v1` prefix before forwarding so each backend
+      #     service stays unaware of the gateway's versioning policy.
+      #   - Deprecation date is centrally controlled by ${API_DEPRECATION_SUNSET}
+      #     so the platform can roll the date forward in one place.
+      # ------------------------------------------------------------------
       routes:
-        # User Service
+        # ---------- User Service ----------
         - id: user-service
           uri: lb://user-service
           predicates:
@@ -67,8 +142,50 @@ spring:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/users>; rel="successor-version"
+        - id: user-service-v1
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
 
-        # Product Service
+        # ---------- Wishlist (under user-service) ----------
+        - id: wishlist-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/wishlist/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/wishlist>; rel="successor-version"
+        - id: wishlist-service-v1
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/wishlist/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+
+        # ---------- Product Service ----------
         - id: product-service
           uri: lb://product-service
           predicates:
@@ -79,44 +196,201 @@ spring:
                 redis-rate-limiter.replenishRate: 200
                 redis-rate-limiter.burstCapacity: 400
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/products>; rel="successor-version"
+        - id: product-service-v1
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/**,/api/v1/categories/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
 
-        # Cart Service
+        # ---------- Guest Cart (cart-service) ----------
+        # Anonymous cart operations — the companion to guest checkout. MUST
+        # precede the cart-service route below so this more specific route wins
+        # first-match (Spring Cloud Gateway matches in declared order); otherwise
+        # /api/cart/guest/** would be swallowed by /api/cart/**, inheriting the
+        # standard (looser) cart rate limit.
+        #
+        # Rate-limited PER CLIENT IP (key-resolver: ipKeyResolver) because the
+        # caller is anonymous — no principal to key on — and this is the cart
+        # surface reachable without a JWT, so it is the abuse vector. The ceiling
+        # is deliberately TIGHT (5/10, mirroring the guest-checkout route) so
+        # automated cart-spam can't create unbounded guest carts, while a real
+        # shopper (a few adds/updates) is unaffected. Env-overridable.
+        - id: cart-guest
+          uri: lb://cart-service
+          predicates:
+            - Path=/api/cart/guest/**,/api/cart/guest
+            - Method=GET,POST,PUT,DELETE
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_GUEST_CART_RATE:5}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_GUEST_CART_BURST:10}
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/cart/guest>; rel="successor-version"
+        - id: cart-guest-v1
+          uri: lb://cart-service
+          predicates:
+            - Path=/api/v1/cart/guest/**,/api/v1/cart/guest
+            - Method=GET,POST,PUT,DELETE
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_GUEST_CART_RATE:5}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_GUEST_CART_BURST:10}
+                redis-rate-limiter.requestedTokens: 1
+
+        # ---------- Cart Service ----------
         - id: cart-service
           uri: lb://cart-service
           predicates:
-            - Path=/api/cart/**
+            - Path=/api/cart/**,/api/carts/**
           filters:
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/cart>; rel="successor-version"
+        - id: cart-service-v1
+          uri: lb://cart-service
+          predicates:
+            - Path=/api/v1/cart/**,/api/v1/carts/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
 
-        # Order Service
+        # ---------- Guest Checkout (order-service) ----------
+        # Unauthenticated guest checkout. MUST precede the order-service route
+        # below so this more specific, POST-only route wins first-match (Spring
+        # Cloud Gateway matches routes in declared order); otherwise
+        # /api/orders/guest would be swallowed by /api/orders/**.
+        #
+        # Rate-limited PER CLIENT IP (key-resolver: ipKeyResolver) because the
+        # caller is anonymous — there is no principal to key on, and this is the
+        # one order route reachable without a JWT, so it is the abuse surface.
+        # The limit is deliberately TIGHTER than the authenticated order route
+        # (5/10 vs 50/100): a guest legitimately submits a checkout a handful of
+        # times, so a low ceiling blunts automated order/inventory-reservation
+        # abuse without hurting real shoppers.
+        - id: order-guest-checkout
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/guest
+            - Method=POST
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_GUEST_CHECKOUT_RATE:5}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_GUEST_CHECKOUT_BURST:10}
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/orders/guest>; rel="successor-version"
+        - id: order-guest-checkout-v1
+          uri: lb://order-service
+          predicates:
+            - Path=/api/v1/orders/guest
+            - Method=POST
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_GUEST_CHECKOUT_RATE:5}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_GUEST_CHECKOUT_BURST:10}
+                redis-rate-limiter.requestedTokens: 1
+
+        # ---------- Order Service ----------
+        # /api/returns/** (saga/rma RmaController) also lives in order-service,
+        # alongside /api/orders/** — shared route, same pattern as cart/carts
+        # and products/categories below. Previously missing here, so returns
+        # requests never reached order-service through the gateway.
         - id: order-service
           uri: lb://order-service
           predicates:
-            - Path=/api/orders/**
+            - Path=/api/orders/**,/api/returns/**
           filters:
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/orders>; rel="successor-version"
+        - id: order-service-v1
+          uri: lb://order-service
+          predicates:
+            - Path=/api/v1/orders/**,/api/v1/returns/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
 
-        # Payment Service
+        # ---------- Payment Service ----------
+        # Payment providers (3rd-party PSPs) can be slower than internal
+        # services, so these routes raise the response-timeout above the 5s
+        # global default. Value is in milliseconds, env-overridable.
         - id: payment-service
           uri: lb://payment-service
           predicates:
             - Path=/api/payments/**
+          metadata:
+            response-timeout: ${GATEWAY_PAYMENT_RESPONSE_TIMEOUT:10000}
           filters:
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/payments>; rel="successor-version"
+        - id: payment-service-v1
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/v1/payments/**
+          metadata:
+            response-timeout: ${GATEWAY_PAYMENT_RESPONSE_TIMEOUT:10000}
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
 
-        # Inventory Service
+        # ---------- Inventory Service ----------
         - id: inventory-service
           uri: lb://inventory-service
           predicates:
@@ -127,8 +401,23 @@ spring:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/inventory>; rel="successor-version"
+        - id: inventory-service-v1
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/v1/inventory/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
 
-        # Notification Service
+        # ---------- Notification Service ----------
         - id: notification-service
           uri: lb://notification-service
           predicates:
@@ -139,8 +428,23 @@ spring:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/notifications>; rel="successor-version"
+        - id: notification-service-v1
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
 
-        # Search Service
+        # ---------- Search Service ----------
         - id: search-service
           uri: lb://search-service
           predicates:
@@ -151,8 +455,23 @@ spring:
                 redis-rate-limiter.replenishRate: 200
                 redis-rate-limiter.burstCapacity: 400
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/search>; rel="successor-version"
+        - id: search-service-v1
+          uri: lb://search-service
+          predicates:
+            - Path=/api/v1/search/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
 
-        # Media Service
+        # ---------- Media Service ----------
         - id: media-service
           uri: lb://media-service
           predicates:
@@ -163,18 +482,281 @@ spring:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/media>; rel="successor-version"
+        - id: media-service-v1
+          uri: lb://media-service
+          predicates:
+            - Path=/api/v1/media/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
 
-        # Promotion Service
+        # ---------- Promo-code validation (promotion-service) ----------
+        # POST /api/promotions/validate is permitAll by design: a GUEST enters a
+        # promo code in the cart before any login, so it must stay publicly
+        # callable. That also makes it a promo-code ENUMERATION ORACLE — each
+        # call reveals whether a code exists — so it is rate limited PER CLIENT
+        # IP (key-resolver: ipKeyResolver; the caller is anonymous, so there is
+        # no principal to key on), mirroring the guest cart/checkout routes.
+        #
+        # The ceiling is much TIGHTER than the general promotion route (2/5 vs
+        # 100/200) and tighter than search (200/400): a shopper tries a handful
+        # of codes, a scraper tries thousands. MUST precede the promotion-service
+        # route below so this more specific, POST-only route wins first-match
+        # (Spring Cloud Gateway matches in declared order); otherwise
+        # /api/promotions/validate is swallowed by /api/promotions/** and
+        # inherits the loose limit. Env-overridable.
+        - id: promotion-validate
+          uri: lb://promotion-service
+          predicates:
+            - Path=/api/promotions/validate
+            - Method=POST
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_PROMO_VALIDATE_RATE:2}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_PROMO_VALIDATE_BURST:5}
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/promotions>; rel="successor-version"
+        - id: promotion-validate-v1
+          uri: lb://promotion-service
+          predicates:
+            - Path=/api/v1/promotions/validate
+            - Method=POST
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: ${GATEWAY_PROMO_VALIDATE_RATE:2}
+                redis-rate-limiter.burstCapacity: ${GATEWAY_PROMO_VALIDATE_BURST:5}
+                redis-rate-limiter.requestedTokens: 1
+
+        # ---------- Promotion Service ----------
+        # /api/currency/** (CurrencyController) also lives in promotion-service
+        # — shared route, same pattern as order-service's /api/returns/** above.
+        # Previously missing here, so currency-rate requests never reached
+        # promotion-service through the gateway (404 at the edge).
         - id: promotion-service
           uri: lb://promotion-service
           predicates:
-            - Path=/api/promotions/**
+            - Path=/api/promotions/**,/api/currency/**
           filters:
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
                 redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/promotions>; rel="successor-version"
+        - id: promotion-service-v1
+          uri: lb://promotion-service
+          predicates:
+            - Path=/api/v1/promotions/**,/api/v1/currency/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+
+        # ---------- Recommendation Service ----------
+        - id: recommendation-service
+          uri: lb://recommendation-service
+          predicates:
+            - Path=/api/recommendations/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/recommendations>; rel="successor-version"
+        - id: recommendation-service-v1
+          uri: lb://recommendation-service
+          predicates:
+            - Path=/api/v1/recommendations/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
+                redis-rate-limiter.requestedTokens: 1
+
+        # ---------- Review Service (NEW: §3.4) ----------
+        - id: review-service
+          uri: lb://review-service
+          predicates:
+            - Path=/api/reviews/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+            - AddResponseHeader=Deprecation, true
+            - AddResponseHeader=Sunset, ${API_DEPRECATION_SUNSET:Fri, 30 Apr 2027 23:59:59 GMT}
+            - AddResponseHeader=Link, </api/v1/reviews>; rel="successor-version"
+        - id: review-service-v1
+          uri: lb://review-service
+          predicates:
+            - Path=/api/v1/reviews/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/${segment}
+            - AddRequestHeader=X-API-Version, v1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                redis-rate-limiter.requestedTokens: 1
+
+        # ---------- Admin routes ----------
+        # Ported from the (now-disabled) programmatic locator so the declarative
+        # table stays the single route authority. Access is gated by
+        # SecurityConfig (SCOPE_admin) + IpWhitelistFilter on /api/admin/**.
+        # RewritePath strips the /admin segment before forwarding.
+        - id: admin-products
+          uri: lb://product-service
+          predicates:
+            - Path=/api/admin/products/**
+            - Method=POST,PUT,DELETE
+          filters:
+            - RewritePath=/api/admin/(?<segment>.*), /api/${segment}
+        - id: admin-inventory
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/admin/inventory/**
+          filters:
+            - RewritePath=/api/admin/(?<segment>.*), /api/${segment}
+        - id: admin-orders
+          uri: lb://order-service
+          predicates:
+            - Path=/api/admin/orders/**
+          filters:
+            - RewritePath=/api/admin/(?<segment>.*), /api/${segment}
+        - id: admin-users
+          uri: lb://user-service
+          predicates:
+            - Path=/api/admin/users/**
+          filters:
+            - RewritePath=/api/admin/(?<segment>.*), /api/${segment}
+
+        # ------------------------------------------------------------------
+        # OpenAPI aggregation routes — proxy /aggregate/<svc>/v3/api-docs to
+        # the corresponding service's /v3/api-docs endpoint. Used by Swagger
+        # UI at http://localhost:8080/swagger-ui.html to fetch each service
+        # spec without CORS issues.
+        # ------------------------------------------------------------------
+        - id: openapi-user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/aggregate/user-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-product-service
+          uri: lb://product-service
+          predicates:
+            - Path=/aggregate/product-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-cart-service
+          uri: lb://cart-service
+          predicates:
+            - Path=/aggregate/cart-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/aggregate/order-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/aggregate/payment-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-inventory-service
+          uri: lb://inventory-service
+          predicates:
+            - Path=/aggregate/inventory-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/aggregate/notification-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-search-service
+          uri: lb://search-service
+          predicates:
+            - Path=/aggregate/search-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-media-service
+          uri: lb://media-service
+          predicates:
+            - Path=/aggregate/media-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-promotion-service
+          uri: lb://promotion-service
+          predicates:
+            - Path=/aggregate/promotion-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-recommendation-service
+          uri: lb://recommendation-service
+          predicates:
+            - Path=/aggregate/recommendation-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+        - id: openapi-review-service
+          uri: lb://review-service
+          predicates:
+            - Path=/aggregate/review-service/v3/api-docs/**
+          filters:
+            - StripPrefix=2
+
+  # GraphQL BFF — exposes /graphql aggregating product / cart / order /
+  # recommendation traffic. GraphiQL is enabled for non-prod profiles to
+  # ease frontend development. Per-query auth is handled by @PreAuthorize
+  # in the resolvers.
+  graphql:
+    schema:
+      locations: classpath:/graphql/
+      printer:
+        enabled: true
+    graphiql:
+      enabled: ${GRAPHIQL_ENABLED:true}
+      path: /graphiql
+    cors:
+      allowed-origins:
+        - "http://localhost:3000"
+        - "http://localhost:5173"
+        - "http://localhost:5000"
+      allowed-methods: GET,POST,OPTIONS
+      allow-credentials: true
 
   # Redis configuration for rate limiting
   data:
@@ -182,10 +764,34 @@ spring:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT}
 
+# Route authority.
+# The declarative routes above (spring.cloud.gateway.routes) are the single
+# source of truth: only they receive default-filters (Retry) + RequestRateLimiter
+# and carry the response-timeout metadata. The programmatic RouteLocator in
+# GatewayRoutesConfig defines the same paths but, being built via
+# RouteLocatorBuilder, never inherits default-filters or RequestRateLimiter — so
+# leaving both active made the serving route (and thus whether Retry/rate-limiting
+# applied at all) depend on incidental Spring bean ordering. Disabled by default
+# to make routing deterministic; flip to true only if the declarative table is
+# unavailable.
+gateway:
+  programmatic-routes:
+    enabled: ${GATEWAY_PROGRAMMATIC_ROUTES_ENABLED:false}
+
+  # Trusted reverse-proxy / load-balancer ranges. Only requests whose immediate
+  # peer falls in one of these CIDRs have their X-Forwarded-For header believed
+  # when deriving the client IP for rate limiting (see ClientIpResolver). Empty
+  # is the secure default: no proxy trusted -> XFF ignored -> direct socket
+  # address used. Set GATEWAY_TRUSTED_PROXIES to your ingress/LB range(s) in
+  # any deployment that terminates behind a proxy, or guest-endpoint rate
+  # limiting can be bypassed by spoofing XFF.
+  trusted-proxy:
+    cidrs: ${GATEWAY_TRUSTED_PROXIES:}
+
 # Security Configuration
-# Set to false to disable Auth0 for local development
+# Defaults to true (secure-by-default). Override with SECURITY_ENABLED=false for local development only.
 security:
-  enabled: ${SECURITY_ENABLED:false}
+  enabled: ${SECURITY_ENABLED:true}
 
   # Security Headers Configuration
   headers:
@@ -226,7 +832,7 @@ eureka:
 
 # Server Configuration
 server:
-  port: ${SERVER_PORT}
+  port: ${SERVER_PORT:8080}
   netty:
     connection-timeout: 30s
 
@@ -255,10 +861,10 @@ management:
   # Distributed Tracing
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
   zipkin:
     tracing:
-      endpoint: ${ZIPKIN_URL}
+      endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
 
 # Logging Configuration
 logging:
@@ -273,6 +879,8 @@ logging:
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 # SpringDoc OpenAPI Configuration
+# Aggregates all backend services' /v3/api-docs into a single Swagger UI at the gateway.
+# Each entry is fetched by the browser via the gateway's proxy routes.
 springdoc:
   api-docs:
     enabled: true
@@ -280,24 +888,34 @@ springdoc:
   swagger-ui:
     enabled: true
     path: /swagger-ui.html
+    config-url: /v3/api-docs/swagger-config
+    disable-swagger-default-url: true
+    display-request-duration: true
+    operations-sorter: method
+    tags-sorter: alpha
+    urls-primary-name: product-service
     urls:
       - name: user-service
-        url: /api/users/v3/api-docs
+        url: /aggregate/user-service/v3/api-docs
       - name: product-service
-        url: /api/products/v3/api-docs
+        url: /aggregate/product-service/v3/api-docs
       - name: cart-service
-        url: /api/cart/v3/api-docs
+        url: /aggregate/cart-service/v3/api-docs
       - name: order-service
-        url: /api/orders/v3/api-docs
+        url: /aggregate/order-service/v3/api-docs
       - name: payment-service
-        url: /api/payments/v3/api-docs
+        url: /aggregate/payment-service/v3/api-docs
       - name: inventory-service
-        url: /api/inventory/v3/api-docs
+        url: /aggregate/inventory-service/v3/api-docs
       - name: notification-service
-        url: /api/notifications/v3/api-docs
+        url: /aggregate/notification-service/v3/api-docs
       - name: search-service
-        url: /api/search/v3/api-docs
+        url: /aggregate/search-service/v3/api-docs
       - name: media-service
-        url: /api/media/v3/api-docs
+        url: /aggregate/media-service/v3/api-docs
       - name: promotion-service
-        url: /api/promotions/v3/api-docs
+        url: /aggregate/promotion-service/v3/api-docs
+      - name: recommendation-service
+        url: /aggregate/recommendation-service/v3/api-docs
+      - name: review-service
+        url: /aggregate/review-service/v3/api-docs

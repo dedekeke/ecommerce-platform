@@ -3,6 +3,8 @@ import { Box, CssBaseline } from '@mui/material'
 import { Header } from './Header'
 import { Footer } from './Footer'
 import { MobileDrawer } from './MobileDrawer'
+import { ToastContainer } from '../common/ToastContainer'
+import { useToastBridge } from '../../hooks/useToastBridge'
 
 interface MainLayoutProps {
   children: ReactNode
@@ -11,6 +13,7 @@ interface MainLayoutProps {
 
 export const MainLayout = ({ children, cartItemCount = 0 }: MainLayoutProps) => {
   const [mobileOpen, setMobileOpen] = useState(false)
+  useToastBridge()
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
@@ -23,6 +26,8 @@ export const MainLayout = ({ children, cartItemCount = 0 }: MainLayoutProps) => 
       <Header cartItemCount={cartItemCount} onMenuClick={handleDrawerToggle} />
 
       <MobileDrawer open={mobileOpen} onClose={handleDrawerToggle} />
+
+      <ToastContainer />
 
       <Box
         component="main"

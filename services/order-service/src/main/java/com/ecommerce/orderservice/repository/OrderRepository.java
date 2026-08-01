@@ -44,6 +44,12 @@ public interface OrderRepository extends JpaRepository<Order, String> {
     List<Order> findByStatus(OrderStatus status);
 
     /**
+     * Find orders by status, paginated. Backs the admin order list's optional
+     * status filter; sort order is supplied via the {@link Pageable}.
+     */
+    Page<Order> findByStatus(OrderStatus status, Pageable pageable);
+
+    /**
      * Find orders created between dates
      */
     @Query("SELECT o FROM Order o WHERE o.createdAt BETWEEN :startDate AND :endDate")
@@ -72,6 +78,13 @@ public interface OrderRepository extends JpaRepository<Order, String> {
      */
     @Query("SELECT o.orderNumber FROM Order o ORDER BY o.createdAt DESC LIMIT 1")
     Optional<String> findLatestOrderNumber();
+
+    /**
+     * Find guest orders placed under a given email (the claim key). Used to
+     * relink a guest's orders to their real account once they register/verify
+     * that address. Email is stored already-normalized (trim + lowercase).
+     */
+    List<Order> findByGuestEmailAndGuestOrderTrue(String guestEmail);
 
     /**
      * Find abandoned orders (PENDING for more than specified hours)
