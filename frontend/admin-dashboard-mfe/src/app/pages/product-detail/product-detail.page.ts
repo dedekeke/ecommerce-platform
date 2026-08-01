@@ -10,7 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { ProductAdminService } from '../../core/services/product-admin.service';
 import { ToastService } from '../../core/services/toast.service';
-import { Product, ProductStatus } from '../../core/models/product.model';
+import { Product, ProductStatus, productStatus } from '../../core/models/product.model';
 import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 
 @Component({
@@ -37,7 +37,7 @@ import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/stat
         <div class="product-detail__title-group">
           @if (product()) {
             <h1>{{ product()!.name }}</h1>
-            <app-status-badge [label]="product()!.status" [variant]="statusVariant(product()!.status)" />
+            <app-status-badge [label]="statusOf(product()!)" [variant]="statusVariant(statusOf(product()!))" />
           } @else if (loading()) {
             <div class="skeleton skeleton--heading"></div>
           }
@@ -85,7 +85,7 @@ import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/stat
 
               <div class="product-form__row">
                 <mat-form-field appearance="outline">
-                  <mat-label>Price ($)</mat-label>
+                  <mat-label>Price ({{ product()?.currency || 'USD' }})</mat-label>
                   <input matInput type="number" formControlName="price" data-testid="field-price" />
                   @if (form.get('price')?.errors?.['min'] && form.get('price')?.touched) {
                     <mat-error>Price must be 0 or more</mat-error>
@@ -94,13 +94,13 @@ import { StatusBadgeComponent, BadgeVariant } from '../../shared/components/stat
 
                 <mat-form-field appearance="outline">
                   <mat-label>Stock</mat-label>
-                  <input matInput type="number" formControlName="stock" data-testid="field-stock" />
+                  <input matInput type="number" formControlName="stockQuantity" data-testid="field-stock" />
                 </mat-form-field>
               </div>
 
               <mat-form-field appearance="outline">
                 <mat-label>Category ID</mat-label>
-                <input matInput formControlName="categoryId" />
+                <input matInput type="number" formControlName="categoryId" />
               </mat-form-field>
 
               <div class="product-form__actions">
@@ -138,9 +138,9 @@ export class ProductDetailPage implements OnInit {
   form = this.fb.group({
     name: ['', Validators.required],
     description: [''],
-    price: [0, Validators.min(0)],
-    stock: [0, Validators.min(0)],
-    categoryId: [''],
+    price: [0, Validators.min(0.01)],
+    stockQuantity: [0, Validators.min(0)],
+    categoryId: [null as number | null],
     sku: [''],
   });
 
@@ -157,10 +157,10 @@ export class ProductDetailPage implements OnInit {
         this.product.set(p);
         this.form.patchValue({
           name: p.name,
-          description: p.description,
+          description: p.description ?? '',
           price: p.price,
-          stock: p.stock,
-          categoryId: p.categoryId,
+          stockQuantity: p.stockQuantity,
+          categoryId: p.category?.id ?? null,
           sku: p.sku,
         });
         this.form.markAsPristine();
@@ -181,12 +181,19 @@ export class ProductDetailPage implements OnInit {
     this.saving.set(true);
     const id = this.route.snapshot.paramMap.get('id')!;
     const value = this.form.getRawValue();
+    const current = this.product()!;
+    // PUT takes the full ProductRequest — untouched fields pass through.
     this.productService.updateProduct(id, {
+      sku: current.sku,
       name: value.name!,
-      description: value.description ?? undefined,
       price: value.price!,
-      stock: value.stock!,
-      categoryId: value.categoryId ?? undefined,
+      currency: current.currency,
+      stockQuantity: value.stockQuantity ?? 0,
+      images: current.images ?? [],
+      ...(value.description ? { description: value.description } : {}),
+      ...(value.categoryId != null ? { categoryId: value.categoryId } : {}),
+      active: current.active,
+      ...(current.dimensions ? { dimensions: current.dimensions } : {}),
     }).subscribe({
       next: (updated) => {
         this.product.set(updated);
@@ -198,6 +205,10 @@ export class ProductDetailPage implements OnInit {
         this.saving.set(false);
       },
     });
+  }
+
+  statusOf(product: Product): ProductStatus {
+    return productStatus(product);
   }
 
   statusVariant(status: ProductStatus): BadgeVariant {

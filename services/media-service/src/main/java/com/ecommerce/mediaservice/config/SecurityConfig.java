@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -44,6 +45,17 @@ public class SecurityConfig {
                                     "/swagger-ui/**",
                                     "/swagger-ui.html"
                             ).permitAll()
+                            // Public read path (ADR, PR#155): any media's bytes are
+                            // publicly readable by anyone who knows its opaque id
+                            // (no attachment/visibility check yet — a visibility
+                            // flag is the gate for the first private-media use).
+                            // Metadata (/{id}), /download and /user/{userId} stay
+                            // owner-gated.
+                            .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()
+                            // Upload requires admin: the public /content path turns
+                            // unrestricted upload into permanent world-readable,
+                            // immutable-cached hosting (PR#155).
+                            .requestMatchers(HttpMethod.POST, "/api/media/upload").hasAuthority("SCOPE_admin")
                             .anyRequest().authenticated()
                     )
                     .oauth2ResourceServer(oauth2 -> oauth2

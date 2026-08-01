@@ -7,17 +7,20 @@ import { ProductAdminService } from '../../core/services/product-admin.service';
 import { of, throwError } from 'rxjs';
 import { Product } from '../../core/models/product.model';
 
+// Shape mirrors product-service ProductResponse.
 const mockProduct: Product = {
   id: 'prod-1',
+  sku: 'SKU-001',
   name: 'Test Product',
   description: 'A test product',
+  category: { id: 3, name: 'Electronics', slug: 'electronics' },
   price: 29.99,
-  category: 'Electronics',
-  categoryId: 'cat-1',
-  imageUrls: [],
-  stock: 50,
-  sku: 'SKU-001',
-  status: 'ACTIVE',
+  currency: 'USD',
+  images: ['/api/media/media-1/content'],
+  stockQuantity: 50,
+  active: true,
+  inStock: true,
+  available: true,
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 };
@@ -52,11 +55,13 @@ describe('ProductDetailPage', () => {
     expect(fixture.nativeElement.textContent).toContain('Test Product');
   });
 
-  it('should populate the form with product data', async () => {
+  it('should populate the form with the ProductResponse fields', async () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.componentInstance.form.get('name')?.value).toBe('Test Product');
     expect(fixture.componentInstance.form.get('price')?.value).toBe(29.99);
+    expect(fixture.componentInstance.form.get('stockQuantity')?.value).toBe(50);
+    expect(fixture.componentInstance.form.get('categoryId')?.value).toBe(3);
   });
 
   it('should show SKU as read-only', async () => {
@@ -73,7 +78,7 @@ describe('ProductDetailPage', () => {
     expect(saveBtn.disabled).toBeTrue();
   });
 
-  it('should call updateProduct on form submit', async () => {
+  it('should send a full ProductRequest-shaped payload on submit', async () => {
     productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
     await fixture.whenStable();
     fixture.detectChanges();
@@ -83,7 +88,17 @@ describe('ProductDetailPage', () => {
     fixture.componentInstance.onSave();
     await fixture.whenStable();
 
-    expect(productServiceSpy.updateProduct).toHaveBeenCalledWith('prod-1', jasmine.objectContaining({ name: 'Updated Name' }));
+    expect(productServiceSpy.updateProduct).toHaveBeenCalledWith(
+      'prod-1',
+      jasmine.objectContaining({
+        name: 'Updated Name',
+        sku: 'SKU-001',
+        currency: 'USD',
+        stockQuantity: 50,
+        images: ['/api/media/media-1/content'],
+        active: true,
+      })
+    );
   });
 
   it('should show error message when load fails', async () => {
@@ -94,6 +109,13 @@ describe('ProductDetailPage', () => {
     fixture.detectChanges();
     const errorMsg = fixture.nativeElement.querySelector('[data-testid="error-msg"]');
     expect(errorMsg).toBeTruthy();
+  });
+
+  it('should derive the status badge from active/inStock', async () => {
+    await fixture.whenStable();
+    expect(fixture.componentInstance.statusOf(mockProduct)).toBe('ACTIVE');
+    expect(fixture.componentInstance.statusOf({ ...mockProduct, active: false })).toBe('INACTIVE');
+    expect(fixture.componentInstance.statusOf({ ...mockProduct, inStock: false })).toBe('OUT_OF_STOCK');
   });
 
   it('should return correct status variant', () => {

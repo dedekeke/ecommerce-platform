@@ -331,6 +331,41 @@ class SecurityPolicyDriftTest {
                 .isTrue();
     }
 
+    // --- Public product imagery: GET /api/media/{id}/content is public on BOTH
+    //     versions (media attached to a product is a public asset — thumbnails
+    //     render via plain <img> with no auth header). Every other media path
+    //     (metadata, /download, /user listing, upload) stays owner/JWT-gated. ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/media/abc123/content", "/api/v1/media/abc123/content"})
+    void should_permitUnauthenticatedGet_when_mediaContentPath(String path) {
+        assertThat(runGet(path).reachedBackend())
+                .as("GET %s must be public so <img> tags (no JWT) can render product imagery", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/media/abc123", "/api/v1/media/abc123",
+            "/api/media/abc123/download", "/api/v1/media/abc123/download",
+            "/api/media/user/auth0-1", "/api/v1/media/user/auth0-1",
+            "/api/media/abc123/content/extra"     // single-segment matcher must not widen
+    })
+    void should_denyUnauthenticatedGet_when_ownerGatedMediaPath(String path) {
+        assertThat(runGet(path).denied401())
+                .as("GET %s must remain authenticated (only /{id}/content is public)", path)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/media/upload", "/api/media/abc123/content"})
+    void should_denyUnauthenticatedPost_when_mediaPath(String path) {
+        // The exemption is GET-only; uploads and any write stay authenticated.
+        assertThat(runPost(path).denied401())
+                .as("POST %s must remain authenticated", path)
+                .isTrue();
+    }
+
     // --- Authenticated matrix: catalog writes require SCOPE_admin on both versions.
     //     A non-admin JWT must be FORBIDDEN (403); an admin JWT must pass through.
     //     PATCH is the red-first case: without a PATCH matcher it fell through to
