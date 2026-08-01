@@ -52,6 +52,10 @@ public class SecurityConfig {
                             // Metadata (/{id}), /download and /user/{userId} stay
                             // owner-gated.
                             .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()
+                            // Upload requires admin: the public /content path turns
+                            // unrestricted upload into permanent world-readable,
+                            // immutable-cached hosting (PR#155).
+                            .requestMatchers(HttpMethod.POST, "/api/media/upload").hasAuthority("SCOPE_admin")
                             .anyRequest().authenticated()
                     )
                     .oauth2ResourceServer(oauth2 -> oauth2

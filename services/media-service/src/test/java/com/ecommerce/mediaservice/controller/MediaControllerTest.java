@@ -78,16 +78,37 @@ class MediaControllerTest {
 
         when(mediaService.uploadFile(any(), anyString())).thenReturn(response);
 
-        // When/Then
+        // When/Then - upload requires SCOPE_admin (public /content would turn
+        // unrestricted upload into world-readable hosting)
         mockMvc.perform(multipart("/api/media/upload")
                         .file(file)
-                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(MEDIA_ID))
                 .andExpect(jsonPath("$.filename").value("test-image.jpg"))
                 .andExpect(jsonPath("$.contentType").value("image/jpeg"));
 
         verify(mediaService).uploadFile(any(), eq(USER_ID));
+    }
+
+    @Test
+    void shouldReturn403WhenUploadingWithoutAdminScope() throws Exception {
+        // Given - authenticated but non-admin caller
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "test.jpg",
+                "image/jpeg",
+                "content".getBytes()
+        );
+
+        // When/Then
+        mockMvc.perform(multipart("/api/media/upload")
+                        .file(file)
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
+                .andExpect(status().isForbidden());
+
+        verify(mediaService, never()).uploadFile(any(), any());
     }
 
     @Test
@@ -415,7 +436,8 @@ class MediaControllerTest {
         // When/Then
         mockMvc.perform(multipart("/api/media/upload")
                         .file(emptyFile)
-                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -435,7 +457,8 @@ class MediaControllerTest {
         // When/Then
         mockMvc.perform(multipart("/api/media/upload")
                         .file(file)
-                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isBadRequest());
     }
 }
