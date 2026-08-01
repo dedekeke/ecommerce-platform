@@ -1,0 +1,36 @@
+dependencies:
+- name: api-gateway
+  repository: file://charts/api-gateway
+  version: 0.1.0
+- name: user-service
+  repository: file://charts/user-service
+  version: 0.1.0
+- name: product-service
+  repository: file://charts/product-service
+  version: 0.1.0
+- name: cart-service
+  repository: file://charts/cart-service
+  version: 0.1.0
+- name: order-service
+  repository: file://charts/order-service
+  version: 0.1.0
+- name: payment-service
+  repository: file://charts/payment-service
+  version: 0.1.0
+- name: inventory-service
+  repository: file://charts/inventory-service
+  version: 0.1.0
+- name: notification-service
+  repository: file://charts/notification-service
+  version: 0.1.0
+- name: search-service
+  repository: file://charts/search-service
+  version: 0.1.0
+- name: media-service
+  repository: file://charts/media-service
+  version: 0.1.0
+- name: promotion-service
+  repository: file://charts/promotion-service
+  version: 0.1.0
+digest: sha256:7200c5f85529e2acc7ba720f47be6c08df06fadb165da70147c2da2d0edc079b
+generated: "2026-07-16T21:04:19.031116+07:00"

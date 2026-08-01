@@ -41,11 +41,13 @@ print_error() {
 # Step 1: Check if Kafka is running
 echo -e "\n${BLUE}Step 1: Checking Kafka Availability${NC}"
 
+KAFKA_CONTAINER="${KAFKA_CONTAINER:-ecommerce-kafka}"
+
 if ! command -v kafka-topics &> /dev/null; then
     print_warning "kafka-topics command not found. Trying to use docker exec..."
-    KAFKA_CMD="docker exec kafka kafka-topics"
-    KAFKA_CONSOLE_PRODUCER="docker exec -i kafka kafka-console-producer"
-    KAFKA_CONSOLE_CONSUMER="docker exec kafka kafka-console-consumer"
+    KAFKA_CMD="docker exec $KAFKA_CONTAINER kafka-topics"
+    KAFKA_CONSOLE_PRODUCER="docker exec -i $KAFKA_CONTAINER kafka-console-producer"
+    KAFKA_CONSOLE_CONSUMER="docker exec $KAFKA_CONTAINER kafka-console-consumer"
 else
     KAFKA_CMD="kafka-topics"
     KAFKA_CONSOLE_PRODUCER="kafka-console-producer"
@@ -156,11 +158,11 @@ fi
 # Step 6: Check consumer groups
 echo -e "\n${BLUE}Step 6: Checking Consumer Groups${NC}"
 
-if command -v kafka-consumer-groups &> /dev/null || docker exec kafka which kafka-consumer-groups > /dev/null 2>&1; then
+if command -v kafka-consumer-groups &> /dev/null || docker exec "$KAFKA_CONTAINER" which kafka-consumer-groups > /dev/null 2>&1; then
     if command -v kafka-consumer-groups &> /dev/null; then
         CONSUMER_GROUPS_CMD="kafka-consumer-groups"
     else
-        CONSUMER_GROUPS_CMD="docker exec kafka kafka-consumer-groups"
+        CONSUMER_GROUPS_CMD="docker exec $KAFKA_CONTAINER kafka-consumer-groups"
     fi
 
     consumer_groups=$($CONSUMER_GROUPS_CMD --bootstrap-server $KAFKA_BROKER --list 2>/dev/null)

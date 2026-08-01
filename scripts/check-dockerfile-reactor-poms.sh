@@ -85,7 +85,7 @@ declare -a DOCKERFILES=()
 while IFS= read -r df; do
   DOCKERFILES+=("$df")
 done < <(find "$REPO_ROOT" \
-  \( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/build/*' \) -prune -o \
+  \( -path '*/target/*' -o -path '*/node_modules/*' -o -path '*/build/*' -o -path '*/.claude/*' \) -prune -o \
   -type f \( -name 'Dockerfile' -o -name 'Dockerfile.*' \) \
   ! -name 'Dockerfile.runtime' ! -name 'Dockerfile.native' ! -name 'Dockerfile.dockerignore' \
   -print | sort)

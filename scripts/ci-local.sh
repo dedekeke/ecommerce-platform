@@ -53,9 +53,11 @@ step() {
 }
 
 # ---- Backend ----
+# integration-tests is commented out of the root reactor, so plain `mvn test`
+# never runs it; -DskipITs still guards any failsafe-bound ITs in quick mode.
 backend_unit_tests() {
   if $QUICK; then
-    mvn -B -ntp -DskipITs -pl '!integration-tests' test
+    mvn -B -ntp -DskipITs test
   else
     mvn -B -ntp test
   fi
@@ -114,7 +116,7 @@ step "Prod log-level guard" bash scripts/check-prod-log-levels.sh
 step "Dockerfile reactor-pom guard" bash scripts/check-dockerfile-reactor-poms.sh
 
 if $DO_BACKEND;  then
-  step "Backend build (skip tests)" backend_build
+  $QUICK || step "Backend build (skip tests)" backend_build
   step "Backend unit tests"          backend_unit_tests
 fi
 

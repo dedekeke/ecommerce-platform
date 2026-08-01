@@ -12,6 +12,10 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Paths below are repo-root relative; make the script location-independent.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/../.."
+
 API_URL=${1:-"http://localhost:8080"}
 OUTPUT_DIR="./performance-results"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
