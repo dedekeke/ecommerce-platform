@@ -81,10 +81,11 @@ public class SecurityConfig {
                         "/api/search/**", "/api/v1/search/**").permitAll()
                     .pathMatchers(HttpMethod.GET,
                         "/api/promotions/public/**", "/api/v1/promotions/public/**").permitAll()
-                    // Public product imagery (ADR, PR#153 review): media is
-                    // owner-private until attached to a product; product imagery
-                    // is a public asset served inline by media-service at
-                    // /{id}/content so plain <img> tags (no auth header) work.
+                    // Public media read path (ADR, PR#155): any media's bytes are
+                    // publicly readable by anyone who knows its opaque id — served
+                    // inline by media-service at /{id}/content so plain <img> tags
+                    // (no auth header) can render product imagery. A visibility
+                    // flag on Media is the gate before any private-media use case.
                     // GET-only and single-segment; metadata (/{id}), /download,
                     // /user/{userId} and upload stay behind the catch-all
                     // authenticated() rule. Both versions listed because the

@@ -129,11 +129,15 @@ public class MediaService {
     /**
      * Public (unauthenticated) metadata lookup for the {@code /content} read path.
      *
-     * <p>Ownership semantics (ADR, PR#153 review): media is owner-private until it
-     * is attached to a product; product imagery is a public asset. This method and
-     * {@link #loadPublicMediaFile(String)} therefore intentionally skip the
-     * ownership gate that {@code /download}, {@code /{id}} and {@code /user/{userId}}
-     * keep enforcing.
+     * <p>Enforced invariant (ADR, PR#155): any media's BYTES are publicly readable
+     * by anyone who knows its opaque id — there is no attachment or visibility
+     * check here. Metadata ({@code /{id}}), {@code /download} and
+     * {@code /user/{userId}} keep their ownership gates.
+     *
+     * <p>Gate for future work: the first private-media consumer (avatars, review
+     * photos, ...) must add a public/visibility flag on the {@link Media} document,
+     * defaulted at upload and checked in this method and
+     * {@link #loadPublicMediaFile(String)}, before shipping.
      */
     public MediaResponse getPublicMediaById(String id) {
         Media media = mediaRepository.findById(id)

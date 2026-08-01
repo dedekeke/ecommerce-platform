@@ -20,12 +20,13 @@ export type MediaUploadEvent =
   | { type: 'complete'; media: MediaResponse };
 
 // Mirrors media-service `media.allowed-file-types` (application.properties).
+// SVG is deliberately absent: scriptable document type on a public read path
+// (ADR, PR#155).
 export const ALLOWED_IMAGE_MIME_TYPES = [
   'image/jpeg',
   'image/png',
   'image/gif',
   'image/webp',
-  'image/svg+xml',
 ] as const;
 
 // Mirrors media-service `spring.servlet.multipart.max-file-size` (10MB).

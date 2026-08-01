@@ -283,6 +283,15 @@ describe('ProductsPage', () => {
       expect(toastSpy.error).toHaveBeenCalled();
     });
 
+    it('should reject an SVG client-side (dropped from the allowlist, ADR PR#155)', () => {
+      const file = new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' });
+
+      selectFile(fixture, file);
+
+      expect(mediaServiceSpy.upload).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.uploadError()).toContain('Unsupported file type');
+    });
+
     it('should reject a file exceeding the max size client-side without calling the upload service', () => {
       const file = new File(['data'], 'huge.png', { type: 'image/png' });
       Object.defineProperty(file, 'size', { value: 11 * 1024 * 1024 });

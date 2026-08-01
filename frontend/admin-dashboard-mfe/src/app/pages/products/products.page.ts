@@ -194,7 +194,7 @@ type ProductRow = Record<string, unknown> & Product;
               type="file"
               id="product-image-input"
               class="product-form__file-input"
-              accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+              accept="image/jpeg,image/png,image/gif,image/webp"
               [disabled]="uploading()"
               (change)="onFileSelected($event)"
               data-testid="product-image-input"
@@ -397,7 +397,7 @@ export class ProductsPage implements OnInit {
 
   private validateImageFile(file: File): string | null {
     if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_MIME_TYPES)[number])) {
-      return 'Unsupported file type. Please upload a JPEG, PNG, GIF, WEBP, or SVG image.';
+      return 'Unsupported file type. Please upload a JPEG, PNG, GIF, or WEBP image.';
     }
     if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
       return `File is too large. Maximum size is ${MAX_IMAGE_FILE_SIZE_BYTES / (1024 * 1024)}MB.`;

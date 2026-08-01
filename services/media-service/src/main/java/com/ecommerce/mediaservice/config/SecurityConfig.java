@@ -45,10 +45,12 @@ public class SecurityConfig {
                                     "/swagger-ui/**",
                                     "/swagger-ui.html"
                             ).permitAll()
-                            // Public product-imagery read path (ADR, PR#153 review):
-                            // media is owner-private until attached to a product;
-                            // product imagery is a public asset. Metadata (/{id}),
-                            // /download and /user/{userId} stay owner-gated.
+                            // Public read path (ADR, PR#155): any media's bytes are
+                            // publicly readable by anyone who knows its opaque id
+                            // (no attachment/visibility check yet — a visibility
+                            // flag is the gate for the first private-media use).
+                            // Metadata (/{id}), /download and /user/{userId} stay
+                            // owner-gated.
                             .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()
                             .anyRequest().authenticated()
                     )

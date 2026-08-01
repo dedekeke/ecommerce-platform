@@ -292,6 +292,26 @@ class MediaServiceTest {
     }
 
     @Test
+    void shouldRejectSvgUpload() {
+        // Given - SVG is a scriptable document type and /content serves publicly;
+        // it was dropped from media.allowed-file-types (ADR, PR#155)
+        MultipartFile file = new MockMultipartFile(
+                "logo.svg",
+                "logo.svg",
+                "image/svg+xml",
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".getBytes()
+        );
+
+        // When/Then
+        assertThatThrownBy(() -> mediaService.uploadFile(file, USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("File type not allowed");
+
+        verifyNoInteractions(fileStorageService);
+        verify(mediaRepository, never()).save(any());
+    }
+
+    @Test
     void shouldGetPublicMediaByIdWithoutOwnershipCheck() {
         // Given - owned by someone else; the public read path (product imagery)
         // intentionally skips the ownership gate
