@@ -14,8 +14,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -26,6 +28,7 @@ import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -328,5 +331,94 @@ class PromotionControllerSecurityTest {
                 .andExpect(status().isOk());
 
         verify(promotionService).applyPromotion(any());
+    }
+
+    // ---------- Filter ordering: real chain, REAL Authorization headers ----------
+    // These drive an actual "Authorization: Bearer ..." header through the real
+    // filter chain (BearerTokenAuthenticationFilter included). The jwt()
+    // post-processor cannot prove this: it pre-populates the SecurityContext and
+    // never exercises the bearer filter, which is exactly where the ordering
+    // landmine lives.
+
+    /**
+     * The landmine: {@code BearerTokenAuthenticationFilter} 401s a request the
+     * instant an {@code Authorization: Bearer} header fails to decode. If the
+     * service-token filter ran after it, a service call that happened to carry a
+     * stale/garbage user JWT would be rejected despite presenting a VALID
+     * service credential. The resolver must suppress bearer processing for
+     * trusted service calls so the service credential always wins.
+     */
+    @Test
+    @DisplayName("should_return200_when_applyPromotionWithServiceTokenAndInvalidBearerHeader")
+    void should_return200_when_applyPromotionWithServiceTokenAndInvalidBearerHeader() throws Exception {
+        when(jwtDecoder.decode(anyString())).thenThrow(new BadJwtException("expired or malformed"));
+        when(promotionService.applyPromotion(any()))
+                .thenReturn(DiscountResult.builder().valid(true).build());
+
+        mockMvc.perform(post("/api/promotions/apply")
+                        .header(InternalServiceTokenFilter.HEADER_NAME, SERVICE_TOKEN)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer garbage")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson()))
+                .andExpect(status().isOk());
+
+        verify(promotionService).applyPromotion(any());
+    }
+
+    /**
+     * The suppression is scoped to trusted service calls only: WITHOUT a valid
+     * service token, a bad bearer token keeps the standard 401 semantics.
+     */
+    @Test
+    @DisplayName("should_return401_when_applyPromotionWithInvalidBearerHeaderOnly")
+    void should_return401_when_applyPromotionWithInvalidBearerHeaderOnly() throws Exception {
+        when(jwtDecoder.decode(anyString())).thenThrow(new BadJwtException("expired or malformed"));
+
+        mockMvc.perform(post("/api/promotions/apply")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer garbage")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson()))
+                .andExpect(status().isUnauthorized());
+
+        verify(promotionService, never()).applyPromotion(any());
+    }
+
+    /**
+     * A WRONG service token must not buy the bearer suppression either — the
+     * invalid bearer token still 401s.
+     */
+    @Test
+    @DisplayName("should_return401_when_applyPromotionWithWrongServiceTokenAndInvalidBearerHeader")
+    void should_return401_when_applyPromotionWithWrongServiceTokenAndInvalidBearerHeader() throws Exception {
+        when(jwtDecoder.decode(anyString())).thenThrow(new BadJwtException("expired or malformed"));
+
+        mockMvc.perform(post("/api/promotions/apply")
+                        .header(InternalServiceTokenFilter.HEADER_NAME, "wrong-token")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer garbage")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson()))
+                .andExpect(status().isUnauthorized());
+
+        verify(promotionService, never()).applyPromotion(any());
+    }
+
+    /**
+     * The bearer suppression is uniform across the service's endpoints, not
+     * special-cased for /apply: a trusted service call to the public /validate
+     * path is likewise unaffected by an unusable bearer header.
+     */
+    @Test
+    @DisplayName("should_return200_when_validatePromotionWithServiceTokenAndInvalidBearerHeader")
+    void should_return200_when_validatePromotionWithServiceTokenAndInvalidBearerHeader() throws Exception {
+        when(jwtDecoder.decode(anyString())).thenThrow(new BadJwtException("expired or malformed"));
+        when(promotionService.validatePromotion(any()))
+                .thenReturn(DiscountResult.builder().valid(true).build());
+
+        mockMvc.perform(post("/api/promotions/validate")
+                        .header(InternalServiceTokenFilter.HEADER_NAME, SERVICE_TOKEN)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer garbage")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson()))
+                .andExpect(status().isOk());
     }
 }

@@ -1,5 +1,7 @@
 package com.ecommerce.promotionservice.config;
 
+import com.ecommerce.promotionservice.security.InternalServiceAwareBearerTokenResolver;
+import com.ecommerce.promotionservice.security.InternalServiceTokenAuthenticator;
 import com.ecommerce.promotionservice.security.InternalServiceTokenFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -41,6 +43,8 @@ public class SecurityConfig {
                     .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         } else {
             requireInternalServiceToken();
+            InternalServiceTokenAuthenticator serviceAuthenticator =
+                    new InternalServiceTokenAuthenticator(internalServiceToken);
             http
                     .csrf(AbstractHttpConfigurer::disable)
                     .authorizeHttpRequests(auth -> auth
@@ -59,8 +63,16 @@ public class SecurityConfig {
                                     "SCOPE_internal:service")
                             .anyRequest().authenticated()
                     )
-                    .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.decoder(jwtDecoder())))
-                    .addFilterAfter(new InternalServiceTokenFilter(internalServiceToken),
+                    // The service-token filter runs BEFORE the bearer filter, and the
+                    // resolver below makes the bearer filter a no-op for calls that
+                    // present a valid service token. Without that pairing, a
+                    // service-to-service call carrying a stale/garbage
+                    // "Authorization: Bearer ..." header would be 401'd by the bearer
+                    // filter before the service credential was ever inspected.
+                    .oauth2ResourceServer(oauth2 -> oauth2
+                            .bearerTokenResolver(new InternalServiceAwareBearerTokenResolver(serviceAuthenticator))
+                            .jwt(jwt -> jwt.decoder(jwtDecoder())))
+                    .addFilterBefore(new InternalServiceTokenFilter(serviceAuthenticator),
                             BearerTokenAuthenticationFilter.class);
         }
 
