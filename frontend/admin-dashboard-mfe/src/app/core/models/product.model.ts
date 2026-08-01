@@ -43,8 +43,8 @@ export function productStatus(p: Pick<Product, 'active' | 'inStock' | 'stockQuan
 
 /**
  * Mirrors ProductRequest: sku, name, price and currency are mandatory.
- * PUT /api/products/{id} takes the FULL request (no partial update), so
- * create and update share this shape.
+ * POST /api/products takes the full request; `stockQuantity` seeds the catalog
+ * stock snapshot at creation time.
  */
 export interface ProductPayload {
   sku: string;
@@ -58,6 +58,15 @@ export interface ProductPayload {
   stockQuantity: number;
   active?: boolean;
 }
+
+/**
+ * PUT /api/products/{id} takes the FULL request too, but `stockQuantity` is
+ * CREATE-ONLY and is ignored server-side (inventory-service owns stock movement;
+ * echoing back a snapshot read at form-open time would clobber concurrent stock
+ * changes). Stock edits go through PATCH /api/products/{id}/stock instead —
+ * see ProductAdminService.updateStock.
+ */
+export type ProductUpdatePayload = Omit<ProductPayload, 'stockQuantity'>;
 
 /** Mirrors product-service PageResponse<T>. */
 export interface PagedProducts {

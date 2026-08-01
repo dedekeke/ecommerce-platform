@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { ProductAdminService } from './product-admin.service';
-import { Product, PagedProducts, ProductPayload } from '../models/product.model';
+import { Product, PagedProducts, ProductPayload, ProductUpdatePayload } from '../models/product.model';
 
 // Shape mirrors product-service ProductResponse.
 const mockProduct: Product = {
@@ -95,20 +95,30 @@ describe('ProductAdminService', () => {
     req.flush(mockProduct);
   });
 
-  it('should update a product with a full ProductRequest PUT body', () => {
-    const payload: ProductPayload = {
+  it('should update a product with a PUT body that omits the create-only stockQuantity', () => {
+    const payload: ProductUpdatePayload = {
       sku: 'SKU-001',
       name: 'Updated Name',
       price: 12,
       currency: 'USD',
       images: [],
-      stockQuantity: 1,
     };
     service.updateProduct('prod-1', payload).subscribe();
     const req = httpMock.expectOne('/api/products/prod-1');
     expect(req.request.method).toBe('PUT');
     expect(req.request.body).toEqual(payload);
+    expect('stockQuantity' in (req.request.body as object)).toBeFalse();
     req.flush(mockProduct);
+  });
+
+  it('should change stock through the dedicated PATCH stock endpoint', () => {
+    let result: Product | undefined;
+    service.updateStock('prod-1', 7).subscribe((r) => (result = r));
+    const req = httpMock.expectOne((r) => r.url === '/api/products/prod-1/stock');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.params.get('quantity')).toBe('7');
+    req.flush({ ...mockProduct, stockQuantity: 7 });
+    expect(result?.stockQuantity).toBe(7);
   });
 
   it('should delete a product with DELETE', () => {

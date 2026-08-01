@@ -65,6 +65,14 @@ describe('ApiClientService', () => {
     req.flush({});
   });
 
+  it('should append query params for PATCH requests', () => {
+    service.patch('/products/1/stock', null, { quantity: 7 }).subscribe();
+    const req = httpMock.expectOne((r) => r.url === '/api/products/1/stock');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.params.get('quantity')).toBe('7');
+    req.flush({});
+  });
+
   it('should make DELETE request', () => {
     service.delete('/items/1').subscribe();
     const req = httpMock.expectOne('/api/items/1');

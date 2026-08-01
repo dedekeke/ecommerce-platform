@@ -6,6 +6,7 @@ import {
   PagedProducts,
   ProductFilterParams,
   ProductPayload,
+  ProductUpdatePayload,
 } from '../models/product.model';
 
 @Injectable({ providedIn: 'root' })
@@ -32,8 +33,17 @@ export class ProductAdminService {
     return this.api.post<Product>('/products', payload);
   }
 
-  updateProduct(id: string, payload: ProductPayload): Observable<Product> {
+  updateProduct(id: string, payload: ProductUpdatePayload): Observable<Product> {
     return this.api.put<Product>(`/products/${id}`, payload);
+  }
+
+  /**
+   * Dedicated stock write path: PATCH /api/products/{id}/stock?quantity=N
+   * (SCOPE_admin, enforced server-side). The general PUT ignores stockQuantity,
+   * so admin stock edits must go through here.
+   */
+  updateStock(id: string, quantity: number): Observable<Product> {
+    return this.api.patch<Product>(`/products/${id}/stock`, null, { quantity });
   }
 
   deleteProduct(id: string): Observable<void> {

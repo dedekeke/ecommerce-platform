@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
+import { catchError, concatMap, map, of } from 'rxjs';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -21,14 +22,17 @@ import {
   Product,
   ProductDimensions,
   ProductFilterParams,
-  ProductPayload,
   ProductStatus,
+  ProductUpdatePayload,
   productStatus,
 } from '../../core/models/product.model';
 import { ALLOWED_IMAGE_MIME_TYPES, MAX_IMAGE_FILE_SIZE_BYTES } from '../../core/models/media.model';
 import { BadgeVariant } from '../../shared/components/status-badge/status-badge.component';
 
 type ProductRow = Record<string, unknown> & Product;
+
+/** Result of the optional second (stock) call in an edit save. */
+type StockOutcome = 'unchanged' | 'updated' | 'failed';
 
 @Component({
   selector: 'app-products',
@@ -156,6 +160,9 @@ type ProductRow = Record<string, unknown> & Product;
           <mat-form-field appearance="outline">
             <mat-label>Stock</mat-label>
             <input matInput type="number" formControlName="stockQuantity" data-testid="product-stock-input" />
+            @if (isEditing()) {
+              <mat-hint>Saved as a separate stock update</mat-hint>
+            }
           </mat-form-field>
 
           <mat-form-field appearance="outline">
@@ -247,10 +254,13 @@ export class ProductsPage implements OnInit {
   readonly uploading = signal(false);
   readonly uploadProgress = signal(0);
   readonly uploadError = signal<string | null>(null);
+  readonly isEditing = signal(false);
 
   private editingId: string | null = null;
   private editingActive: boolean | null = null;
   private editingDimensions: ProductDimensions | null = null;
+  /** Stock as loaded into the form, to detect an actual change on save. */
+  private editingStock = 0;
 
   // Sortable keys must be in product-service's ALLOWED_SORT_FIELDS allowlist.
   readonly columns: TableColumn[] = [
@@ -316,6 +326,8 @@ export class ProductsPage implements OnInit {
     this.editingId = null;
     this.editingActive = null;
     this.editingDimensions = null;
+    this.editingStock = 0;
+    this.isEditing.set(false);
     this.drawerTitle.set('Add Product');
     this.productForm.reset({
       name: '',
@@ -334,6 +346,8 @@ export class ProductsPage implements OnInit {
     this.editingId = row.id;
     this.editingActive = row.active;
     this.editingDimensions = row.dimensions ?? null;
+    this.editingStock = row.stockQuantity;
+    this.isEditing.set(true);
     this.drawerTitle.set('Edit Product');
     this.productForm.patchValue({
       name: row.name,
@@ -436,15 +450,13 @@ export class ProductsPage implements OnInit {
     }
     this.saving.set(true);
     const value = this.productForm.getRawValue();
+    const stockQuantity = value.stockQuantity ?? 0;
 
-    // PUT takes the full ProductRequest (no partial update), so both branches
-    // send the complete payload; active/dimensions pass through when editing.
-    const payload: ProductPayload = {
+    const base: ProductUpdatePayload = {
       name: value.name!,
       sku: value.sku!,
       price: value.price!,
       currency: value.currency!.toUpperCase(),
-      stockQuantity: value.stockQuantity ?? 0,
       images: this.imageUrls(),
       ...(value.categoryId != null ? { categoryId: value.categoryId } : {}),
       ...(value.description ? { description: value.description } : {}),
@@ -452,21 +464,50 @@ export class ProductsPage implements OnInit {
       ...(this.editingDimensions ? { dimensions: this.editingDimensions } : {}),
     };
 
-    const request$ = this.editingId
-      ? this.productService.updateProduct(this.editingId, payload)
-      : this.productService.createProduct(payload);
+    if (!this.editingId) {
+      // Create seeds the stock snapshot; ProductRequest.stockQuantity is create-only.
+      this.productService.createProduct({ ...base, stockQuantity }).subscribe({
+        next: () => this.onSaveSucceeded('Product created'),
+        error: () => this.saving.set(false),
+      });
+      return;
+    }
 
-    request$.subscribe({
-      next: () => {
-        this.saving.set(false);
-        this.closeDrawer();
-        this.toast.success(this.editingId ? 'Product updated' : 'Product created');
-        this.loadProducts();
-      },
-      error: () => {
-        this.saving.set(false);
-      },
-    });
+    const editingId = this.editingId;
+    // PUT ignores stockQuantity server-side, so a changed Stock field is applied
+    // through the dedicated stock endpoint as a second, explicit call.
+    const stockChanged = stockQuantity !== this.editingStock;
+
+    this.productService
+      .updateProduct(editingId, base)
+      .pipe(
+        concatMap(() =>
+          stockChanged
+            ? this.productService.updateStock(editingId, stockQuantity).pipe(
+                map(() => 'updated' as StockOutcome),
+                catchError(() => of('failed' as StockOutcome))
+              )
+            : of('unchanged' as StockOutcome)
+        )
+      )
+      .subscribe({
+        next: (stockOutcome) => {
+          this.onSaveSucceeded('Product updated');
+          if (stockOutcome === 'updated') {
+            this.toast.success(`Stock set to ${stockQuantity}`);
+          } else if (stockOutcome === 'failed') {
+            this.toast.error('Product saved, but the stock update failed. Stock is unchanged.');
+          }
+        },
+        error: () => this.saving.set(false),
+      });
+  }
+
+  private onSaveSucceeded(message: string): void {
+    this.saving.set(false);
+    this.closeDrawer();
+    this.toast.success(message);
+    this.loadProducts();
   }
 
   statusOf(row: ProductRow): ProductStatus {

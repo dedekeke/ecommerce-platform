@@ -4,6 +4,7 @@ import { ActivatedRoute } from '@angular/router';
 import { provideRouter } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ProductAdminService } from '../../core/services/product-admin.service';
+import { ToastService } from '../../core/services/toast.service';
 import { of, throwError } from 'rxjs';
 import { Product } from '../../core/models/product.model';
 
@@ -30,7 +31,9 @@ describe('ProductDetailPage', () => {
   let productServiceSpy: jasmine.SpyObj<ProductAdminService>;
 
   beforeEach(async () => {
-    productServiceSpy = jasmine.createSpyObj('ProductAdminService', ['getProductById', 'updateProduct']);
+    productServiceSpy = jasmine.createSpyObj('ProductAdminService', [
+      'getProductById', 'updateProduct', 'updateStock',
+    ]);
     productServiceSpy.getProductById.and.returnValue(of(mockProduct));
 
     await TestBed.configureTestingModule({
@@ -94,11 +97,67 @@ describe('ProductDetailPage', () => {
         name: 'Updated Name',
         sku: 'SKU-001',
         currency: 'USD',
-        stockQuantity: 50,
         images: ['/api/media/media-1/content'],
         active: true,
       })
     );
+  });
+
+  // stockQuantity is create-only on ProductRequest (inventory-service owns stock
+  // movement), so the PUT must not carry it and stock edits use PATCH /stock.
+  describe('stock ownership', () => {
+    async function saveWithStock(stockQuantity: number): Promise<void> {
+      await fixture.whenStable();
+      fixture.detectChanges();
+      fixture.componentInstance.form.patchValue({ stockQuantity });
+      fixture.componentInstance.form.markAsDirty();
+      fixture.componentInstance.onSave();
+      await fixture.whenStable();
+    }
+
+    it('should omit stockQuantity from the update payload', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      await saveWithStock(50);
+
+      const payload = productServiceSpy.updateProduct.calls.mostRecent().args[1];
+      expect('stockQuantity' in payload).toBeFalse();
+    });
+
+    it('should not call the stock endpoint when stock is unchanged', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      await saveWithStock(50);
+
+      expect(productServiceSpy.updateStock).not.toHaveBeenCalled();
+    });
+
+    it('should call the stock endpoint with the new quantity when stock changed', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      productServiceSpy.updateStock.and.returnValue(of({ ...mockProduct, stockQuantity: 12 }));
+      await saveWithStock(12);
+
+      expect(productServiceSpy.updateStock).toHaveBeenCalledWith('prod-1', 12);
+    });
+
+    it('should reflect the stock returned by the stock endpoint', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      productServiceSpy.updateStock.and.returnValue(of({ ...mockProduct, stockQuantity: 12 }));
+      await saveWithStock(12);
+
+      expect(fixture.componentInstance.product()?.stockQuantity).toBe(12);
+    });
+
+    it('should toast a stock-specific failure and restore server stock when the stock update fails', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      productServiceSpy.updateStock.and.returnValue(throwError(() => new Error('403')));
+      const toast = TestBed.inject(ToastService);
+      const errorSpy = spyOn(toast, 'error');
+      await saveWithStock(12);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Product saved, but the stock update failed. Stock is unchanged.'
+      );
+      expect(fixture.componentInstance.form.get('stockQuantity')?.value).toBe(50);
+    });
   });
 
   it('should show error message when load fails', async () => {
