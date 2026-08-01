@@ -42,7 +42,7 @@ echo ""
 
 # Start Docker infrastructure if not already running
 echo -e "${YELLOW}Ensuring Docker infrastructure is running...${NC}"
-docker-compose up -d postgres mysql mongodb redis zookeeper kafka zipkin
+docker-compose up -d postgres mysql mongodb redis zookeeper kafka elasticsearch mailhog zipkin
 
 # Load environment variables
 if [ -f .env ]; then
@@ -71,6 +71,8 @@ SERVICES=(
     "search-service:8089"
     "media-service:8090"
     "promotion-service:8091"
+    "recommendation-service:8092"
+    "review-service:8093"
     "api-gateway:8080"
     "product-catalog-mfe:5001"
     "shell-app:5173"
@@ -85,7 +87,7 @@ for SERVICE_INFO in "${SERVICES[@]}"; do
 
     # Determine service path
     case "$SERVICE" in
-        user-service|product-service|cart-service|order-service|payment-service|inventory-service|notification-service|search-service|media-service|promotion-service)
+        user-service|product-service|cart-service|order-service|payment-service|inventory-service|notification-service|search-service|media-service|promotion-service|recommendation-service|review-service)
             SERVICE_PATH="services/$SERVICE"
             ;;
         eureka-server|config-server|api-gateway)
@@ -147,4 +149,6 @@ echo "  - Notification:      http://localhost:8087/swagger-ui.html"
 echo "  - Search Service:    http://localhost:8089/swagger-ui.html"
 echo "  - Media Service:     http://localhost:8090/swagger-ui.html"
 echo "  - Promotion Service: http://localhost:8091/swagger-ui.html"
+echo "  - Recommendation:    http://localhost:8092/swagger-ui.html"
+echo "  - Review Service:    http://localhost:8093/swagger-ui.html"
 echo ""

@@ -17,7 +17,8 @@
 set -euo pipefail
 
 TARGET_URL="${TARGET_URL:-http://localhost:8080}"
-ZAP_IMAGE="owasp/zap2docker-stable"
+# owasp/zap2docker-stable on Docker Hub is deprecated/unmaintained (moved 2023).
+ZAP_IMAGE="${ZAP_IMAGE:-ghcr.io/zaproxy/zaproxy:stable}"
 REPORT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/security-reports"
 DATE_TAG="$(date +%Y%m%d-%H%M%S)"
 REPORT_FILE="zap-${DATE_TAG}.html"
