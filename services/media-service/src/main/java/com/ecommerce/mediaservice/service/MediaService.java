@@ -127,6 +127,31 @@ public class MediaService {
     }
 
     /**
+     * Public (unauthenticated) metadata lookup for the {@code /content} read path.
+     *
+     * <p>Ownership semantics (ADR, PR#153 review): media is owner-private until it
+     * is attached to a product; product imagery is a public asset. This method and
+     * {@link #loadPublicMediaFile(String)} therefore intentionally skip the
+     * ownership gate that {@code /download}, {@code /{id}} and {@code /user/{userId}}
+     * keep enforcing.
+     */
+    public MediaResponse getPublicMediaById(String id) {
+        Media media = mediaRepository.findById(id)
+                .orElseThrow(() -> new MediaNotFoundException(id));
+        return toMediaResponse(media);
+    }
+
+    /**
+     * Load a media file for the public {@code /content} read path — no ownership
+     * check, see {@link #getPublicMediaById(String)}.
+     */
+    public Resource loadPublicMediaFile(String id) {
+        Media media = mediaRepository.findById(id)
+                .orElseThrow(() -> new MediaNotFoundException(id));
+        return fileStorageService.loadAsResource(extractFilename(media.getStorageUrl()));
+    }
+
+    /**
      * Delete media
      */
     @Transactional
@@ -257,6 +282,7 @@ public class MediaService {
                 .contentType(media.getContentType())
                 .size(media.getSize())
                 .downloadUrl("/api/media/" + media.getId() + "/download")
+                .contentUrl("/api/media/" + media.getId() + "/content")
                 .uploadedBy(media.getUploadedBy())
                 .createdAt(media.getCreatedAt());
 

@@ -63,6 +63,26 @@ public class MediaController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/{id}/content")
+    @Operation(summary = "Serve media content publicly (product imagery read path)")
+    public ResponseEntity<Resource> getContent(@PathVariable String id) {
+        logger.debug("Public content request for media id: {}", id);
+
+        MediaResponse media = mediaService.getPublicMediaById(id);
+        Resource resource = mediaService.loadPublicMediaFile(id);
+
+        // Immutable cache: media documents are never rewritten in place, a new
+        // upload gets a new id. nosniff pins the declared type (SVG is served
+        // as image/svg+xml and must not be sniffed into something scriptier).
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(media.getContentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + media.getFilename() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000, immutable")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(resource);
+    }
+
     @GetMapping("/{id}/download")
     @Operation(summary = "Download media file")
     public ResponseEntity<Resource> downloadFile(

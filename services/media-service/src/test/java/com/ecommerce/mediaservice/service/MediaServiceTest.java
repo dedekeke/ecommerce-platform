@@ -292,6 +292,97 @@ class MediaServiceTest {
     }
 
     @Test
+    void shouldGetPublicMediaByIdWithoutOwnershipCheck() {
+        // Given - owned by someone else; the public read path (product imagery)
+        // intentionally skips the ownership gate
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("product.jpg")
+                .contentType("image/jpeg")
+                .storageUrl("/storage/stored-123.jpg")
+                .uploadedBy("different-user")
+                .build();
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+
+        // When
+        MediaResponse response = mediaService.getPublicMediaById(MEDIA_ID);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.getId()).isEqualTo(MEDIA_ID);
+        assertThat(response.getContentUrl()).isEqualTo("/api/media/" + MEDIA_ID + "/content");
+    }
+
+    @Test
+    void shouldThrowWhenPublicMediaNotFound() {
+        // Given
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.empty());
+
+        // When/Then
+        assertThatThrownBy(() -> mediaService.getPublicMediaById(MEDIA_ID))
+                .isInstanceOf(MediaNotFoundException.class)
+                .hasMessageContaining(MEDIA_ID);
+    }
+
+    @Test
+    void shouldLoadPublicMediaFileWithoutOwnershipCheck() {
+        // Given
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("product.jpg")
+                .storageUrl("/storage/stored-123.jpg")
+                .uploadedBy("different-user")
+                .build();
+
+        Resource mockResource = mock(Resource.class);
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+        when(fileStorageService.loadAsResource("stored-123.jpg")).thenReturn(mockResource);
+
+        // When
+        Resource resource = mediaService.loadPublicMediaFile(MEDIA_ID);
+
+        // Then
+        assertThat(resource).isNotNull();
+        verify(fileStorageService).loadAsResource("stored-123.jpg");
+    }
+
+    @Test
+    void shouldThrowWhenPublicMediaFileNotFound() {
+        // Given
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.empty());
+
+        // When/Then
+        assertThatThrownBy(() -> mediaService.loadPublicMediaFile(MEDIA_ID))
+                .isInstanceOf(MediaNotFoundException.class)
+                .hasMessageContaining(MEDIA_ID);
+
+        verify(fileStorageService, never()).loadAsResource(any());
+    }
+
+    @Test
+    void shouldIncludeContentUrlInMediaResponse() {
+        // Given
+        Media media = Media.builder()
+                .id(MEDIA_ID)
+                .filename("test.jpg")
+                .contentType("image/jpeg")
+                .storageUrl("/storage/test.jpg")
+                .uploadedBy(USER_ID)
+                .build();
+
+        when(mediaRepository.findById(MEDIA_ID)).thenReturn(Optional.of(media));
+
+        // When
+        MediaResponse response = mediaService.getMediaById(MEDIA_ID, USER_ID, false);
+
+        // Then
+        assertThat(response.getDownloadUrl()).isEqualTo("/api/media/" + MEDIA_ID + "/download");
+        assertThat(response.getContentUrl()).isEqualTo("/api/media/" + MEDIA_ID + "/content");
+    }
+
+    @Test
     void shouldDeleteMedia() {
         // Given
         Media media = Media.builder()

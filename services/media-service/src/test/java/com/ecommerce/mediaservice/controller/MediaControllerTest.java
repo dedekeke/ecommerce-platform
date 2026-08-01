@@ -357,6 +357,70 @@ class MediaControllerTest {
     }
 
     @Test
+    void shouldServeContentAnonymouslyWithInlineDispositionAndCacheHeaders() throws Exception {
+        // Given - public product-imagery read path: no JWT, no ownership check
+        byte[] fileContent = "image bytes".getBytes();
+        Resource resource = new ByteArrayResource(fileContent);
+
+        MediaResponse mediaResponse = MediaResponse.builder()
+                .id(MEDIA_ID)
+                .filename("product.jpg")
+                .contentType("image/jpeg")
+                .build();
+
+        when(mediaService.getPublicMediaById(MEDIA_ID)).thenReturn(mediaResponse);
+        when(mediaService.loadPublicMediaFile(MEDIA_ID)).thenReturn(resource);
+
+        // When/Then - anonymous request succeeds
+        mockMvc.perform(get("/api/media/{id}/content", MEDIA_ID))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "image/jpeg"))
+                .andExpect(header().string("Content-Disposition", "inline; filename=\"product.jpg\""))
+                .andExpect(header().string("Cache-Control", "public, max-age=31536000, immutable"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(content().bytes(fileContent));
+
+        verify(mediaService).getPublicMediaById(MEDIA_ID);
+        verify(mediaService).loadPublicMediaFile(MEDIA_ID);
+    }
+
+    @Test
+    void shouldServeSvgContentWithDeclaredContentTypeAndNosniff() throws Exception {
+        // Given - SVG is publicly served; nosniff + exact content type contain the
+        // stored-XSS surface of admin-uploaded SVG
+        byte[] svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".getBytes();
+
+        MediaResponse mediaResponse = MediaResponse.builder()
+                .id(MEDIA_ID)
+                .filename("logo.svg")
+                .contentType("image/svg+xml")
+                .build();
+
+        when(mediaService.getPublicMediaById(MEDIA_ID)).thenReturn(mediaResponse);
+        when(mediaService.loadPublicMediaFile(MEDIA_ID)).thenReturn(new ByteArrayResource(svg));
+
+        // When/Then
+        mockMvc.perform(get("/api/media/{id}/content", MEDIA_ID))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "image/svg+xml"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("Content-Disposition", "inline; filename=\"logo.svg\""));
+    }
+
+    @Test
+    void shouldReturn404WhenPublicContentNotFound() throws Exception {
+        // Given
+        when(mediaService.getPublicMediaById(MEDIA_ID))
+                .thenThrow(new MediaNotFoundException(MEDIA_ID));
+
+        // When/Then
+        mockMvc.perform(get("/api/media/{id}/content", MEDIA_ID))
+                .andExpect(status().isNotFound());
+
+        verify(mediaService, never()).loadPublicMediaFile(anyString());
+    }
+
+    @Test
     void shouldReturn400WhenUploadingEmptyFile() throws Exception {
         // Given
         MockMultipartFile emptyFile = new MockMultipartFile(
