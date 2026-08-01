@@ -143,6 +143,12 @@ springdoc:
 
 security:
   enabled: ${SECURITY_ENABLED}
+  # Shared secret proving a caller is a trusted platform service (currently only
+  # order-service's checkout saga). Guards POST /api/promotions/apply, which
+  # increments usage counters and must never be reachable from a browser.
+  # REQUIRED when security.enabled=true — the app fails fast at boot otherwise.
+  internal:
+    service-token: ${INTERNAL_SERVICE_TOKEN:}
 
 # Inter-service lookup of user contact details (per-user promotion targeting).
 user:

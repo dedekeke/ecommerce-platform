@@ -5,6 +5,7 @@ import com.ecommerce.promotionservice.dto.PromotionRequest;
 import com.ecommerce.promotionservice.dto.PromotionResponse;
 import com.ecommerce.promotionservice.dto.PromotionValidationRequest;
 import com.ecommerce.promotionservice.model.PromotionType;
+import com.ecommerce.promotionservice.security.InternalServiceTokenFilter;
 import com.ecommerce.promotionservice.service.PromotionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -40,22 +41,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * Boots the real Spring Security filter chain ({@code security.enabled=true}) so
  * the JWT-scope authorization is exercised end to end. The mutating endpoints
- * (POST/PUT/DELETE) must require {@code SCOPE_admin}; the read + validate/apply
- * endpoints stay anonymous. The JwtDecoder is mocked so the resource server
- * starts without contacting Auth0; the caller identity is supplied via the
- * {@code jwt()} post-processor (the {@code scope} claim maps to
- * {@code SCOPE_*} authorities via the default converter).
+ * (POST/PUT/DELETE) must require {@code SCOPE_admin}; the read + validate
+ * endpoints stay anonymous; {@code POST /apply} is restricted to service
+ * callers presenting the internal service token. The JwtDecoder is mocked so
+ * the resource server starts without contacting Auth0; the caller identity is
+ * supplied via the {@code jwt()} post-processor (the {@code scope} claim maps
+ * to {@code SCOPE_*} authorities via the default converter).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
         "security.enabled=true",
+        "security.internal.service-token=" + PromotionControllerSecurityTest.SERVICE_TOKEN,
         "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://test-tenant.auth0.com/",
         "grpc.server.port=-1"
 })
 @DisplayName("Promotion Controller Authorization Tests")
 class PromotionControllerSecurityTest {
+
+    static final String SERVICE_TOKEN = "test-internal-service-token";
 
     private static final SimpleGrantedAuthority ADMIN = new SimpleGrantedAuthority("SCOPE_admin");
 
@@ -201,7 +206,7 @@ class PromotionControllerSecurityTest {
         verify(promotionService).deletePromotion(1L);
     }
 
-    // ---------- Anonymous (read + validate + apply) still open ----------
+    // ---------- Anonymous (read + validate) still open ----------
 
     @Test
     @DisplayName("should_allowAnonymous_when_getAllActivePromotions")
@@ -225,14 +230,103 @@ class PromotionControllerSecurityTest {
     }
 
     @Test
-    @DisplayName("should_allowAnonymous_when_applyPromotion")
-    void should_allowAnonymous_when_applyPromotion() throws Exception {
+    @DisplayName("should_allowAnonymous_when_validatePromotionWithoutServiceToken")
+    void should_allowAnonymous_when_validatePromotionWithoutServiceToken() throws Exception {
+        when(promotionService.validatePromotion(any()))
+                .thenReturn(DiscountResult.builder().valid(true).build());
+
+        mockMvc.perform(post("/api/promotions/validate")
+                        .header(InternalServiceTokenFilter.HEADER_NAME, "not-the-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson()))
+                .andExpect(status().isOk());
+    }
+
+    // ---------- POST /api/promotions/apply (service callers only) ----------
+
+    @Test
+    @DisplayName("should_return401_when_applyPromotionUnauthenticated")
+    void should_return401_when_applyPromotionUnauthenticated() throws Exception {
+        mockMvc.perform(post("/api/promotions/apply")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson()))
+                .andExpect(status().isUnauthorized());
+
+        verify(promotionService, never()).applyPromotion(any());
+    }
+
+    @Test
+    @DisplayName("should_return401_when_applyPromotionWithWrongServiceToken")
+    void should_return401_when_applyPromotionWithWrongServiceToken() throws Exception {
+        mockMvc.perform(post("/api/promotions/apply")
+                        .header(InternalServiceTokenFilter.HEADER_NAME, "wrong-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson()))
+                .andExpect(status().isUnauthorized());
+
+        verify(promotionService, never()).applyPromotion(any());
+    }
+
+    /**
+     * An end-user JWT — the credential a browser could obtain — must not be
+     * enough: /apply is a service-to-service operation, not a user operation.
+     */
+    @Test
+    @DisplayName("should_return403_when_applyPromotionWithEndUserJwt")
+    void should_return403_when_applyPromotionWithEndUserJwt() throws Exception {
+        mockMvc.perform(post("/api/promotions/apply")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson())
+                        .with(jwt().jwt(jwt -> jwt.claim("scope", "read:promotions"))))
+                .andExpect(status().isForbidden());
+
+        verify(promotionService, never()).applyPromotion(any());
+    }
+
+    @Test
+    @DisplayName("should_return403_when_applyPromotionWithAdminScopeOnly")
+    void should_return403_when_applyPromotionWithAdminScopeOnly() throws Exception {
+        mockMvc.perform(post("/api/promotions/apply")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson())
+                        .with(jwt().authorities(ADMIN)))
+                .andExpect(status().isForbidden());
+
+        verify(promotionService, never()).applyPromotion(any());
+    }
+
+    @Test
+    @DisplayName("should_return200_when_applyPromotionWithServiceToken")
+    void should_return200_when_applyPromotionWithServiceToken() throws Exception {
         when(promotionService.applyPromotion(any()))
                 .thenReturn(DiscountResult.builder().valid(true).build());
 
         mockMvc.perform(post("/api/promotions/apply")
+                        .header(InternalServiceTokenFilter.HEADER_NAME, SERVICE_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validationRequestJson()))
                 .andExpect(status().isOk());
+
+        verify(promotionService).applyPromotion(any());
+    }
+
+    /**
+     * The guest checkout path carries no user JWT at all — the service token
+     * alone must authorize it, exactly as on the authenticated path.
+     */
+    @Test
+    @DisplayName("should_return200_when_applyPromotionWithServiceTokenAndUserJwt")
+    void should_return200_when_applyPromotionWithServiceTokenAndUserJwt() throws Exception {
+        when(promotionService.applyPromotion(any()))
+                .thenReturn(DiscountResult.builder().valid(true).build());
+
+        mockMvc.perform(post("/api/promotions/apply")
+                        .header(InternalServiceTokenFilter.HEADER_NAME, SERVICE_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validationRequestJson())
+                        .with(jwt().jwt(jwt -> jwt.claim("scope", "read:promotions"))))
+                .andExpect(status().isOk());
+
+        verify(promotionService).applyPromotion(any());
     }
 }
