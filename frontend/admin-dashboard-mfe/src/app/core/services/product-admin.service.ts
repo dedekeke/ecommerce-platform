@@ -5,8 +5,7 @@ import {
   Product,
   PagedProducts,
   ProductFilterParams,
-  CreateProductPayload,
-  UpdateProductPayload,
+  ProductPayload,
 } from '../models/product.model';
 
 @Injectable({ providedIn: 'root' })
@@ -18,10 +17,10 @@ export class ProductAdminService {
       page: params.page,
       size: params.size,
     };
-    if (params.sort) queryParams['sort'] = params.sort;
-    if (params.direction) queryParams['direction'] = params.direction;
+    if (params.sortBy) queryParams['sortBy'] = params.sortBy;
+    if (params.sortDirection) queryParams['sortDirection'] = params.sortDirection;
     if (params.search) queryParams['search'] = params.search;
-    if (params.category) queryParams['category'] = params.category;
+    if (params.categoryId) queryParams['categoryId'] = params.categoryId;
     return this.api.get<PagedProducts>('/products', queryParams);
   }
 
@@ -29,11 +28,11 @@ export class ProductAdminService {
     return this.api.get<Product>(`/products/${id}`);
   }
 
-  createProduct(payload: CreateProductPayload): Observable<Product> {
+  createProduct(payload: ProductPayload): Observable<Product> {
     return this.api.post<Product>('/products', payload);
   }
 
-  updateProduct(id: string, payload: UpdateProductPayload): Observable<Product> {
+  updateProduct(id: string, payload: ProductPayload): Observable<Product> {
     return this.api.put<Product>(`/products/${id}`, payload);
   }
 
