@@ -69,7 +69,7 @@ describe('ProductsPage', () => {
 
   beforeEach(async () => {
     productServiceSpy = jasmine.createSpyObj('ProductAdminService', [
-      'getProducts', 'createProduct', 'updateProduct', 'deleteProduct',
+      'getProducts', 'createProduct', 'updateProduct', 'deleteProduct', 'updateStock',
     ]);
     productServiceSpy.getProducts.and.returnValue(of(mockPaged));
     mediaServiceSpy = jasmine.createSpyObj('MediaService', ['upload']);
@@ -213,6 +213,82 @@ describe('ProductsPage', () => {
       'prod-1',
       jasmine.objectContaining({ images: ['/api/media/y/content'], sku: 'SKU-001', currency: 'USD', active: false })
     );
+  });
+
+  // stockQuantity is create-only on ProductRequest: product-service ignores it on
+  // PUT because inventory-service owns stock movement. Stock edits therefore go
+  // through the dedicated PATCH /products/{id}/stock endpoint.
+  describe('stock ownership', () => {
+    it('should omit stockQuantity from the update payload', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      fixture.componentInstance.onEdit(asRow(mockProduct));
+      fixture.componentInstance.onSaveProduct();
+      await fixture.whenStable();
+
+      const payload = productServiceSpy.updateProduct.calls.mostRecent().args[1];
+      expect('stockQuantity' in payload).toBeFalse();
+    });
+
+    it('should not call the stock endpoint when stock is unchanged', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      fixture.componentInstance.onEdit(asRow(mockProduct));
+      fixture.componentInstance.onSaveProduct();
+      await fixture.whenStable();
+
+      expect(productServiceSpy.updateStock).not.toHaveBeenCalled();
+    });
+
+    it('should call the stock endpoint with the new quantity when stock changed', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      productServiceSpy.updateStock.and.returnValue(of({ ...mockProduct, stockQuantity: 12 }));
+      fixture.componentInstance.onEdit(asRow(mockProduct));
+      fixture.componentInstance.productForm.patchValue({ stockQuantity: 12 });
+      fixture.componentInstance.onSaveProduct();
+      await fixture.whenStable();
+
+      expect(productServiceSpy.updateStock).toHaveBeenCalledWith('prod-1', 12);
+    });
+
+    it('should toast the stock change when the stock update succeeds', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      productServiceSpy.updateStock.and.returnValue(of({ ...mockProduct, stockQuantity: 12 }));
+      fixture.componentInstance.onEdit(asRow(mockProduct));
+      fixture.componentInstance.productForm.patchValue({ stockQuantity: 12 });
+      fixture.componentInstance.onSaveProduct();
+      await fixture.whenStable();
+
+      expect(toastSpy.success).toHaveBeenCalledWith('Stock set to 12');
+    });
+
+    it('should toast a stock-specific failure when the stock update fails after a successful save', async () => {
+      productServiceSpy.updateProduct.and.returnValue(of(mockProduct));
+      productServiceSpy.updateStock.and.returnValue(throwError(() => new Error('403')));
+      fixture.componentInstance.onEdit(asRow(mockProduct));
+      fixture.componentInstance.productForm.patchValue({ stockQuantity: 12 });
+      fixture.componentInstance.onSaveProduct();
+      await fixture.whenStable();
+
+      expect(toastSpy.success).toHaveBeenCalledWith('Product updated');
+      expect(toastSpy.error).toHaveBeenCalledWith(
+        'Product saved, but the stock update failed. Stock is unchanged.'
+      );
+      expect(fixture.componentInstance.saving()).toBeFalse();
+    });
+
+    it('should keep seeding stockQuantity on create', async () => {
+      productServiceSpy.createProduct.and.returnValue(of(mockProduct));
+      fixture.componentInstance.openCreateDrawer();
+      fixture.componentInstance.productForm.patchValue({
+        name: 'New Product', sku: 'SKU-9', price: 19.99, stockQuantity: 10,
+      });
+      fixture.componentInstance.onSaveProduct();
+      await fixture.whenStable();
+
+      expect(productServiceSpy.createProduct).toHaveBeenCalledWith(
+        jasmine.objectContaining({ stockQuantity: 10 })
+      );
+      expect(productServiceSpy.updateStock).not.toHaveBeenCalled();
+    });
   });
 
   it('should derive product status from active/inStock', () => {
