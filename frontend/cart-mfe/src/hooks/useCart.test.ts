@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { useCart } from './useCart'
 import { useCartStore } from '../stores/cartStore'
+import { resetCartSyncState } from '../lib/cartSync'
 import * as cartApi from '../api/cartService'
 import type { CartResponse } from '../api/types'
 
@@ -36,9 +37,20 @@ const serverCart = (
   status: 'ACTIVE',
 })
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (err: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('useCart', () => {
   beforeEach(() => {
     useCartStore.setState({ items: [], total: 0, itemCount: 0 })
+    resetCartSyncState()
     vi.clearAllMocks()
   })
 
@@ -271,6 +283,190 @@ describe('useCart', () => {
       })
 
       expect(useCartStore.getState().items).toEqual(items)
+    })
+  })
+
+  describe('overlapping mutations (hardened write-through)', () => {
+    beforeEach(() => {
+      window.__getAuthUserId = () => 'auth0|u1'
+    })
+
+    const seedHydratedItem = (quantity = 1) =>
+      useCartStore.setState({
+        items: [{ productId: 'p1', name: 'Widget', price: 10, quantity, serverId: 'srv-1' }],
+        total: 10 * quantity,
+        itemCount: quantity,
+      })
+
+    it('should ignore a late-settling superseded response — final state reflects the LATEST mutation', async () => {
+      seedHydratedItem(1)
+      const a = deferred<CartResponse>()
+      const b = deferred<CartResponse>()
+      vi.mocked(cartApi.updateItemQty).mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+      const { result } = renderHook(() => useCart())
+
+      let pA!: Promise<void>
+      let pB!: Promise<void>
+      act(() => {
+        pA = result.current.updateQuantity('p1', 2)
+      })
+      // Mutation A's PUT is now in flight.
+      await waitFor(() => expect(cartApi.updateItemQty).toHaveBeenCalledTimes(1))
+
+      act(() => {
+        pB = result.current.updateQuantity('p1', 3)
+      })
+      // A settles LATE, after B superseded it: its qty-2 response must not clobber B's optimistic 3.
+      await act(async () => {
+        a.resolve(serverCart([{ id: 'srv-1', productId: 'p1', productName: 'Widget', price: 10, quantity: 2 }]))
+        await pA
+      })
+      expect(useCartStore.getState().items[0]?.quantity).toBe(3)
+
+      await act(async () => {
+        b.resolve(serverCart([{ id: 'srv-1', productId: 'p1', productName: 'Widget', price: 10, quantity: 3 }]))
+        await pB
+      })
+
+      expect(cartApi.updateItemQty).toHaveBeenCalledTimes(2)
+      expect(vi.mocked(cartApi.updateItemQty).mock.calls[1]).toEqual(['srv-1', { quantity: 3 }])
+      expect(useCartStore.getState().items[0]?.quantity).toBe(3)
+    })
+
+    it('should NOT roll back when a superseded request fails late — the latest mutation owns the store', async () => {
+      seedHydratedItem(1)
+      const a = deferred<CartResponse>()
+      const b = deferred<CartResponse>()
+      vi.mocked(cartApi.updateItemQty).mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+      const { result } = renderHook(() => useCart())
+
+      let pA!: Promise<void>
+      let pB!: Promise<void>
+      act(() => {
+        pA = result.current.updateQuantity('p1', 2)
+      })
+      await waitFor(() => expect(cartApi.updateItemQty).toHaveBeenCalledTimes(1))
+      act(() => {
+        pB = result.current.updateQuantity('p1', 3)
+      })
+
+      // A fails late — it is stale, so it must neither roll back nor reconcile.
+      await act(async () => {
+        a.reject(new Error('boom'))
+        await pA
+      })
+      expect(useCartStore.getState().items[0]?.quantity).toBe(3)
+
+      await act(async () => {
+        b.resolve(serverCart([{ id: 'srv-1', productId: 'p1', productName: 'Widget', price: 10, quantity: 3 }]))
+        await pB
+      })
+      expect(useCartStore.getState().items[0]?.quantity).toBe(3)
+    })
+
+    it('should coalesce same-tick rapid edits into ONE request carrying the final target', async () => {
+      seedHydratedItem(1)
+      vi.mocked(cartApi.updateItemQty).mockResolvedValue(
+        serverCart([{ id: 'srv-1', productId: 'p1', productName: 'Widget', price: 10, quantity: 3 }])
+      )
+      const { result } = renderHook(() => useCart())
+
+      let pA!: Promise<void>
+      let pB!: Promise<void>
+      act(() => {
+        pA = result.current.updateQuantity('p1', 2)
+        pB = result.current.updateQuantity('p1', 3)
+      })
+      await act(async () => {
+        await Promise.all([pA, pB])
+      })
+
+      expect(cartApi.updateItemQty).toHaveBeenCalledTimes(1)
+      expect(cartApi.updateItemQty).toHaveBeenCalledWith('srv-1', { quantity: 3 })
+      expect(useCartStore.getState().items[0]?.quantity).toBe(3)
+    })
+
+    it('should issue ONE POST with the final quantity for rapid adds of a brand-new item (no double-add inflation)', async () => {
+      vi.mocked(cartApi.addItem).mockResolvedValue(
+        serverCart([{ id: 'srv-1', productId: 'p1', productName: 'Widget', price: 10, quantity: 2 }])
+      )
+      const { result } = renderHook(() => useCart())
+
+      let pA!: Promise<void>
+      let pB!: Promise<void>
+      act(() => {
+        pA = result.current.addItem({ productId: 'p1', name: 'Widget', price: 10 })
+        pB = result.current.addItem({ productId: 'p1', name: 'Widget', price: 10 })
+      })
+      await act(async () => {
+        await Promise.all([pA, pB])
+      })
+
+      expect(cartApi.addItem).toHaveBeenCalledTimes(1)
+      expect(cartApi.addItem).toHaveBeenCalledWith({ productId: 'p1', quantity: 2 })
+      // Coalescing means no productId->serverId lookup chatter either.
+      expect(cartApi.getCart).not.toHaveBeenCalled()
+      expect(useCartStore.getState().items[0]?.serverId).toBe('srv-1')
+    })
+
+    it('should PUT (not POST again) when a second mutation raced the creating POST — serverId comes from the stale response', async () => {
+      const a = deferred<CartResponse>()
+      vi.mocked(cartApi.addItem).mockReturnValueOnce(a.promise)
+      vi.mocked(cartApi.updateItemQty).mockResolvedValue(
+        serverCart([{ id: 'srv-9', productId: 'p1', productName: 'Widget', price: 10, quantity: 5 }])
+      )
+      const { result } = renderHook(() => useCart())
+
+      let pA!: Promise<void>
+      let pB!: Promise<void>
+      act(() => {
+        pA = result.current.addItem({ productId: 'p1', name: 'Widget', price: 10 })
+      })
+      // The creating POST is in flight when the shopper edits the quantity.
+      await waitFor(() => expect(cartApi.addItem).toHaveBeenCalledTimes(1))
+      act(() => {
+        pB = result.current.updateQuantity('p1', 5)
+      })
+      await act(async () => {
+        a.resolve(serverCart([{ id: 'srv-9', productId: 'p1', productName: 'Widget', price: 10, quantity: 1 }]))
+        await Promise.all([pA, pB])
+      })
+
+      // A second POST would make cart-service SUM quantities (1 + 5); the recorded id prevents it.
+      expect(cartApi.addItem).toHaveBeenCalledTimes(1)
+      expect(cartApi.updateItemQty).toHaveBeenCalledTimes(1)
+      expect(cartApi.updateItemQty).toHaveBeenCalledWith('srv-9', { quantity: 5 })
+      expect(useCartStore.getState().items[0]?.quantity).toBe(5)
+    })
+
+    it('should roll back to the pre-burst baseline when the LATEST mutation of a burst fails', async () => {
+      seedHydratedItem(1)
+      const a = deferred<CartResponse>()
+      const b = deferred<CartResponse>()
+      vi.mocked(cartApi.updateItemQty).mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+      const { result } = renderHook(() => useCart())
+
+      let pA!: Promise<void>
+      let pB!: Promise<void>
+      act(() => {
+        pA = result.current.updateQuantity('p1', 2)
+      })
+      await waitFor(() => expect(cartApi.updateItemQty).toHaveBeenCalledTimes(1))
+      act(() => {
+        pB = result.current.updateQuantity('p1', 3)
+      })
+
+      await act(async () => {
+        a.reject(new Error('boom')) // stale — ignored, baseline kept
+        await pA
+      })
+      await act(async () => {
+        b.reject(new Error('boom')) // latest — rolls back to the pre-burst state
+        await pB
+      })
+
+      expect(useCartStore.getState().items[0]?.quantity).toBe(1)
+      expect(useCartStore.getState().items[0]?.serverId).toBe('srv-1')
     })
   })
 

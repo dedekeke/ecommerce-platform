@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { useCartServerSync } from './useCartServerSync'
 import { useCartStore } from '../stores/cartStore'
+import { resetCartSyncState } from '../stores/cartSync'
 import { cartService } from '../api/services/cartService'
 import type { CartResponse } from '../api/types'
 
@@ -47,6 +48,7 @@ const serverCart = (
 describe('useCartServerSync', () => {
   beforeEach(() => {
     useCartStore.setState({ items: [], total: 0, itemCount: 0 })
+    resetCartSyncState()
     vi.clearAllMocks()
   })
 
@@ -109,6 +111,55 @@ describe('useCartServerSync', () => {
     expect(cartService.addItem).toHaveBeenCalledWith({ productId: 'p-local', quantity: 2 })
     expect(cartService.getCart).toHaveBeenCalledTimes(2)
     expect(useCartStore.getState().items.map((i) => i.serverId)).toEqual(['srv-1', 'srv-2'])
+  })
+
+  it('should raise the server quantity via PUT when the local quantity is higher (max merge)', async () => {
+    setAuthenticated(true)
+    useCartStore.setState({
+      items: [{ productId: 'p1', name: 'Widget', price: 10, quantity: 5 }],
+      total: 50,
+      itemCount: 5,
+    })
+    vi.mocked(cartService.mergeGuestCart).mockResolvedValue(serverCart([]))
+    vi.mocked(cartService.getCart)
+      .mockResolvedValueOnce(
+        serverCart([{ id: 'srv-1', productId: 'p1', productName: 'Widget', price: 10, quantity: 2 }])
+      )
+      .mockResolvedValueOnce(
+        serverCart([{ id: 'srv-1', productId: 'p1', productName: 'Widget', price: 10, quantity: 5 }])
+      )
+    vi.mocked(cartService.updateItemQuantity).mockResolvedValue(serverCart([]))
+
+    const { result } = renderHook(() => useCartServerSync())
+
+    await waitFor(() => expect(result.current.synced).toBe(true))
+
+    // Local quantity edits made while anonymous must not be silently dropped.
+    expect(cartService.updateItemQuantity).toHaveBeenCalledTimes(1)
+    expect(cartService.updateItemQuantity).toHaveBeenCalledWith('srv-1', { quantity: 5 })
+    expect(cartService.addItem).not.toHaveBeenCalled()
+    expect(useCartStore.getState().items[0]?.quantity).toBe(5)
+  })
+
+  it('should keep the server quantity when it is higher (no summing, no PUT)', async () => {
+    setAuthenticated(true)
+    useCartStore.setState({
+      items: [{ productId: 'p1', name: 'Widget', price: 10, quantity: 1 }],
+      total: 10,
+      itemCount: 1,
+    })
+    vi.mocked(cartService.mergeGuestCart).mockResolvedValue(serverCart([]))
+    vi.mocked(cartService.getCart).mockResolvedValue(
+      serverCart([{ id: 'srv-1', productId: 'p1', productName: 'Widget', price: 10, quantity: 3 }])
+    )
+
+    const { result } = renderHook(() => useCartServerSync())
+
+    await waitFor(() => expect(result.current.synced).toBe(true))
+
+    expect(cartService.updateItemQuantity).not.toHaveBeenCalled()
+    expect(cartService.getCart).toHaveBeenCalledTimes(1)
+    expect(useCartStore.getState().items[0]?.quantity).toBe(3)
   })
 
   it('should hydrate even when the guest-cart merge fails (best-effort claim)', async () => {

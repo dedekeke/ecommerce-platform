@@ -44,6 +44,10 @@ export const addGuestCartItem = async (email: string, line: GuestCartLine): Prom
  * clear first (POST /items SUMS quantities on existing lines, so a leftover cart from
  * an earlier attempt would double-count), then push each line sequentially against
  * the same derived owner.
+ *
+ * Partial-push tradeoff: a mid-push failure leaves a PARTIAL guest cart server-side,
+ * but checkout is blocked with an inline error, a retry re-runs clear-then-push
+ * (self-healing), and an abandoned partial cart simply expires with cart-service's TTL.
  */
 export const pushCartToGuestCart = async (
   email: string,

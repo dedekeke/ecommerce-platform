@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { useCartBridge } from './useCartBridge'
 import { useCartStore } from '../stores'
+import { resetCartSyncState } from '../stores/cartSync'
 import { cartService } from '../api/services/cartService'
 import type { CartResponse } from '../api/types'
 
@@ -21,6 +22,7 @@ describe('useCartBridge', () => {
   beforeEach(() => {
     useCartStore.setState({ items: [], total: 0, itemCount: 0 })
     delete window.__cartBridge
+    resetCartSyncState()
     vi.clearAllMocks()
   })
 

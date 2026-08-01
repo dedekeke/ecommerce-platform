@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getCart } from '../api/cartService'
 import { useCartStore } from '../stores/cartStore'
-import { toLocalItems } from '../lib/cartSync'
+import { toLocalItems, recordServerIds } from '../lib/cartSync'
 
 /**
  * Server-authoritative hydration (ADR phase A): when the shopper is authenticated,
@@ -9,6 +9,12 @@ import { toLocalItems } from '../lib/cartSync'
  * order saga builds orders from the SERVER cart, so what the shopper reviews must
  * be what the saga sees. Anonymous shoppers keep their local cart (guest checkout
  * pushes it under X-Guest-Email; see checkout-mfe).
+ *
+ * Dual-hydration note: the shell's useCartServerSync hydrates ITS zustand instance
+ * onto the same persisted `cart-storage` key this store uses. Both writers hydrate
+ * from the same server truth, so whichever lands last writes the same content —
+ * last-writer-wins is benign for phase A; collapsing the two store instances into
+ * shared-ui is the phase-B refactor.
  *
  * On fetch failure the local cart is left untouched: never wipe what the shopper
  * sees because the network blipped. apiClient's interceptor surfaces the error toast.
@@ -28,6 +34,7 @@ export function useCartSync(isAuthenticated: boolean) {
     getCart()
       .then((cart) => {
         if (cancelled) return
+        recordServerIds(cart)
         replaceItems(toLocalItems(cart.items))
         setResult({ synced: true, settled: true })
       })
