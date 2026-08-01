@@ -6,9 +6,13 @@ import { useNavigate } from 'react-router-dom'
 import CartList from '../components/CartList'
 import CartSummary from '../components/CartSummary'
 import { useCart } from '../hooks/useCart'
+import { useCartSync } from '../hooks/useCartSync'
+import { isCartServerSyncEnabled } from '../lib/cartSync'
 
 export default function CartPage() {
   const { items, total, removeItem, updateQuantity } = useCart()
+  // Hydrate from cart-service so Review/checkout always match the order saga's view.
+  const { syncing } = useCartSync(isCartServerSyncEnabled())
   const navigate = useNavigate()
 
   const handleCheckout = () => {
@@ -47,7 +51,7 @@ export default function CartPage() {
           <Grid size={{ xs: 12, md: 8 }}>
             <CartList
               items={items}
-              loading={false}
+              loading={syncing && items.length === 0}
               onUpdateQty={updateQuantity}
               onRemove={removeItem}
             />

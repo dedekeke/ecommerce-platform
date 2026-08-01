@@ -13,6 +13,28 @@ describe('cartStore', () => {
     })
   })
 
+  describe('replaceItems', () => {
+    it('should replace items wholesale and recompute totals', () => {
+      useCartStore.getState().addItem({ productId: 'stale', name: 'Stale', price: 1.0 })
+      useCartStore.getState().replaceItems([
+        { productId: 'p1', name: 'Widget', price: 10.0, quantity: 2, serverId: 'srv-1' },
+        { productId: 'p2', name: 'Gadget', price: 5.0, quantity: 1, serverId: 'srv-2' },
+      ])
+      const { items, total, itemCount } = useCartStore.getState()
+      expect(items.map((i) => i.productId)).toEqual(['p1', 'p2'])
+      expect(items[0]?.serverId).toBe('srv-1')
+      expect(total).toBe(25.0)
+      expect(itemCount).toBe(3)
+    })
+
+    it('should leave the applied promotion untouched', () => {
+      useCartStore.getState().applyPromotion({ code: 'SAVE10', discountAmount: 3, promotionName: 'Save' })
+      useCartStore.getState().replaceItems([])
+      expect(useCartStore.getState().promotionCode).toBe('SAVE10')
+      expect(useCartStore.getState().items).toHaveLength(0)
+    })
+  })
+
   describe('addItem', () => {
     it('should add a new item with quantity 1', () => {
       useCartStore.getState().addItem({ productId: 'p1', name: 'Widget', price: 10.0 })

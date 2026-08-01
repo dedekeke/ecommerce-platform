@@ -66,18 +66,30 @@ vi.mock('./components/auth/RoleGuard', () => ({
   ),
 }))
 
-const mockAddItem = vi.fn()
+const { mockAddNotification, mockAddItemWithServerSync } = vi.hoisted(() => ({
+  mockAddNotification: vi.fn(),
+  mockAddItemWithServerSync: vi.fn(),
+}))
 
 vi.mock('./stores', () => ({
-  useCartStore: vi.fn((selector: (s: { itemCount: number; addItem: typeof mockAddItem }) => unknown) =>
-    selector({ itemCount: 0, addItem: mockAddItem })
+  useCartStore: vi.fn((selector: (s: { itemCount: number }) => unknown) =>
+    selector({ itemCount: 0 })
+  ),
+  useNotificationStore: vi.fn(
+    (selector: (s: { addNotification: typeof mockAddNotification }) => unknown) =>
+      selector({ addNotification: mockAddNotification })
   ),
   selectCartItemCount: (s: { itemCount: number }) => s.itemCount,
+}))
+
+vi.mock('./stores/cartSync', () => ({
+  addItemWithServerSync: mockAddItemWithServerSync,
 }))
 
 vi.mock('./hooks', () => ({
   useExposeAuthToken: vi.fn(),
   useCartBridge: vi.fn(),
+  useCartServerSync: vi.fn(),
   useInventoryStream: vi.fn(),
 }))
 
@@ -88,11 +100,9 @@ vi.mock('./api/services', () => ({
 }))
 
 import { useAuth0 } from '@auth0/auth0-react'
-import { useCartStore } from './stores'
 import { productService } from './api/services'
 
 const mockUseAuth0 = vi.mocked(useAuth0)
-const mockUseCartStore = vi.mocked(useCartStore)
 const mockGetProductById = vi.mocked(productService.getProductById)
 
 function renderAppAtRoute(route: string) {
@@ -116,9 +126,8 @@ beforeEach(() => {
     getIdTokenClaims: vi.fn(),
     handleRedirectCallback: vi.fn(),
   } as unknown as ReturnType<typeof useAuth0>)
-  mockUseCartStore.mockImplementation(((selector: (s: { itemCount: number; addItem: typeof mockAddItem }) => unknown) =>
-    selector({ itemCount: 0, addItem: mockAddItem })) as typeof useCartStore)
-  mockAddItem.mockClear()
+  mockAddNotification.mockClear()
+  mockAddItemWithServerSync.mockReset()
   mockGetProductById.mockReset()
 })
 
@@ -198,7 +207,7 @@ describe('App routing', () => {
     expect(screen.getByTestId('not-found')).toBeInTheDocument()
   })
 
-  it('wires onAddToCart through to the catalog MFE so it adds the fetched product to the shell cart store', async () => {
+  it('wires onAddToCart through to the catalog MFE so it adds the fetched product via the server-sync helper', async () => {
     mockGetProductById.mockResolvedValue({
       id: 'prod-1',
       sku: 'SKU-1',
@@ -213,17 +222,64 @@ describe('App routing', () => {
       createdAt: '',
       updatedAt: '',
     })
+    mockAddItemWithServerSync.mockResolvedValue(undefined)
     renderAppAtRoute('/products')
 
     screen.getByTestId('mfe-invoke-add-to-cart').click()
 
     await vi.waitFor(() => expect(mockGetProductById).toHaveBeenCalledWith('prod-1'))
-    await vi.waitFor(() => expect(mockAddItem).toHaveBeenCalledTimes(2))
-    expect(mockAddItem).toHaveBeenCalledWith({
-      productId: 'prod-1',
+    await vi.waitFor(() => expect(mockAddItemWithServerSync).toHaveBeenCalledTimes(1))
+    expect(mockAddItemWithServerSync).toHaveBeenCalledWith(
+      {
+        productId: 'prod-1',
+        name: 'Wireless Mouse',
+        price: 29.99,
+        image: 'https://example.com/mouse.jpg',
+      },
+      2
+    )
+    expect(mockAddNotification).not.toHaveBeenCalled()
+  })
+
+  it('does not throw when the product carries no images (optional-chained image)', async () => {
+    mockGetProductById.mockResolvedValue({
+      id: 'prod-1',
+      sku: 'SKU-1',
       name: 'Wireless Mouse',
+      description: '',
       price: 29.99,
-      image: 'https://example.com/mouse.jpg',
+      currency: 'USD',
+      category: { id: 'c1', name: 'Electronics', slug: 'electronics' },
+      images: undefined as unknown as string[],
+      stockQuantity: 5,
+      active: true,
+      createdAt: '',
+      updatedAt: '',
     })
+    mockAddItemWithServerSync.mockResolvedValue(undefined)
+    renderAppAtRoute('/products')
+
+    screen.getByTestId('mfe-invoke-add-to-cart').click()
+
+    await vi.waitFor(() => expect(mockAddItemWithServerSync).toHaveBeenCalledTimes(1))
+    expect(mockAddItemWithServerSync).toHaveBeenCalledWith(
+      { productId: 'prod-1', name: 'Wireless Mouse', price: 29.99, image: undefined },
+      2
+    )
+    expect(mockAddNotification).not.toHaveBeenCalled()
+  })
+
+  it('surfaces an error notification when the product lookup fails instead of swallowing it', async () => {
+    mockGetProductById.mockRejectedValue(new Error('product-service down'))
+    renderAppAtRoute('/products')
+
+    screen.getByTestId('mfe-invoke-add-to-cart').click()
+
+    await vi.waitFor(() => expect(mockAddNotification).toHaveBeenCalledTimes(1))
+    expect(mockAddNotification).toHaveBeenCalledWith({
+      type: 'error',
+      message: 'Could not add this item to your cart. Please try again.',
+    })
+    expect(mockAddItemWithServerSync).not.toHaveBeenCalled()
   })
 })

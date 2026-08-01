@@ -1,21 +1,18 @@
 import { useEffect } from 'react'
-import { useCartStore } from '../stores'
+import { addItemWithServerSync } from '../stores/cartSync'
 
 /**
  * Exposes `window.__cartBridge` so federated MFEs that cannot import the shell's zustand store
  * directly (e.g. the Angular user-dashboard-mfe) can add an item to the shell's cart. Mirrors
- * `useExposeAuthToken`'s install-on-mount / remove-on-unmount pattern. Writes are local-store
- * only (no cart-service POST) to match cart-mfe's own `addItem`, which is store-only today.
+ * `useExposeAuthToken`'s install-on-mount / remove-on-unmount pattern. Adds are optimistic in
+ * the local store and, for authenticated shoppers, written through to cart-service with
+ * rollback + error toast on failure (see addItemWithServerSync).
  */
 export function useCartBridge(): void {
-  const addItem = useCartStore((state) => state.addItem)
-
   useEffect(() => {
     const bridge = {
       addItem: ({ quantity = 1, ...item }: CartBridgeItem) => {
-        for (let i = 0; i < quantity; i += 1) {
-          addItem(item)
-        }
+        void addItemWithServerSync(item, quantity)
       },
     }
 
@@ -26,7 +23,7 @@ export function useCartBridge(): void {
         delete window.__cartBridge
       }
     }
-  }, [addItem])
+  }, [])
 }
 
 export default useCartBridge

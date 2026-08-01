@@ -24,7 +24,7 @@ export const removeItem = async (itemId: string): Promise<CartResponse> => {
   return data
 }
 
-export const clearCart = async (): Promise<CartResponse> => {
-  const { data } = await apiClient.delete<CartResponse>('/cart/clear')
-  return data
+/** cart-service responds 204 No Content — there is no body to return. */
+export const clearCart = async (): Promise<void> => {
+  await apiClient.delete<void>('/cart/clear')
 }
