@@ -53,6 +53,7 @@ echo ""
 # Service images do not ship the .jfc settings file; copy it in from the repo.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JFC_FILE="$SCRIPT_DIR/../../config/jfr/virtual-threads-monitoring.jfc"
+[ -f "$JFC_FILE" ] || { echo "Error: JFC settings file not found at $JFC_FILE"; exit 1; }
 docker cp "$JFC_FILE" "${PID}:/tmp/virtual-threads-monitoring.jfc"
 
 # Start JFR recording
