@@ -4,6 +4,8 @@ export interface CartItem {
   price: number
   quantity: number
   image?: string
+  /** cart-service CartItemResponse.id — present once the item is known server-side. */
+  serverId?: string
 }
 
 /** Result of a successful `POST /api/promotions/validate`, as stored in the cart. */
@@ -24,6 +26,8 @@ export interface CartState {
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, quantity: number) => void
   clearCart: () => void
+  /** Replaces items wholesale (server hydration/rollback); recomputes totals, leaves promotion untouched. */
+  replaceItems: (items: CartItem[]) => void
   /** Persists a validated promotion so it survives navigation into checkout-mfe. */
   applyPromotion: (promotion: AppliedPromotion) => void
   removePromotion: () => void

@@ -2,6 +2,15 @@ import { useEffect } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 
 /**
+ * Dispatched whenever the auth accessors are (re)installed. MFEs mount BEFORE this
+ * shell effect runs (child effects fire first), so a deep-linked MFE that snapshots
+ * `window.__getAuthUserId` at render would miss it — listening for this event (see
+ * cart-mfe useCartServerSyncEnabled) closes that race. Purely additive; the detail is
+ * a convenience and listeners must still read the accessor.
+ */
+export const AUTH_READY_EVENT = 'ecommerce:auth-ready'
+
+/**
  * Exposes `window.__getAuthToken` and `window.__getAuthUserId` so federated MFEs can acquire the
  * Auth0 Bearer token and the authenticated user's stable id (`sub` claim) without being coupled to
  * the Auth0 SDK directly.
@@ -29,6 +38,7 @@ export function useExposeAuthToken(): void {
 
     defineAccessor('__getAuthToken', tokenFn)
     defineAccessor('__getAuthUserId', userIdFn)
+    window.dispatchEvent(new CustomEvent(AUTH_READY_EVENT, { detail: { userId } }))
 
     return () => {
       removeAccessor('__getAuthToken', tokenFn)

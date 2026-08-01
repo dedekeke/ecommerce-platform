@@ -5,9 +5,10 @@ import { Typography, Box, Paper, Grid } from '@mui/material'
 import { MainLayout } from './components/layout'
 import { ProtectedRoute, MFERouteGuard } from './components/auth'
 import { PageSkeleton, NotFound, RouteProgressBar, PageTransition } from './components/common'
-import { useCartStore, selectCartItemCount } from './stores'
+import { useCartStore, useNotificationStore, selectCartItemCount } from './stores'
+import { addItemWithServerSync } from './stores/cartSync'
 import { MicroFrontendLoader, MFEErrorBoundary, useMFEPreload, type MFEName } from './mfe'
-import { useExposeAuthToken, useCartBridge, useInventoryStream } from './hooks'
+import { useExposeAuthToken, useCartBridge, useCartServerSync, useInventoryStream } from './hooks'
 import { productService } from './api/services'
 import { designTokens } from './theme'
 
@@ -125,23 +126,24 @@ function Home() {
 function App() {
   const { isLoading } = useAuth0()
   const cartItemCount = useCartStore(selectCartItemCount)
-  const addItem = useCartStore((state) => state.addItem)
+  const addNotification = useNotificationStore((state) => state.addNotification)
   useExposeAuthToken()
   useCartBridge()
+  useCartServerSync()
   useInventoryStream()
 
   // The catalog MFE's `onAddToCart` only carries productId/quantity, so the shell fetches the
-  // product details it needs to build a cart line item. Store-only (no cart-service POST), same
-  // as cart-mfe's own addItem — cart-service sync isn't wired up anywhere yet (see useCartSync
-  // stub in cart-mfe).
+  // product details it needs to build a cart line item, then adds optimistically and writes
+  // through to cart-service when authenticated (addItemWithServerSync handles rollback + toast).
   const handleAddToCart = async (productId: string, quantity: number) => {
     try {
       const product = await productService.getProductById(productId)
-      for (let i = 0; i < quantity; i += 1) {
-        addItem({ productId: product.id, name: product.name, price: product.price, image: product.images[0] })
-      }
+      await addItemWithServerSync(
+        { productId: product.id, name: product.name, price: product.price, image: product.images?.[0] },
+        quantity
+      )
     } catch {
-      // Product lookup failed — nothing is added to the cart.
+      addNotification({ type: 'error', message: 'Could not add this item to your cart. Please try again.' })
     }
   }
 

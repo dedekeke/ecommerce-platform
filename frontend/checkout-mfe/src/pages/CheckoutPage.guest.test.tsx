@@ -7,10 +7,15 @@ import { useCartStore } from '../stores/cartStore'
 
 const createOrder = vi.fn()
 const createGuestOrder = vi.fn()
+const pushCartToGuestCart = vi.fn()
 
 vi.mock('../api/orderService', () => ({
   createOrder: (...args: unknown[]) => createOrder(...args),
   createGuestOrder: (...args: unknown[]) => createGuestOrder(...args),
+}))
+
+vi.mock('../api/guestCartService', () => ({
+  pushCartToGuestCart: (...args: unknown[]) => pushCartToGuestCart(...args),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -40,6 +45,7 @@ afterEach(() => {
   act(() => useCartStore.getState().clearCart())
   createOrder.mockReset()
   createGuestOrder.mockReset()
+  pushCartToGuestCart.mockReset()
 })
 
 describe('CheckoutPage — guest checkout', () => {
@@ -57,6 +63,7 @@ describe('CheckoutPage — guest checkout', () => {
 
   it('should submit to the guest endpoint (not the authenticated one) at review', async () => {
     delete window.__getAuthUserId
+    pushCartToGuestCart.mockResolvedValue(undefined)
     createGuestOrder.mockResolvedValue({
       response: {
         orderId: 'guest-order-123',
@@ -91,6 +98,48 @@ describe('CheckoutPage — guest checkout', () => {
     expect((payload as Record<string, unknown>).userId).toBeUndefined()
   })
 
+  it('should push the local cart to the server guest cart BEFORE creating the guest order', async () => {
+    delete window.__getAuthUserId
+    pushCartToGuestCart.mockResolvedValue(undefined)
+    createGuestOrder.mockResolvedValue({
+      response: { orderId: 'o1', orderNumber: 'ORD-1', status: 'PENDING', currency: 'USD', subtotal: 0, tax: 0, shippingCost: 0, discountAmount: null, loyaltyDiscount: null, total: 1, paymentIntentId: 'pi', clientSecret: 'sec', items: [] },
+      isReplay: false,
+    })
+    act(() => useCheckoutStore.getState().setGuestEmail('guest@example.com'))
+    seedReviewStep()
+    renderWithProviders(<CheckoutPage />)
+
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+
+    await waitFor(() => expect(createGuestOrder).toHaveBeenCalledTimes(1))
+    expect(pushCartToGuestCart).toHaveBeenCalledTimes(1)
+    const [email, items] = pushCartToGuestCart.mock.calls[0] as [
+      string,
+      Array<{ productId: string; quantity: number }>,
+    ]
+    expect(email).toBe('guest@example.com')
+    expect(items).toEqual([expect.objectContaining({ productId: 'p1', quantity: 1 })])
+    // The saga reads the guest cart at order creation, so the push MUST land first.
+    expect(pushCartToGuestCart.mock.invocationCallOrder[0]).toBeLessThan(
+      createGuestOrder.mock.invocationCallOrder[0] as number
+    )
+  })
+
+  it('should block the guest order with an inline error when the cart push fails', async () => {
+    delete window.__getAuthUserId
+    pushCartToGuestCart.mockRejectedValue(new Error('cart-service down'))
+    act(() => useCheckoutStore.getState().setGuestEmail('guest@example.com'))
+    seedReviewStep()
+    renderWithProviders(<CheckoutPage />)
+
+    await userEvent.click(screen.getByRole('button', { name: /continue to payment/i }))
+
+    expect(
+      await screen.findByText(/could not sync your cart for checkout/i)
+    ).toBeInTheDocument()
+    expect(createGuestOrder).not.toHaveBeenCalled()
+  })
+
   it('should prefer the authenticated create when a session is present', async () => {
     // Authenticated by default (setup sets __getAuthUserId). Even if a stale guest
     // email lingered, a live session wins.
@@ -106,5 +155,7 @@ describe('CheckoutPage — guest checkout', () => {
 
     await waitFor(() => expect(createOrder).toHaveBeenCalledTimes(1))
     expect(createGuestOrder).not.toHaveBeenCalled()
+    // Authenticated checkout reads the JWT-keyed server cart — no guest push involved.
+    expect(pushCartToGuestCart).not.toHaveBeenCalled()
   })
 })

@@ -127,6 +127,35 @@ public class MediaService {
     }
 
     /**
+     * Public (unauthenticated) metadata lookup for the {@code /content} read path.
+     *
+     * <p>Enforced invariant (ADR, PR#155): any media's BYTES are publicly readable
+     * by anyone who knows its opaque id — there is no attachment or visibility
+     * check here. Metadata ({@code /{id}}), {@code /download} and
+     * {@code /user/{userId}} keep their ownership gates.
+     *
+     * <p>Gate for future work: the first private-media consumer (avatars, review
+     * photos, ...) must add a public/visibility flag on the {@link Media} document,
+     * defaulted at upload and checked in this method and
+     * {@link #loadPublicMediaFile(String)}, before shipping.
+     */
+    public MediaResponse getPublicMediaById(String id) {
+        Media media = mediaRepository.findById(id)
+                .orElseThrow(() -> new MediaNotFoundException(id));
+        return toMediaResponse(media);
+    }
+
+    /**
+     * Load a media file for the public {@code /content} read path — no ownership
+     * check, see {@link #getPublicMediaById(String)}.
+     */
+    public Resource loadPublicMediaFile(String id) {
+        Media media = mediaRepository.findById(id)
+                .orElseThrow(() -> new MediaNotFoundException(id));
+        return fileStorageService.loadAsResource(extractFilename(media.getStorageUrl()));
+    }
+
+    /**
      * Delete media
      */
     @Transactional
@@ -257,6 +286,7 @@ public class MediaService {
                 .contentType(media.getContentType())
                 .size(media.getSize())
                 .downloadUrl("/api/media/" + media.getId() + "/download")
+                .contentUrl("/api/media/" + media.getId() + "/content")
                 .uploadedBy(media.getUploadedBy())
                 .createdAt(media.getCreatedAt());
 

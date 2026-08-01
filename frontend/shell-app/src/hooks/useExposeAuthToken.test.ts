@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { useExposeAuthToken } from './useExposeAuthToken'
+import { useExposeAuthToken, AUTH_READY_EVENT } from './useExposeAuthToken'
 import * as auth0 from '@auth0/auth0-react'
 import { mockAuth0, mockUser } from '../test/mocks/auth0'
 
@@ -35,6 +35,20 @@ describe('useExposeAuthToken', () => {
     mockAuth(true)
     renderHook(() => useExposeAuthToken())
     expect(window.__getAuthToken).toBeTypeOf('function')
+  })
+
+  it('should announce auth readiness AFTER the accessors are installed (deep-linked MFEs listen for it)', () => {
+    mockAuth(true)
+    let accessorPresentAtDispatch: boolean | null = null
+    const listener = () => {
+      accessorPresentAtDispatch = typeof window.__getAuthUserId === 'function'
+    }
+    window.addEventListener(AUTH_READY_EVENT, listener)
+
+    renderHook(() => useExposeAuthToken())
+
+    window.removeEventListener(AUTH_READY_EVENT, listener)
+    expect(accessorPresentAtDispatch).toBe(true)
   })
 
   it('should remove window.__getAuthToken on unmount', () => {

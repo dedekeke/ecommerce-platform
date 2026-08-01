@@ -78,16 +78,37 @@ class MediaControllerTest {
 
         when(mediaService.uploadFile(any(), anyString())).thenReturn(response);
 
-        // When/Then
+        // When/Then - upload requires SCOPE_admin (public /content would turn
+        // unrestricted upload into world-readable hosting)
         mockMvc.perform(multipart("/api/media/upload")
                         .file(file)
-                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(MEDIA_ID))
                 .andExpect(jsonPath("$.filename").value("test-image.jpg"))
                 .andExpect(jsonPath("$.contentType").value("image/jpeg"));
 
         verify(mediaService).uploadFile(any(), eq(USER_ID));
+    }
+
+    @Test
+    void shouldReturn403WhenUploadingWithoutAdminScope() throws Exception {
+        // Given - authenticated but non-admin caller
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "test.jpg",
+                "image/jpeg",
+                "content".getBytes()
+        );
+
+        // When/Then
+        mockMvc.perform(multipart("/api/media/upload")
+                        .file(file)
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
+                .andExpect(status().isForbidden());
+
+        verify(mediaService, never()).uploadFile(any(), any());
     }
 
     @Test
@@ -357,6 +378,49 @@ class MediaControllerTest {
     }
 
     @Test
+    void shouldServeContentAnonymouslyWithInlineDispositionAndCacheHeaders() throws Exception {
+        // Given - public product-imagery read path: no JWT, no ownership check
+        byte[] fileContent = "image bytes".getBytes();
+        Resource resource = new ByteArrayResource(fileContent);
+
+        MediaResponse mediaResponse = MediaResponse.builder()
+                .id(MEDIA_ID)
+                .filename("product.jpg")
+                .contentType("image/jpeg")
+                .build();
+
+        when(mediaService.getPublicMediaById(MEDIA_ID)).thenReturn(mediaResponse);
+        when(mediaService.loadPublicMediaFile(MEDIA_ID)).thenReturn(resource);
+
+        // When/Then - anonymous request succeeds
+        mockMvc.perform(get("/api/media/{id}/content", MEDIA_ID))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "image/jpeg"))
+                .andExpect(header().string("Content-Disposition", "inline; filename=\"product.jpg\""))
+                .andExpect(header().string("Cache-Control", "public, max-age=31536000, immutable"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                // sandbox neuters direct navigation to the served document (ADR PR#155)
+                .andExpect(header().string("Content-Security-Policy", "sandbox"))
+                .andExpect(content().bytes(fileContent));
+
+        verify(mediaService).getPublicMediaById(MEDIA_ID);
+        verify(mediaService).loadPublicMediaFile(MEDIA_ID);
+    }
+
+    @Test
+    void shouldReturn404WhenPublicContentNotFound() throws Exception {
+        // Given
+        when(mediaService.getPublicMediaById(MEDIA_ID))
+                .thenThrow(new MediaNotFoundException(MEDIA_ID));
+
+        // When/Then
+        mockMvc.perform(get("/api/media/{id}/content", MEDIA_ID))
+                .andExpect(status().isNotFound());
+
+        verify(mediaService, never()).loadPublicMediaFile(anyString());
+    }
+
+    @Test
     void shouldReturn400WhenUploadingEmptyFile() throws Exception {
         // Given
         MockMultipartFile emptyFile = new MockMultipartFile(
@@ -372,7 +436,8 @@ class MediaControllerTest {
         // When/Then
         mockMvc.perform(multipart("/api/media/upload")
                         .file(emptyFile)
-                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -392,7 +457,8 @@ class MediaControllerTest {
         // When/Then
         mockMvc.perform(multipart("/api/media/upload")
                         .file(file)
-                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))))
+                        .with(jwt().jwt(jwt -> jwt.claim("sub", USER_ID))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_admin"))))
                 .andExpect(status().isBadRequest());
     }
 }

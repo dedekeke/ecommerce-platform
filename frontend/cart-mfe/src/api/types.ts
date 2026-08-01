@@ -1,17 +1,28 @@
+/** Wire shape of cart-service `CartItemResponse` (services/cart-service dto/CartItemResponse.java). */
 export interface CartItemResponse {
-  itemId: string
+  id: string
   productId: string
-  name: string
+  productName: string
+  productSku: string | null
+  productImageUrl: string | null
   price: number
   quantity: number
-  image?: string
+  subtotal: number
+  addedAt?: string
+  updatedAt?: string
 }
 
+/** Wire shape of cart-service `CartResponse` (services/cart-service dto/CartResponse.java). */
 export interface CartResponse {
-  cartId: string
+  id: string
+  userId: string
   items: CartItemResponse[]
-  total: number
-  itemCount: number
+  totalAmount: number
+  totalItems: number
+  status: string
+  expiresAt?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface AddItemPayload {

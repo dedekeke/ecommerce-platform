@@ -109,6 +109,17 @@ export const useCartStore = create<CartState>()(
             'clearCart'
           ),
 
+        replaceItems: (items: CartItem[]) =>
+          set(
+            {
+              items,
+              total: calculateTotal(items),
+              itemCount: calculateItemCount(items),
+            },
+            false,
+            'replaceItems'
+          ),
+
         applyPromotion: (promotion: AppliedPromotion) =>
           set(
             {

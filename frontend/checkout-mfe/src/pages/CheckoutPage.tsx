@@ -11,6 +11,7 @@ import { useAuthUserId } from '../hooks/useAuthUserId'
 import { useCheckoutStore } from '../stores/checkoutStore'
 import { useCartStore, selectPromotionCode } from '../stores/cartStore'
 import { createOrder, createGuestOrder } from '../api/orderService'
+import { pushCartToGuestCart } from '../api/guestCartService'
 import { toAddressDto } from '../utils/toAddressDto'
 import { toast } from '../lib/toast'
 import AddressForm from '../components/AddressForm'
@@ -95,6 +96,19 @@ export default function CheckoutPage() {
     setIsSubmitting(true)
     setSubmitError(null)
     try {
+      if (!liveUserId) {
+        // The guest order saga reads the SERVER guest cart (owner derived as
+        // guest:sha256(email) — cart-service GuestCartController). Anonymous carts are
+        // local-only until now, so push the reviewed cart there first; without this the
+        // saga sees an empty cart and the order 400s on EmptyCartException.
+        try {
+          await pushCartToGuestCart(guestEmail as string, useCartStore.getState().items)
+        } catch {
+          setSubmitError('We could not sync your cart for checkout. Please try again.')
+          return
+        }
+      }
+
       // Authenticated -> POST /api/orders (JWT sub is authoritative). Guest ->
       // POST /api/orders/guest (server derives identity from the email). Both
       // return the same clientSecret contract, so the rest of the flow is shared.

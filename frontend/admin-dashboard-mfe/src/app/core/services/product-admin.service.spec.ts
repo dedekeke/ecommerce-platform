@@ -2,19 +2,22 @@ import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { ProductAdminService } from './product-admin.service';
-import { Product, PagedProducts } from '../models/product.model';
+import { Product, PagedProducts, ProductPayload } from '../models/product.model';
 
+// Shape mirrors product-service ProductResponse.
 const mockProduct: Product = {
   id: 'prod-1',
+  sku: 'SKU-001',
   name: 'Test Product',
   description: 'A test product',
+  category: { id: 3, name: 'Electronics', slug: 'electronics' },
   price: 29.99,
-  category: 'Electronics',
-  categoryId: 'cat-1',
-  imageUrls: ['https://example.com/img.jpg'],
-  stock: 100,
-  sku: 'SKU-001',
-  status: 'ACTIVE',
+  currency: 'USD',
+  images: ['/api/media/media-1/content'],
+  stockQuantity: 100,
+  active: true,
+  inStock: true,
+  available: true,
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 };
@@ -53,12 +56,15 @@ describe('ProductAdminService', () => {
     expect(result).toEqual(mockPagedProducts);
   });
 
-  it('should include optional sort/search params when provided', () => {
-    service.getProducts({ page: 0, size: 10, sort: 'price', direction: 'desc', search: 'test' }).subscribe();
+  it('should map to the backend query params sortBy/sortDirection/search/categoryId', () => {
+    service
+      .getProducts({ page: 0, size: 10, sortBy: 'price', sortDirection: 'desc', search: 'test', categoryId: '3' })
+      .subscribe();
     const req = httpMock.expectOne((r) => r.url === '/api/products');
-    expect(req.request.params.get('sort')).toBe('price');
-    expect(req.request.params.get('direction')).toBe('desc');
+    expect(req.request.params.get('sortBy')).toBe('price');
+    expect(req.request.params.get('sortDirection')).toBe('desc');
     expect(req.request.params.get('search')).toBe('test');
+    expect(req.request.params.get('categoryId')).toBe('3');
     req.flush(mockPagedProducts);
   });
 
@@ -71,8 +77,17 @@ describe('ProductAdminService', () => {
     expect(result).toEqual(mockProduct);
   });
 
-  it('should create a product with POST', () => {
-    const payload = { name: 'New', description: 'D', price: 10, categoryId: 'c', imageUrls: [], stock: 5, sku: 'X' };
+  it('should create a product with a ProductRequest-shaped POST body', () => {
+    const payload: ProductPayload = {
+      sku: 'SKU-9',
+      name: 'New',
+      description: 'D',
+      categoryId: 3,
+      price: 10,
+      currency: 'USD',
+      images: ['/api/media/media-1/content'],
+      stockQuantity: 5,
+    };
     service.createProduct(payload).subscribe();
     const req = httpMock.expectOne('/api/products');
     expect(req.request.method).toBe('POST');
@@ -80,11 +95,19 @@ describe('ProductAdminService', () => {
     req.flush(mockProduct);
   });
 
-  it('should update a product with PUT', () => {
-    const payload = { name: 'Updated Name' };
+  it('should update a product with a full ProductRequest PUT body', () => {
+    const payload: ProductPayload = {
+      sku: 'SKU-001',
+      name: 'Updated Name',
+      price: 12,
+      currency: 'USD',
+      images: [],
+      stockQuantity: 1,
+    };
     service.updateProduct('prod-1', payload).subscribe();
     const req = httpMock.expectOne('/api/products/prod-1');
     expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual(payload);
     req.flush(mockProduct);
   });
 
