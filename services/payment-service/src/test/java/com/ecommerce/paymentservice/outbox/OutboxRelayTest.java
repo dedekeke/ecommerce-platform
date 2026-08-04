@@ -22,6 +22,8 @@ import java.util.concurrent.CompletableFuture;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -52,7 +54,7 @@ class OutboxRelayTest {
             buildEvent(1L, "order-1", "payment.completed", "PAYMENT_COMPLETED"),
             buildEvent(2L, "order-2", "payment.failed", "PAYMENT_FAILED")
         );
-        when(outboxRepository.findUnpublished(any(Pageable.class))).thenReturn(batch);
+        when(outboxRepository.claimUnpublishedForUpdate(any(Pageable.class))).thenReturn(batch);
         when(kafkaTemplate.send(any(ProducerRecord.class)))
             .thenAnswer(inv -> succeededFuture((ProducerRecord<String, String>) inv.getArgument(0)));
         when(outboxRepository.markPublished(anyList(), any(LocalDateTime.class))).thenReturn(2);
@@ -77,7 +79,7 @@ class OutboxRelayTest {
         OutboxEvent ok = buildEvent(1L, "order-ok", "payment.completed", "PAYMENT_COMPLETED");
         OutboxEvent failing = buildEvent(2L, "order-fail", "payment.completed", "PAYMENT_COMPLETED");
 
-        when(outboxRepository.findUnpublished(any(Pageable.class)))
+        when(outboxRepository.claimUnpublishedForUpdate(any(Pageable.class)))
             .thenReturn(List.of(ok, failing));
 
         when(kafkaTemplate.send(any(ProducerRecord.class)))
@@ -96,16 +98,13 @@ class OutboxRelayTest {
         verify(outboxRepository).markPublished(idsCaptor.capture(), any(LocalDateTime.class));
         assertThat(idsCaptor.getValue()).containsExactly(1L);
 
-        ArgumentCaptor<OutboxEvent> savedCaptor = ArgumentCaptor.forClass(OutboxEvent.class);
-        verify(outboxRepository).save(savedCaptor.capture());
-        assertThat(savedCaptor.getValue().getAttemptCount()).isEqualTo(1);
-        assertThat(savedCaptor.getValue().getLastError()).contains("broker unreachable");
+        verify(outboxRepository).recordFailure(eq(2L), eq(1), contains("broker unreachable"));
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void should_doNothing_when_noUnpublishedEvents() {
-        when(outboxRepository.findUnpublished(any(Pageable.class))).thenReturn(List.of());
+        when(outboxRepository.claimUnpublishedForUpdate(any(Pageable.class))).thenReturn(List.of());
 
         relay.relay();
 
@@ -117,7 +116,7 @@ class OutboxRelayTest {
     @SuppressWarnings("unchecked")
     void should_setEventIdAndTypeHeaders_when_publishingRecord() {
         OutboxEvent event = buildEvent(1L, "order-1", "payment.completed", "PAYMENT_COMPLETED");
-        when(outboxRepository.findUnpublished(any(Pageable.class))).thenReturn(List.of(event));
+        when(outboxRepository.claimUnpublishedForUpdate(any(Pageable.class))).thenReturn(List.of(event));
         when(kafkaTemplate.send(any(ProducerRecord.class)))
             .thenAnswer(inv -> succeededFuture((ProducerRecord<String, String>) inv.getArgument(0)));
 

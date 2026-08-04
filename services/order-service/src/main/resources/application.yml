@@ -30,7 +30,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # Flyway owns the schema; Hibernate only validates entity↔table mapping.
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
@@ -41,6 +42,15 @@ spring:
           batch_size: 20
         order_inserts: true
         order_updates: true
+
+  # Flyway is now the schema authority (mirrors product/cart-service).
+  # baseline-on-migrate lets existing ddl-auto-built databases adopt Flyway
+  # cleanly: they baseline at V1 and the idempotent V1_1..V9 scripts are no-ops.
+  # A fresh database builds the full schema from the migration chain.
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    baseline-on-migrate: true
+    locations: classpath:db/migration
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}
@@ -78,6 +88,17 @@ spring:
   threads:
     virtual:
       enabled: true
+
+  # Dedicated scheduler pool. order-service runs several @Scheduled jobs
+  # (outbox relay, subscription poller, refund/RMA recovery, archival, and the
+  # abandoned/cleanup/report tasks). Spring's default scheduler is single-
+  # threaded, so a long-running or blocked job (e.g. the relay waiting on a slow
+  # broker) would delay every other job. A small fixed pool decouples them.
+  task:
+    scheduling:
+      pool:
+        size: ${SCHEDULER_POOL_SIZE:4}
+      thread-name-prefix: order-sched-
 
 # Server Configuration
 server:
@@ -203,7 +224,9 @@ order:
   # until row count crosses the 50M partitioning trigger.
   archival:
     enabled: ${ORDER_ARCHIVAL_ENABLED:true}
-    cron: ${ORDER_ARCHIVAL_CRON:0 0 4 * * ?}
+    # 04:30 — staggered 30 min after processAbandonedOrders (04:00) so the two
+    # heavy table scans do not hammer the DB simultaneously on the shared pool.
+    cron: ${ORDER_ARCHIVAL_CRON:0 30 4 * * ?}
     cutoff-days: ${ORDER_ARCHIVAL_CUTOFF_DAYS:365}
     batch-size: ${ORDER_ARCHIVAL_BATCH_SIZE:1000}
 
@@ -378,7 +401,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
 
 logging:
@@ -394,7 +417,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
 
 logging:

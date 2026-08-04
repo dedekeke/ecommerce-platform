@@ -70,6 +70,14 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Flyway — versioned schema migrations (mirrors product/cart-service).
+             Replaces Hibernate ddl-auto:update as the schema authority; JPA now
+             runs in validate mode against the Flyway-managed schema. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
         <!-- Kafka -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
@@ -139,6 +147,18 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <!-- ShedLock — single-fires @Scheduled jobs across replicas via a DB lock. -->
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-spring</artifactId>
+            <version>5.16.0</version>
+        </dependency>
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-provider-jdbc-template</artifactId>
+            <version>5.16.0</version>
         </dependency>
 
         <!-- Lombok -->

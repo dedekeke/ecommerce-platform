@@ -2,6 +2,7 @@ package com.ecommerce.orderservice.saga.rma;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -35,7 +36,12 @@ public class RmaRecoveryScheduler {
     private final RmaOrchestrator orchestrator;
     private final Clock clock;
 
+    // lockAtMostFor (10m) is 2x the 5-minute poll interval so the lock outlives
+    // a slow backlog run and never expires mid-run (which would let another
+    // instance re-drive the same RMAs — the double-resume this lock prevents).
+    // fixedDelay spaces runs on a single instance, so no lockAtLeastFor is needed.
     @Scheduled(fixedDelayString = "${rma.saga.recovery-interval-ms:300000}")
+    @SchedulerLock(name = "order-rmaRecovery", lockAtMostFor = "PT10M")
     public void recoverStuckRmas() {
         LocalDateTime cutoff = LocalDateTime.now(clock).minus(STUCK_THRESHOLD);
         // JOIN FETCH the lines: this read tx commits before resume() reaches

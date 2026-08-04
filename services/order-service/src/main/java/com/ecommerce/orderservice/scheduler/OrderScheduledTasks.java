@@ -8,6 +8,7 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -61,6 +62,8 @@ public class OrderScheduledTasks {
     }
 
     @Scheduled(cron = "${order.scheduled.abandoned-orders-cron:0 0 4 * * ?}")
+    @SchedulerLock(name = "order-processAbandonedOrders",
+        lockAtMostFor = "PT15M", lockAtLeastFor = "PT1M")
     public void processAbandonedOrders() {
         log.info("Starting scheduled task: Process abandoned orders (pending for {} hours)", abandonedHoursThreshold);
 
@@ -95,6 +98,8 @@ public class OrderScheduledTasks {
     }
 
     @Scheduled(cron = "${order.scheduled.cleanup-old-orders-cron:0 0 3 * * ?}")
+    @SchedulerLock(name = "order-cleanupCompletedOrders",
+        lockAtMostFor = "PT15M", lockAtLeastFor = "PT1M")
     public void cleanupCompletedOrdersData() {
         log.info("Starting scheduled task: Cleanup old orders data");
 
@@ -108,6 +113,8 @@ public class OrderScheduledTasks {
     }
 
     @Scheduled(cron = "${order.scheduled.daily-sales-report-cron:0 0 1 * * ?}")
+    @SchedulerLock(name = "order-dailySalesReport",
+        lockAtMostFor = "PT15M", lockAtLeastFor = "PT1M")
     public void generateDailySalesReport() {
         log.info("Starting scheduled task: Generate daily sales report");
 

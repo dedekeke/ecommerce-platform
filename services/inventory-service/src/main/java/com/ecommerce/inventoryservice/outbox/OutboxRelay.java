@@ -10,7 +10,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -24,11 +23,19 @@ import java.util.concurrent.TimeoutException;
  * Polling outbox relay.
  *
  * <p>Strategy: every {@code outbox.relay.poll-interval-ms} milliseconds we
- * claim a batch of unpublished events, publish them to Kafka with the
- * {@code outbox-event-id} header for consumer dedup, then mark the rows
- * published. A failed Kafka publish leaves the row unpublished so the next
- * poll re-attempts; the per-row {@code attempt_count} captures retries so
- * stuck events can be surfaced operationally.
+ * (1) claim a batch of unpublished rows with {@code FOR UPDATE SKIP LOCKED}
+ * in a short transaction, (2) publish them to Kafka <em>outside</em> any DB
+ * transaction, then (3) mark the published rows in a second transaction. A
+ * failed Kafka publish leaves the row unpublished so the next poll re-attempts;
+ * the per-row {@code attempt_count} captures retries so stuck events can be
+ * surfaced operationally.
+ *
+ * <p><b>Replica safety.</b> {@code SKIP LOCKED} lets multiple service instances
+ * run the relay concurrently, each claiming a disjoint set of rows, and the DB
+ * connection is never held across the blocking Kafka send. Rows stay unpublished
+ * until the batch's sends complete, so duplicates are possible in that interval
+ * (bounded, not "narrow", under a slow broker) and are absorbed by consumer-side
+ * {@code outbox-event-id} dedup. See order-service's copy for full design notes.
  *
  * <p>Disabled in test profile via {@code outbox.relay.enabled=false} so
  * tests can exercise the relay deterministically by calling {@link #relay()}
@@ -63,17 +70,14 @@ public class OutboxRelay {
     }
 
     /**
-     * Single relay tick. Claim batch, publish, mark published.
-     *
-     * <p>Wrapped in a transaction so the {@code markPublished} update flushes
-     * atomically with the read. If the Kafka send fails for a row we keep
-     * iterating — the row stays unpublished and the next tick retries it.
+     * Single relay tick: claim (tx1) → publish (no tx) → mark published (tx2).
+     * NOT {@code @Transactional} — the DB connection must not be held across the
+     * blocking Kafka sends.
      */
     @Scheduled(fixedDelayString = "${outbox.relay.poll-interval-ms:500}")
-    @Transactional
     public void relay() {
         Pageable page = PageRequest.of(0, batchSize);
-        List<OutboxEvent> batch = outboxRepository.findUnpublished(page);
+        List<OutboxEvent> batch = outboxRepository.claimUnpublishedForUpdate(page);
         if (batch.isEmpty()) {
             return;
         }
@@ -133,11 +137,10 @@ public class OutboxRelay {
     }
 
     private void recordFailure(OutboxEvent event, String reason) {
-        event.setAttemptCount(event.getAttemptCount() + 1);
-        event.setLastError(truncate(reason));
-        outboxRepository.save(event);
+        int attempt = event.getAttemptCount() + 1;
+        outboxRepository.recordFailure(event.getId(), attempt, truncate(reason));
         log.error("Outbox publish failed for event {} (attempt={}): {}",
-            event.getEventId(), event.getAttemptCount(), reason);
+            event.getEventId(), attempt, reason);
     }
 
     private static String truncate(String s) {
